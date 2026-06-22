@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visvoai-core"
+version = "0.1.0"
+description = "VisvoAI — Extensible Python agent runtime with tool calling and semantic tool retrieval"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "VisvoAI", email = "akshant.jain2@gmail.com" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "visvoai-ai>=0.1.0",
+    "pydantic>=2.0",
+    "langgraph>=0.2",
+    "langchain-core>=0.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

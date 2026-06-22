@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visvoai-cli"
+version = "0.1.0"
+description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "VisvoAI", email = "akshant.jain2@gmail.com" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "visvoai-core>=0.1.0",
+    "click>=8.1",
+    "rich>=13.0",
+]
+
+[project.scripts]
+visvoai = "visvoai.cli.main:cli"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
