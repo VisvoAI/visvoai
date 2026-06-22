@@ -29,13 +29,11 @@ class ToolPersistence:
         tool_name: str,
         tool_input: dict,
         agent_step: int,
-        execution_phase: Optional[str],
-        parent_id: Optional[str],
-        is_skill: bool,
-        display_name: Optional[str],
-        generation_started_at: Optional[Any],
+        execution_phase: Optional[str] = None,
+        **kwargs: Any,
     ) -> str:
-        """Called before tool execution begins. Returns the canonical tool_call_id."""
+        """Called before tool execution begins. Returns the canonical tool_call_id.
+        **kwargs: platform surfaces pass additional fields (parent_id, is_skill, display_name, etc.)"""
         return tool_id
 
     def on_resume(self, tool_id: str) -> str:
@@ -49,9 +47,10 @@ class ToolPersistence:
         status: str,
         output: dict,
         duration_ms: int,
-        display_name: Optional[str],
+        **kwargs: Any,
     ) -> None:
-        """Called on tool completion (any terminal status)."""
+        """Called on tool completion (any terminal status).
+        **kwargs: platform surfaces pass additional fields (display_name, etc.)"""
         pass
 
     def on_error(
