@@ -39,8 +39,6 @@ class ToolConfig:
     __slots__ = (
         "is_core", "no_cache", "cache_key_args", "routing_hint",
         "anti_patterns", "depends_on", "parallel_with",
-        "display_name", "is_skill", "show_in_ui",
-        "ui_hide_input_keys", "ui_hide_output_keys",
         "skip_context_chunk", "persist_context",
         "sequential_only", "idempotent",
         "deprecated", "disabled",
@@ -54,11 +52,6 @@ class ToolConfig:
         self.anti_patterns: Optional[List[str]] = kwargs.get("anti_patterns", None)
         self.depends_on: Optional[List[str]] = kwargs.get("depends_on", None)
         self.parallel_with: Optional[List[str]] = kwargs.get("parallel_with", None)
-        self.display_name: str = kwargs.get("display_name", "")
-        self.is_skill: bool = kwargs.get("is_skill", False)
-        self.show_in_ui: bool = kwargs.get("show_in_ui", True)
-        self.ui_hide_input_keys: List[str] = kwargs.get("ui_hide_input_keys", [])
-        self.ui_hide_output_keys: List[str] = kwargs.get("ui_hide_output_keys", [])
         self.skip_context_chunk: bool = kwargs.get("skip_context_chunk", False)
         self.persist_context: bool = kwargs.get("persist_context", False)
         self.sequential_only: bool = kwargs.get("sequential_only", False)
@@ -114,11 +107,6 @@ class BaseAgentTool(ABC):
     llm_schema: Optional[Type[BaseModel]] = None  # exposed to LLM; defaults to args_schema
 
     # ── Config defaults (overridden by @tool_config) ──────────
-    display_name: str = ""
-    is_skill: bool = False
-    show_in_ui: bool = True
-    ui_hide_input_keys: List[str] = []
-    ui_hide_output_keys: List[str] = []
     is_core: bool = False
     no_cache: bool = False
     cache_key_args: Optional[List[str]] = None
@@ -148,11 +136,6 @@ class BaseAgentTool(ABC):
         if not getattr(cls, "__abstractmethods__", None) and getattr(cls, "name", None):
             BaseAgentTool._registry.append(cls)
 
-    # ── Instance state (set by ToolRunner before execute) ─────
-    assistant_message_id: str
-    request_id: Optional[str] = None
-    parent_id: Optional[str] = None
-
     @abstractmethod
     def _execute(self, tool_call_id: str, **kwargs: Any) -> Any:
         """Execute the tool's logic. Return a result dict or ToolResult."""
@@ -175,14 +158,14 @@ class BaseAgentTool(ABC):
 
         pre_id = self._persistence.on_start(
             tool_id=effective_id,
-            message_id=getattr(self, "assistant_message_id", ""),
+            message_id="",
             tool_name=self.name,
             tool_input={k: v for k, v in kwargs.items() if not k.startswith("_")},
             agent_step=agent_step,
             execution_phase=execution_phase,
-            parent_id=getattr(self, "parent_id", None),
-            is_skill=self.is_skill,
-            display_name=self.display_name or None,
+            parent_id=None,
+            is_skill=False,
+            display_name=None,
             generation_started_at=None,
         )
         try:
@@ -194,7 +177,7 @@ class BaseAgentTool(ABC):
                 status=status,
                 output=result if isinstance(result, dict) else {},
                 duration_ms=duration_ms,
-                display_name=self.display_name or None,
+                display_name=None,
             )
             return result
         except Exception as exc:

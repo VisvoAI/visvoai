@@ -621,6 +621,9 @@ def default_model_for(capability: Capability) -> str:
 
 # =============================================================================
 # Model options — UI-facing combinations of model + thinking level
+# Platform-only: these are not part of the public visvoai-ai API surface.
+# Defined here so the platform's re-export (backend/llm/model_registry.py)
+# has a single source of truth. External users of visvoai-ai do not need them.
 # =============================================================================
 
 THINKING_LEVELS = {
