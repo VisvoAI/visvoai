@@ -6,6 +6,7 @@ captures it into additional_kwargs["reasoning"] so normalize_content can surface
 thinking event, uniform with Gemini/Claude.
 """
 from .base import Provider
+from .config import resolve_api_key
 
 
 class ReasoningChatOpenAI:
@@ -43,11 +44,11 @@ class OpenAICompatProvider(Provider):
         if reasoning:
             yield {"type": "thinking", "content": reasoning}
 
-    def build_chat_model(self, *, config, model_id, owner_id=None, option=None, thinking_level=None):
-        base_url = config.get_base_url(self.provider_name)
+    def build_chat_model(self, *, model_id, api_key=None, base_url=None,
+                         option=None, thinking_level=None):
         return ReasoningChatOpenAI(
             model=model_id,
-            api_key=config.get_key(self.provider_name, owner_id=owner_id),
+            api_key=resolve_api_key(self.provider_name, api_key),
             base_url=base_url,
             temperature=1.0,
             streaming=True,
