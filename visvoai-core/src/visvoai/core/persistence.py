@@ -1,5 +1,5 @@
 """
-visvoai.core.persistence — ToolPersistence interface.
+visvoai.core.persistence — ToolPersistence and LLMPersistence interfaces.
 
 The default implementation is a no-op. Platform surfaces inject a concrete
 implementation via tool_instance._persistence before execution:
@@ -62,4 +62,42 @@ class ToolPersistence:
         duration_ms: int,
     ) -> None:
         """Called when tool raises an unexpected exception."""
+        pass
+
+
+class LLMPersistence:
+    """
+    Lifecycle hooks for LLM call tracking.
+
+    The default implementation is a no-op. Platform surfaces inject a concrete
+    subclass (e.g. HistoryManagerLLMPersistence) so cost/token accounting is
+    written to the DB on the hosted backend only.
+
+    All methods use keyword-only args so new fields can be added without
+    breaking existing subclasses that don't care about them.
+    """
+
+    def on_call_complete(
+        self,
+        *,
+        message_id: str,
+        model_name: str,
+        input_tokens: int,
+        output_tokens: int,
+        total_tokens: int,
+        action: str,
+        estimated_cost_usd: str,
+        tool_call_id: Optional[str] = None,
+    ) -> None:
+        """Called once per turn when LLM call stats are ready to persist."""
+        pass
+
+    def on_thinking_log(
+        self,
+        *,
+        message_id: str,
+        thinking_text: str,
+        tool_call_id: Optional[str] = None,
+    ) -> None:
+        """Called for each thinking block emitted by the model."""
         pass

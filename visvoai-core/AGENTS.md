@@ -3,32 +3,40 @@
 Extensible Python agent runtime. Provides the public extension surface for
 building surfaces (CLI, web, IDE) on top of the agent loop.
 
-# Key Files (once populated from backend/)
+# Key Files
 - `src/visvoai/core/__init__.py` → public API surface
-- `src/visvoai/core/graph.py` → AgentRuntime class + AgentState TypedDict
-- `src/visvoai/core/tools/base.py` → BaseAgentTool, ToolPersistence, RuntimeContext
-- `src/visvoai/core/tools/registry.py` → build_registry(), ToolConfig, auto-registration
-- `src/visvoai/core/retrieval/` → Plan A dynamic MCP tool retrieval (hybrid semantic search)
+- `src/visvoai/core/graph.py` → lean core `build_graph()` (no HITL/platform deps)
+- `src/visvoai/core/runtime.py` → `AgentRuntime` base class with 4 hook methods
+- `src/visvoai/core/state.py` → public `AgentState` TypedDict (core fields only)
+- `src/visvoai/core/tools.py` → `BaseAgentTool` ABC + `@tool_config` decorator + auto-registration
+- `src/visvoai/core/persistence.py` → `ToolPersistence` + `LLMPersistence` no-op interfaces
+- `src/visvoai/core/context.py` → `RuntimeContext` (7 surface-agnostic fields)
+- `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`
 
 # Key Classes / Functions
-- `AgentRuntime` → buildable base class; override _extend_graph(), _tools_routing(),
-  _get_checkpointer(), _get_interrupt_nodes() to add platform behavior
-- `AgentState` → LangGraph TypedDict with messages, hitl_*, active_plan, active_mcp_tools
-- `RuntimeContext` → surface-agnostic orchestrator state (7 fields: request_id,
-  subagent_depth, plan_state_ref, plan_lock, parent_tool_call_id, active_skill_resources,
-  active_skill_id)
+- `AgentRuntime` → buildable base class; override `_extend_graph()`, `_tools_routing()`,
+  `_get_checkpointer()`, `_get_interrupt_nodes()` to add platform behavior
+- `AgentState` → LangGraph TypedDict: `messages`, `active_plan`, `_plan_finalize_attempts`,
+  `active_mcp_tools`. Platform extends with HITL + bg_task fields.
+- `BaseAgentTool` → ABC with `_persistence` injection, `execute()` lifecycle, auto-registration
+  via `__init_subclass__`. Registered tools accumulate in `BaseAgentTool._registry`.
+- `tool_config(**kwargs)` → decorator; validates metadata at import time and sets class attrs
 - `ToolPersistence` → no-op lifecycle hooks (on_start, on_resume, on_complete, on_error)
-- `BaseAgentTool` → ABC with auto-registration via __init_subclass__, execute() lifecycle
-- `build_registry()` → returns list of ToolConfig built from all registered subclasses
+- `LLMPersistence` → no-op hooks (on_call_complete, on_thinking_log)
+- `RuntimeContext` → surface-agnostic orchestrator state (7 fields)
+- `ToolCatalog` → BM25 index; `search(query, k, query_vec=None)` returns tool names;
+  HYBRID mode (BM25 ∪ cosine union) when query_vec + per-tool embeddings are present
+- `build_catalog_from_servers(servers)` → constructs ToolCatalog from server objects
 
 # Conventions
-- No DB dependencies in core — HistoryManager lives in the private platform
-- RuntimeContext fields only — no BackendContext fields in any core code
-- ToolPersistence default is no-op; platform injects HistoryManagerPersistence via _persistence
-- Auto-registration: every concrete tool class registers itself on definition (no manual list)
+- No DB, no HTTP, no platform imports in any file in this package
+- `ToolPersistence` default is no-op; platform injects `HistoryManagerPersistence`
+- `LLMPersistence` default is no-op; platform injects `HistoryManagerLLMPersistence`
+- `AgentRuntime.build_graph()` calls `visvoai.core.graph.build_graph()` (the lean version)
+- Platform's `VisvoRuntime` overrides `build_graph()` to call `backend/agent/graph.py` instead
 
 # Gotchas
-- AgentRuntime._extend_graph() is called BEFORE tools→X routing edge is added —
-  subclass must add its own nodes there; then _tools_routing() handles the edge
-- When _runtime=None in build_graph(): existing platform HITL behavior is preserved
-  (backward compat shim for orchestrator.py during migration)
+- `AgentRuntime._extend_graph()` is called BEFORE the tools→X routing edge is added —
+  subclass must add its own nodes there; then `_tools_routing()` handles the edge
+- `BaseAgentTool._registry` is a class-level list shared across all tool classes
+- `ToolCatalog` BM25 uses lowercase tokenization across both names and descriptions

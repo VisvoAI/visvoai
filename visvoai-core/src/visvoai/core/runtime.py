@@ -28,6 +28,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import StateGraph
 
 from visvoai.core.state import AgentState
+from visvoai.core.graph import build_graph as _core_build_graph
 
 
 class AgentRuntime:
@@ -60,14 +61,11 @@ class AgentRuntime:
     ):
         """Build the compiled StateGraph with this runtime's hooks applied.
 
-        Delegates to the backend's build_graph() passing _runtime=self so hooks
-        are invoked. During migration this means the full graph builder (which lives
-        in backend/agent/graph.py) is used but controlled by this interface.
+        Uses the core graph builder in visvoai.core.graph. Platform subclasses
+        (VisvoRuntime) override this method to call the richer backend graph builder
+        that adds HITL, background tasks, and Plan-A retrieval.
         """
-        # Late import avoids pulling the full backend into standalone environments.
-        # Once the code migration is complete, this will call an internal build function.
-        from agent.graph import build_graph as _build_graph  # type: ignore[import]
-        return _build_graph(
+        return _core_build_graph(
             model=model,
             core_tools=core_tools,
             all_tools_map=all_tools_map,
