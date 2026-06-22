@@ -1,9 +1,9 @@
 """
 visvoai.cli — Developer tool CLI built on visvoai-core.
 
-Eats its own cooking: the CLI is itself an agent that edits the local filesystem,
-runs shell commands, reads files, and streams output to the terminal. It is the
-reference implementation of what a visvoai-core extension looks like.
+Entry point: `visvoai "your prompt"` (registered as a console script).
+The agent edits local files, runs shell commands, and streams output to stdout.
 
-Entry point: visvoai.cli.main:cli  (registered as the `visvoai` console script)
+Quick start (inside the Docker backend container):
+  python -m visvoai.cli.main "list the files in /app/backend/tools/"
 """
