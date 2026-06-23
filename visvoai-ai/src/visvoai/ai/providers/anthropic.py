@@ -11,10 +11,11 @@ class AnthropicProvider(Provider):
     def build_chat_model(self, *, model_id, api_key=None, base_url=None,
                          option=None, thinking_level=None):
         from langchain_anthropic import ChatAnthropic
-        supports_thinking = not any(
-            s in model_id
-            for s in ("claude-3-5", "claude-3-opus", "claude-3-haiku", "claude-3-sonnet")
-        )
+        from visvoai.ai.model_registry import get_model
+        # Single source of truth: the registry decides which models accept the
+        # extended-thinking parameter. Unknown ids default to off (safe).
+        _md = get_model(model_id)
+        supports_thinking = _md.supports_thinking if _md else False
         kwargs = dict(
             model=model_id,
             anthropic_api_key=resolve_api_key("anthropic", api_key),

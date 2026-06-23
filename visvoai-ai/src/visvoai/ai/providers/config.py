@@ -22,6 +22,25 @@ _ENV_KEY_MAP = {
     "groq":      "GROQ_API_KEY",
 }
 
+# OpenAI-compatible providers reached via ChatOpenAI + base_url. "openai" itself
+# is absent: it uses the library default (None). Platform surfaces pass an
+# explicit base_url from their own config, which always overrides these.
+_PROVIDER_BASE_URL = {
+    "together":   "https://api.together.xyz/v1",
+    "groq":       "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+}
+
+
+def resolve_base_url(provider: str, base_url: Optional[str] = None) -> Optional[str]:
+    """Return the base_url for an OpenAI-compatible provider.
+
+    Priority: explicit base_url arg → per-provider default → None (OpenAI itself).
+    """
+    if base_url:
+        return base_url
+    return _PROVIDER_BASE_URL.get(provider.lower())
+
 
 def resolve_api_key(provider: str, api_key: Optional[str] = None) -> str:
     """Return the API key for provider.

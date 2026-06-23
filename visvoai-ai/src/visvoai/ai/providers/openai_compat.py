@@ -6,13 +6,19 @@ captures it into additional_kwargs["reasoning"] so normalize_content can surface
 thinking event, uniform with Gemini/Claude.
 """
 from .base import Provider
-from .config import resolve_api_key
+from .config import resolve_api_key, resolve_base_url
+
+_REASONING_CLS = None
 
 
-class ReasoningChatOpenAI:
-    """ChatOpenAI subclass that preserves the non-standard `delta.reasoning` field."""
+def _reasoning_chat_openai_cls():
+    """Build (once) the ChatOpenAI subclass that preserves `delta.reasoning`.
 
-    def __new__(cls, **kwargs):
+    Memoized: the subclass is identical regardless of provider, so minting it per
+    call would create a fresh Python type on every Together/DeepSeek/GLM/Qwen build.
+    """
+    global _REASONING_CLS
+    if _REASONING_CLS is None:
         from langchain_openai import ChatOpenAI
 
         class _ReasoningChatOpenAI(ChatOpenAI):
@@ -29,7 +35,15 @@ class ReasoningChatOpenAI:
                     pass
                 return gen
 
-        return _ReasoningChatOpenAI(**kwargs)
+        _REASONING_CLS = _ReasoningChatOpenAI
+    return _REASONING_CLS
+
+
+class ReasoningChatOpenAI:
+    """ChatOpenAI subclass that preserves the non-standard `delta.reasoning` field."""
+
+    def __new__(cls, **kwargs):
+        return _reasoning_chat_openai_cls()(**kwargs)
 
 
 class OpenAICompatProvider(Provider):
@@ -46,10 +60,20 @@ class OpenAICompatProvider(Provider):
 
     def build_chat_model(self, *, model_id, api_key=None, base_url=None,
                          option=None, thinking_level=None):
+        resolved_base_url = resolve_base_url(self.provider_name, base_url)
+        # OpenAI itself runs on the library default (None). Any other compat
+        # provider without a resolvable base_url would silently hit OpenAI's API
+        # with a foreign model id — fail loudly instead.
+        if self.provider_name.lower() != "openai" and not resolved_base_url:
+            raise ValueError(
+                f"OpenAICompatProvider('{self.provider_name}') has no base_url. "
+                f"Pass base_url= explicitly or add '{self.provider_name}' to "
+                f"_PROVIDER_BASE_URL in visvoai.ai.providers.config."
+            )
         return ReasoningChatOpenAI(
             model=model_id,
             api_key=resolve_api_key(self.provider_name, api_key),
-            base_url=base_url,
+            base_url=resolved_base_url,
             temperature=1.0,
             streaming=True,
             stream_usage=True,
