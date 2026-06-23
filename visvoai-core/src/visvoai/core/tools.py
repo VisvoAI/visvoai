@@ -25,25 +25,30 @@ import uuid
 import logging
 import time
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Dict, List, Optional, Set, Type
+from typing import Any, ClassVar, Dict, List, Optional, Set, Type, get_type_hints
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, create_model
 
 from visvoai.core.persistence import ToolPersistence
 
 logger = logging.getLogger(__name__)
 
 
-class ToolConfig(BaseModel):
-    """Generic tool metadata declared on a tool class via @tool_config.
+class ToolConfig:
+    """The single declaration of generic tool metadata — caching, routing, and
+    scheduling hints. `BaseAgentTool` inherits these as ordinary class attributes
+    (so `tool.is_core` reads the default directly), and `@tool_config` validates
+    kwargs against them. There is no separate hand-maintained schema.
 
-    These are the surface-agnostic agent concerns (caching, routing, scheduling
-    hints). Platform-specific axes — roles (auth), approval (HITL), UI metadata
-    (canvas), background execution — live in the platform's `ToolMeta`, which
-    SUBCLASSES this (see backend/tools/base.py).
+    Platform-specific axes — roles (auth), approval (HITL), UI metadata (canvas),
+    background execution — live in the platform's `ToolMeta`, which SUBCLASSES this
+    (see backend/tools/base.py).
+
+    This is a plain class, NOT a pydantic model, precisely so the fields are
+    inheritable as readable class attributes. Import-time validation/coercion is
+    provided by a pydantic model derived from these annotations via
+    `build_config_validator()`.
     """
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     is_core: bool = False
     no_cache: bool = False
     cache_key_args: Optional[List[str]] = None
@@ -59,25 +64,52 @@ class ToolConfig(BaseModel):
     disabled: bool = False
 
 
+def build_config_validator(config_cls: type) -> Type[BaseModel]:
+    """Derive a pydantic validator from a config class's annotated fields.
+
+    The config class (`ToolConfig`, or the platform's `ToolMeta`) is the single
+    source of field declarations. This builds a throwaway pydantic model from it
+    so `@tool_config` can coerce + validate kwargs at import time without a second
+    schema that could drift. Call once per config class and cache the result.
+    """
+    fields: Dict[str, Any] = {}
+    for fname, ftype in get_type_hints(config_cls).items():
+        if fname.startswith("_"):
+            continue
+        fields[fname] = (ftype, getattr(config_cls, fname, ...))
+    return create_model(
+        f"{config_cls.__name__}Validator",
+        __config__=ConfigDict(arbitrary_types_allowed=True),
+        **fields,
+    )
+
+
+_CONFIG_VALIDATOR: Type[BaseModel] = build_config_validator(ToolConfig)
+
+
 def tool_config(**kwargs: Any):
-    """Decorator — declares tool metadata. Validated at import time.
+    """Decorator — declares tool metadata, validated/coerced at import time.
+
+    Sets only the fields passed; everything else inherits its `ToolConfig` default
+    via `BaseAgentTool`. Coercion runs through a pydantic model derived from
+    `ToolConfig`, so e.g. `@tool_config(is_core="yes")` sets the bool `True`.
 
     Usage:
         @tool_config(is_core=True, routing_hint="Use when the user asks to...")
         class MyTool(BaseAgentTool):
             ...
     """
-    config = ToolConfig(**kwargs)
+    validated = _CONFIG_VALIDATOR(**kwargs)
 
     def decorator(cls: type) -> type:
-        for field_name in ToolConfig.model_fields:
-            setattr(cls, field_name, getattr(config, field_name))
+        for key in kwargs:
+            setattr(cls, key, getattr(validated, key, kwargs[key]))
         return cls
 
     return decorator
 
 
-class BaseAgentTool(ABC):
+class BaseAgentTool(ToolConfig, ABC):
     """
     Abstract base for public visvoai-core tools.
 
@@ -105,20 +137,9 @@ class BaseAgentTool(ABC):
     args_schema: Type[BaseModel]
     llm_schema: Optional[Type[BaseModel]] = None  # exposed to LLM; defaults to args_schema
 
-    # ── Config defaults (overridden by @tool_config) ──────────
-    is_core: bool = False
-    no_cache: bool = False
-    cache_key_args: Optional[List[str]] = None
-    skip_context_chunk: bool = False
-    persist_context: bool = False
-    routing_hint: Optional[str] = None
-    anti_patterns: Optional[List[str]] = None
-    depends_on: Optional[List[str]] = None
-    parallel_with: Optional[List[str]] = None
-    sequential_only: bool = False
-    idempotent: bool = True
-    deprecated: bool = False
-    disabled: bool = False
+    # ── Config defaults ───────────────────────────────────────
+    # The 13 generic config fields (is_core, no_cache, …) are inherited from
+    # ToolConfig — the single source. @tool_config overrides them per class.
 
     # ── Resource access declarations (declare [] in concrete classes) ─────
     _owned_resource_checks: ClassVar[Optional[List[Any]]] = None

@@ -26,7 +26,9 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
   Platform's `backend/tools/base.py:BaseAgentTool` SUBCLASSES this — inherits identity fields,
   the 13 generic config defaults, `_owned_resource_checks`, and `_persistence`; adds UI/HITL/roles/
   background axes and keeps its OWN `_registry` (distinct object, stricter discovery semantics).
-- `tool_config(**kwargs)` → decorator; validates metadata at import time and sets class attrs
+- `ToolConfig` → plain class declaring the 13 generic config fields — the SINGLE source. `BaseAgentTool` inherits it so `tool.is_core` etc. are readable class attrs. NOT a pydantic model (fields must inherit as plain attrs).
+- `build_config_validator(config_cls)` → derives a pydantic validator from a config class's annotations, so `@tool_config` coerces/validates without a second hand-maintained schema. Platform reuses it for `ToolMeta`.
+- `tool_config(**kwargs)` → decorator; coerces/validates kwargs via the `ToolConfig`-derived validator at import time (e.g. `is_core="yes"` → `True`), sets only passed fields (rest inherit `ToolConfig` defaults)
 - `ToolResult` → minimal result envelope (pi-style: model-facing `result` + generic `data` bag, canonical payload at `data["output"]`). Factories: `.success/.invalid_input/.tool_error/.empty`. Platform's `backend/models/query.py:ToolResult` SUBCLASSES this, widening `status` and adding question/sources/artifacts.
 - `ToolStatus` → 4 basic outcomes (SUCCESS/EMPTY_RESULT/INVALID_INPUT/TOOL_ERROR). HITL statuses live in the platform enum, not here.
 - `ToolPersistence` → no-op lifecycle hooks (on_start, on_resume, on_complete, on_error)
