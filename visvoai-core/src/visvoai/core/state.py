@@ -11,7 +11,7 @@ This keeps the public AgentState free of platform-specific concerns while allowi
 the private platform to extend it without forking the state machine.
 """
 import operator
-from typing import Annotated, Dict, Any, List, Optional, Sequence, TypedDict
+from typing import Annotated, List, Sequence, TypedDict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -32,19 +32,19 @@ def _union_ordered(old, new):
 
 class AgentState(TypedDict, total=False):
     """
-    Public agent state. Platform surfaces extend this with their own fields.
+    Public agent state — the lean agent↔tools loop. Surfaces and plugins extend
+    this with their own fields via TypedDict inheritance.
 
     Fields:
       messages          — the conversation thread (add_messages reducer)
-      active_plan       — structured plan steps (list of dicts)
-      _plan_finalize_attempts — loop guard for finalize_check nudge
       active_mcp_tools  — namespaced MCP tool names bound this round (Plan A)
+
+    Plan-mode state (active_plan, _plan_finalize_attempts) is intentionally NOT
+    here: plan-mode is a future opt-in plugin, and the platform currently owns
+    those fields in its own extended state. Core must not declare state it does
+    not act on.
     """
     messages: Annotated[Sequence[BaseMessage], add_messages]
-
-    # Planning state
-    active_plan: Optional[List[Dict[str, Any]]]
-    _plan_finalize_attempts: Optional[int]
 
     # Dynamic MCP tool loading (Plan A)
     active_mcp_tools: Annotated[List[str], _union_ordered]

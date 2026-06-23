@@ -17,8 +17,10 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
 # Key Classes / Functions
 - `AgentRuntime` → buildable base class; override `_extend_graph()`, `_tools_routing()`,
   `_get_checkpointer()`, `_get_interrupt_nodes()` to add platform behavior
-- `AgentState` → LangGraph TypedDict: `messages`, `active_plan`, `_plan_finalize_attempts`,
-  `active_mcp_tools`. Platform extends with HITL + bg_task fields.
+- `AgentState` → LangGraph TypedDict: `messages`, `active_mcp_tools` only. Plan-mode
+  fields (`active_plan`, `_plan_finalize_attempts`) are deliberately NOT here — plan-mode
+  is a future opt-in plugin; the platform owns those fields in its extended state.
+  Platform extends with plan-mode + HITL + bg_task fields.
 - `BaseAgentTool` → ABC with `_persistence` injection, `execute()` lifecycle, auto-registration
   via `__init_subclass__`. Registered tools accumulate in `BaseAgentTool._registry`.
   Platform's `backend/tools/base.py:BaseAgentTool` SUBCLASSES this — inherits identity fields,
