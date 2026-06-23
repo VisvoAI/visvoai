@@ -3,8 +3,9 @@ model_registry.py
 
 Single source of truth for all LLM models: identity, pricing, and capabilities.
 
-UI-facing model options (the ModelOption picker layer) are NOT here — they live in the
-platform at backend/llm/model_registry.py. This package exposes only the model facts.
+This package exposes only the model facts (identity, pricing, capabilities). Any
+UI-facing presentation layer — model pickers, display labels — belongs in the
+consumer that builds on this, not here.
 
 Pricing source: https://ai.google.dev/gemini-api/docs/pricing (Gemini Developer API)
 Last verified: May 2026

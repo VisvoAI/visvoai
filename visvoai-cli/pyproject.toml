@@ -22,6 +22,8 @@ dependencies = [
     "visvoai-core>=0.1.0",
     "click>=8.1",
     "rich>=13.0",
+    # Default model is Gemini, built directly in main.py via this wrapper.
+    "langchain-google-genai>=2.0",
 ]
 
 [project.scripts]

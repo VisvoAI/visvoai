@@ -6,8 +6,8 @@ A single class per provider exposes what's needed for the LangGraph agent loop:
   • build_chat_model()     → return a streaming BaseChatModel for LangGraph
   • normalize_content()    → map streamed chunks to {type, content} events
 
-Platform surfaces handle native generate/search/embed calls directly via their
-engine layer — those are not part of the public provider interface.
+Native one-shot generate/search/embed calls are intentionally out of scope for
+this facade — a consumer that needs them adds its own methods on a subclass.
 
 Rules:
   - All methods OPTIONAL (default NotSupported) — a provider implements only what it has.

@@ -1,8 +1,8 @@
 """Lifecycle tests for BaseAgentTool.execute() — the default override-seam body.
 
-The platform overrides execute() to stream, so this default body has no live
-production consumer. These tests pin its contract for third-party consumers
-(CLI surface, external tools) that inherit it as-is:
+A streaming consumer may override execute() wholesale, so these tests pin the
+default body's contract for the consumers that inherit it as-is (the CLI surface,
+external tools):
 
   - on_start fires before _execute, on_complete fires after, in order
   - the id returned by on_start is the one threaded into _execute

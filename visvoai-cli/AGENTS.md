@@ -1,30 +1,29 @@
 # visvoai-cli
 
-> ⚠️ **PLACEHOLDER — not a working consumer.** This package is an early scaffold,
-> NOT a reference implementation. Its tools are plain LangChain `@tool` functions,
-> it does not exercise `BaseAgentTool`, and nothing here validates the core
-> contract. Do not treat the CLI as a consumer when reasoning about the core/ai
-> public API. The real CLI work begins only after `visvoai-core` and `visvoai-ai`
-> are finalized — at which point this is rebuilt to genuinely dogfood the seams.
+A working developer-tool CLI built on `visvoai-core`: an agent that reads and
+edits the filesystem, runs shell commands, and streams output to the terminal.
+It is the reference example of consuming the runtime from a real surface.
 
-Developer tool CLI built on visvoai-core: an agent that edits the filesystem, runs
-shell commands, and streams output to the terminal.
+It is intentionally minimal — plain LangChain `@tool` functions, a synchronous
+loop, no checkpointer — to keep the consuming pattern easy to read. Expect it to
+grow; keep new additions just as small and dependency-light.
 
-# Key Files (to be created in Step 6)
-- `src/visvoai/cli/main.py` → Click CLI entry point, REPL loop
-- `src/visvoai/cli/context.py` → CLIContext(RuntimeContext) — CLI-specific state
-- `src/visvoai/cli/streaming.py` → stdout streaming adapter (ToolCallDTO → terminal)
-- `src/visvoai/cli/tools/` → file_read, file_edit, file_write, shell, list_files
+# Key Files
+- `src/visvoai/cli/main.py` → Click entry point; builds the model + graph, streams `astream_events` to stdout
+- `src/visvoai/cli/context.py` → `CLIContext(RuntimeContext)` — CLI-specific state (cwd, terminal width)
+- `src/visvoai/cli/runtime.py` → `CLIRuntime(AgentRuntime)` — adds no extra nodes (pure core loop)
+- `src/visvoai/cli/tools/__init__.py` → file + shell tools as plain LangChain `@tool` functions
 
-# Key Classes / Functions (planned)
-- `CLIContext(RuntimeContext)` → adds cwd, terminal_width; no DB/auth fields
-- `CLIRuntime(AgentRuntime)` → _extend_graph() adds no platform nodes (pure core loop)
-- `cli` → Click group entry point (registered as `visvoai` console script)
+# Key Classes / Functions
+- `CLIContext(RuntimeContext)` → adds cwd / terminal width; no auth or datastore fields
+- `CLIRuntime(AgentRuntime)` → `_extend_graph()` adds nothing — the default agent→tools loop
+- `cli` → Click entry point (registered as the `visvoai` console script)
 
 # Conventions
-- No langgraph interrupts — CLI is synchronous, no HITL (user is already in the loop)
+- No graph interrupts — the CLI is synchronous (the user is already in the loop)
 - Tools write to stdout via Rich; no SSE, no WebSockets
-- CLIContext must not import BackendContext or any platform modules
+- Tools are plain `@tool` functions (not `BaseAgentTool`) — demonstrates that `visvoai-core` binds any LangChain `BaseTool`
+- `CLIContext` must not import any private/consumer modules — only `visvoai-core`
 
 # Gotchas
-- Step 6 is not yet implemented — this package is a stub as of the decompose branch
+- The default model is Gemini, built directly in `main.py` via `langchain-google-genai` (declared as a dependency). Set `GEMINI_API_KEY` before running.

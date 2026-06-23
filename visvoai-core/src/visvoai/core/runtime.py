@@ -15,7 +15,7 @@ Extend by subclassing:
           return route, {"hitl": "hitl", "agent": "agent"}
 
       def _get_checkpointer(self, checkpointer=None):
-          return MyPostgresCheckpointer()
+          return MyCheckpointer()
 
       def _get_interrupt_nodes(self):
           return ["hitl"]
@@ -36,15 +36,15 @@ class AgentRuntime:
     Extensible agent runtime — the public surface for building the agent graph.
 
     The default implementation produces the core agent→tools loop with no
-    platform-specific nodes. Override the hook methods to customize behavior:
+    extra nodes. Override the hook methods to customize behavior:
 
       _extend_graph(workflow, tool_configs) — add nodes (HITL, bg_task, etc.)
       _tools_routing(tool_configs)          — (fn, map) for the tools→X edge
       _get_checkpointer(checkpointer)       — inject a checkpointer
       _get_interrupt_nodes()                — declare interrupt_before node names
 
-    The private platform implements VisvoRuntime(AgentRuntime), which adds HITL,
-    background_task nodes, a PostgreSQL checkpointer, and interrupt gates.
+    A richer consumer subclasses this to add its own nodes (e.g. an approval
+    gate), a checkpointer, and interrupt points — all through the hooks above.
     """
 
     def build_graph(
@@ -60,9 +60,8 @@ class AgentRuntime:
     ):
         """Build the compiled StateGraph with this runtime's hooks applied.
 
-        Uses the core graph builder in visvoai.core.graph. Platform subclasses
-        (VisvoRuntime) override this method to call the richer backend graph builder
-        that adds HITL, background tasks, and Plan-A retrieval.
+        Uses the core graph builder in visvoai.core.graph. A subclass may
+        override this method entirely to call its own richer graph builder.
         """
         return _core_build_graph(
             model=model,

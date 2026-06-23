@@ -2,7 +2,7 @@
 visvoai.cli.tools — Core developer tool CLI toolkit.
 
 These tools are plain LangChain @tool decorated functions — no BaseAgentTool
-dependency, no DB writes, no platform imports. They work with any surface that
+dependency, no datastore, pure local operations. They work with any surface that
 accepts LangChain BaseTool instances.
 
 Available tools:

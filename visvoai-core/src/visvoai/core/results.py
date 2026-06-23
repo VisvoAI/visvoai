@@ -1,15 +1,12 @@
 """
 visvoai.core.results — the minimal tool-result envelope.
 
-This is the lean core of what pi.dev calls AgentToolResult: a model-facing
-`result` string plus a generic `data` bag (the canonical payload lives at
-`data["output"]`), tagged with a basic execution `status`. Nothing here knows
-about HITL, citations, canvas/artifacts, streaming, or the DB — those are
-platform concerns that extend this envelope (see backend/models/query.py
-`ToolResult`, which subclasses this and adds question/sources/artifacts, and
-backend/models/enums.py `ToolStatus`, which adds the HITL statuses).
+A model-facing `result` string plus a generic `data` bag (the canonical payload
+lives at `data["output"]`), tagged with a basic execution `status`. Nothing here
+knows about HITL, citations, artifacts, streaming, or any datastore — a surface
+that needs those subclasses `ToolResult` to widen `status` and add its own fields.
 
-Core tools and external consumers return THIS. The platform widens it.
+Core tools and external consumers return THIS.
 """
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -18,8 +15,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ToolStatus(str, Enum):
-    """Basic execution outcomes every tool can produce. HITL statuses
-    (NEEDS_HITL/PENDING_HITL/REJECTED) are a platform extension — not here."""
+    """Basic execution outcomes every tool can produce. A surface that needs
+    extra outcomes (e.g. approval states) adds them on its own subclass."""
     SUCCESS = "SUCCESS"
     EMPTY_RESULT = "EMPTY_RESULT"
     INVALID_INPUT = "INVALID_INPUT"
@@ -33,8 +30,8 @@ class ToolResult(BaseModel):
     the output contract so the payload lands where consumers read it. The
     canonical payload field is `data["output"]`, mirrored to `result`.
 
-    The platform subclass adds question/sources/artifacts; those default to None
-    here and are absent for core/external tools.
+    A consumer that needs richer fields subclasses this and adds them; the core
+    envelope stays minimal.
     """
     model_config = ConfigDict(extra="ignore")
 

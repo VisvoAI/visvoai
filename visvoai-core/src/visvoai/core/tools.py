@@ -40,9 +40,9 @@ class ToolConfig:
     (so `tool.is_core` reads the default directly), and `@tool_config` validates
     kwargs against them. There is no separate hand-maintained schema.
 
-    Platform-specific axes — roles (auth), approval (HITL), UI metadata (canvas),
-    background execution — live in the platform's `ToolMeta`, which SUBCLASSES this
-    (see backend/tools/base.py).
+    Surface-specific axes — e.g. access roles, approval gating, UI metadata —
+    are not declared here; a consumer adds them on its own config class that
+    SUBCLASSES this one.
 
     This is a plain class, NOT a pydantic model, precisely so the fields are
     inheritable as readable class attributes. Import-time validation/coercion is
@@ -67,7 +67,7 @@ class ToolConfig:
 def build_config_validator(config_cls: type) -> Type[BaseModel]:
     """Derive a pydantic validator from a config class's annotated fields.
 
-    The config class (`ToolConfig`, or the platform's `ToolMeta`) is the single
+    The config class (`ToolConfig`, or a consumer's subclass of it) is the single
     source of field declarations. This builds a throwaway pydantic model from it
     so `@tool_config` can coerce + validate kwargs at import time without a second
     schema that could drift. Call once per config class and cache the result.
@@ -127,8 +127,8 @@ class BaseAgentTool(ToolConfig, ABC):
             def _execute(self, tool_call_id: str, **kwargs):
                 return {"output": kwargs.get("text", "")}
 
-    The _persistence class attribute is replaced at runtime by the surface
-    (platform injects HistoryManagerPersistence; CLI keeps the no-op default).
+    The _persistence class attribute is replaced at runtime by the surface that
+    wants to record tool calls; left alone it stays the no-op default.
     """
 
     # ── Identity ──────────────────────────────────────────────
@@ -183,10 +183,6 @@ class BaseAgentTool(ToolConfig, ABC):
             tool_input={k: v for k, v in kwargs.items() if not k.startswith("_")},
             agent_step=agent_step,
             execution_phase=execution_phase,
-            parent_id=None,
-            is_skill=False,
-            display_name=None,
-            generation_started_at=None,
         )
         try:
             result = self._execute(tool_call_id=pre_id, **kwargs)

@@ -1,7 +1,7 @@
 """AnthropicProvider — facade for Anthropic Claude.
 
 Public interface: build_chat_model() for the LangGraph agent loop.
-Platform surfaces extend this with generate() via engine delegation.
+Subclass to add anything beyond chat (e.g. one-shot generate).
 """
 from .base import Provider
 from .config import resolve_api_key

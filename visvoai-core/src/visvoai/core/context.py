@@ -1,9 +1,9 @@
 """
 visvoai.core.context — Surface-agnostic orchestrator state.
 
-RuntimeContext is the only context type that public visvoai-core tools receive.
-Platform surfaces (web, IDE) extend it with their own dataclass subclass
-(e.g. BackendContext in visvo-platform adds auth, DB, and streaming fields).
+RuntimeContext is the only context type that visvoai-core tools receive. A
+surface that needs more (auth, a datastore session, streaming handles) extends
+it with its own dataclass subclass and passes that to its tools instead.
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -14,13 +14,12 @@ class RuntimeContext:
     """
     Surface-agnostic orchestrator state passed to tools.
 
-    Contains only fields that make sense on any surface (CLI, web, tests).
-    No auth, no DB, no HTTP concerns. Plan-mode and skill state are NOT here —
-    those are platform/plugin concerns and live on the platform's BackendContext.
+    Contains only fields that make sense on any surface (CLI, server, tests).
+    No auth, no datastore, no HTTP concerns. Surface- or plugin-specific state
+    (e.g. plan-mode or skill bookkeeping) is NOT here — a subclass adds it.
 
-    Platform extensions subclass this and add surface-specific fields:
-      BackendContext(RuntimeContext) — web platform (auth, streaming, DB registries)
-      CLIContext(RuntimeContext)     — CLI surface (cwd, terminal_width)
+    Surfaces subclass this and add their own fields, for example:
+      CLIContext(RuntimeContext) — a CLI surface (cwd, terminal_width)
     """
     request_id: Optional[str] = None
     subagent_depth: int = 0

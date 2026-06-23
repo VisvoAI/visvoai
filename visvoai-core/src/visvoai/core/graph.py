@@ -1,9 +1,9 @@
 """
 visvoai.core.graph — Core agent graph builder.
 
-Implements the base agent→tools loop used by AgentRuntime. Platform surfaces
-(web backend) override AgentRuntime.build_graph() to call their own richer
-graph builder instead of this one.
+Implements the base agent→tools loop used by AgentRuntime. A consumer that needs
+a richer graph overrides AgentRuntime.build_graph() to call its own builder
+instead of this one.
 
 Graph topology:
     agent → should_continue → tools → (routing fn) → agent
@@ -37,10 +37,9 @@ def build_graph(
 ):
     """Build the compiled StateGraph for the core agent→tools loop.
 
-    This is the public-package implementation used by AgentRuntime and CLIRuntime.
-    Platform surfaces (VisvoRuntime) override build_graph() to call the richer
-    backend/agent/graph.py version, which adds HITL, background tasks, Plan-A
-    retrieval, and the PostgreSQL checkpointer.
+    This is the implementation used by AgentRuntime and CLIRuntime. A consumer
+    that needs more (approval gates, background tasks, a checkpointer) overrides
+    AgentRuntime.build_graph() to call its own builder instead.
 
     Args:
         model:            LangChain chat model with tool-calling support.

@@ -6,8 +6,8 @@ resolve_api_key(provider, api_key) is the single entry point:
   2. Fall back to the environment variable for that provider.
   3. Raise KeyError with a clear message if neither is set.
 
-Platform surfaces resolve keys before calling provider methods and pass them
-directly as api_key= — they never call resolve_api_key themselves.
+Providers call this internally from build_chat_model(): pass api_key= to
+override, otherwise the matching environment variable is used.
 """
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ _ENV_KEY_MAP = {
 }
 
 # OpenAI-compatible providers reached via ChatOpenAI + base_url. "openai" itself
-# is absent: it uses the library default (None). Platform surfaces pass an
-# explicit base_url from their own config, which always overrides these.
+# is absent: it uses the library default (None). An explicit base_url passed by
+# the caller always overrides these built-in defaults.
 _PROVIDER_BASE_URL = {
     "together":   "https://api.together.xyz/v1",
     "groq":       "https://api.groq.com/openai/v1",

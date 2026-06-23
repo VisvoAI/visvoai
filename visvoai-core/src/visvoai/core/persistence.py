@@ -1,13 +1,14 @@
 """
 visvoai.core.persistence — ToolPersistence and LLMPersistence interfaces.
 
-The default implementation is a no-op. Platform surfaces inject a concrete
-implementation via tool_instance._persistence before execution:
+The default implementation is a no-op. A surface that wants to record tool calls
+injects a concrete subclass via tool_instance._persistence before execution:
 
   tool_instance._persistence = MyPersistence()
 
-Web platform: HistoryManagerPersistence writes lifecycle events to PostgreSQL.
-CLI surface:  ToolPersistence() (the default) — no writes, just returns IDs.
+Out of the box the no-op default just returns IDs and writes nothing, so tools
+run standalone with no datastore. Subclass on_start/on_complete/on_error to send
+lifecycle events wherever you keep them.
 """
 from typing import Any, Optional
 
@@ -17,8 +18,8 @@ class ToolPersistence:
     Lifecycle hooks for tool call tracking.
 
     The default implementation is a no-op: returns provided IDs unchanged and
-    persists nothing. Platform surfaces inject a concrete subclass via
-    tool_instance._persistence so DB writes happen only on that surface.
+    persists nothing. A surface injects a concrete subclass via
+    tool_instance._persistence so recording happens only where it's wanted.
     """
 
     def on_start(
@@ -33,11 +34,11 @@ class ToolPersistence:
         **kwargs: Any,
     ) -> str:
         """Called before tool execution begins. Returns the canonical tool_call_id.
-        **kwargs: platform surfaces pass additional fields (parent_id, is_skill, display_name, etc.)"""
+        **kwargs: a subclass may accept extra surface-specific fields here."""
         return tool_id
 
     def on_resume(self, tool_id: str) -> str:
-        """Called on checkpoint resume. Transitions existing row to IN_PROGRESS."""
+        """Called on checkpoint resume. Transitions an existing record to in-progress."""
         return tool_id
 
     def on_complete(
@@ -50,7 +51,7 @@ class ToolPersistence:
         **kwargs: Any,
     ) -> None:
         """Called on tool completion (any terminal status).
-        **kwargs: platform surfaces pass additional fields (display_name, etc.)"""
+        **kwargs: a subclass may accept extra surface-specific fields here."""
         pass
 
     def on_error(
@@ -68,9 +69,8 @@ class LLMPersistence:
     """
     Lifecycle hooks for LLM call tracking.
 
-    The default implementation is a no-op. Platform surfaces inject a concrete
-    subclass (e.g. HistoryManagerLLMPersistence) so cost/token accounting is
-    written to the DB on the hosted backend only.
+    The default implementation is a no-op. Inject a concrete subclass to record
+    cost/token accounting wherever you want it; standalone it stays silent.
 
     All methods use keyword-only args so new fields can be added without
     breaking existing subclasses that don't care about them.

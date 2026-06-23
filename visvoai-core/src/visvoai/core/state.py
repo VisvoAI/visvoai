@@ -1,14 +1,14 @@
 """
 visvoai.core.state — Public AgentState TypedDict.
 
-Platform extensions add their own fields on top of this via TypedDict inheritance:
+A consumer adds its own fields on top of this via TypedDict inheritance:
 
-  class PlatformState(AgentState, total=False):
-      hitl_request: ...   # HITL fields
+  class MyState(AgentState, total=False):
+      approval_request: ...
       pending_background_tasks: ...
 
-This keeps the public AgentState free of platform-specific concerns while allowing
-the private platform to extend it without forking the state machine.
+This keeps the public AgentState free of surface-specific concerns while letting
+a consumer extend it without forking the state machine.
 """
 import operator
 from typing import Annotated, List, Sequence, TypedDict
@@ -37,14 +37,14 @@ class AgentState(TypedDict, total=False):
 
     Fields:
       messages          — the conversation thread (add_messages reducer)
-      active_mcp_tools  — namespaced MCP tool names bound this round (Plan A)
+      active_mcp_tools  — namespaced MCP tool names bound this round (dynamic
+                          tool loading)
 
-    Plan-mode state (active_plan, _plan_finalize_attempts) is intentionally NOT
-    here: plan-mode is a future opt-in plugin, and the platform currently owns
-    those fields in its own extended state. Core must not declare state it does
-    not act on.
+    Any state a consumer needs but core does not act on (plan-mode bookkeeping,
+    approval flags, etc.) is intentionally NOT declared here — a subclass adds it.
+    Core must not declare state it does not act on.
     """
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
-    # Dynamic MCP tool loading (Plan A)
+    # Dynamic MCP tool loading
     active_mcp_tools: Annotated[List[str], _union_ordered]

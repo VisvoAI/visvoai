@@ -1,12 +1,12 @@
 """
-visvoai.core.retrieval — Tool retrieval for Plan A dynamic binding.
+visvoai.core.retrieval — Tool retrieval for dynamic tool binding.
 
 ToolCatalog is a BM25 + optional cosine-hybrid retrieval index over
 (name, description) tool documents. It is the core mechanism that lets
 the agent bind only the subset of tools relevant to the current query
 instead of overwhelming the LLM with every available tool upfront.
 
-Platform surfaces add a per-tool embedding to entries, enabling the HYBRID
+Consumers add a per-tool embedding to entries, enabling the hybrid
 (BM25 ∪ cosine) pool; without embeddings the catalog falls back to BM25 only.
 
 Usage:
@@ -139,8 +139,8 @@ def build_catalog_from_servers(servers: List) -> ToolCatalog:
     """Build a ToolCatalog from server objects with a .tools attribute.
 
     Entry name is namespaced as "{server_name}__{tool_name}".
-    Compatible with both MCPServerDefinition objects (platform) and any
-    object that has .name and .tools[] with .name / .description attributes.
+    Works with any server object that has a .name and a .tools[] of objects
+    exposing .name / .description attributes.
     """
     entries: List[Tuple] = []
     for server in servers:
