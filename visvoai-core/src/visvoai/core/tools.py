@@ -27,37 +27,36 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar, Dict, List, Optional, Set, Type
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from visvoai.core.persistence import ToolPersistence
 
 logger = logging.getLogger(__name__)
 
 
-class ToolConfig:
-    """Metadata declared on a tool class via @tool_config."""
-    __slots__ = (
-        "is_core", "no_cache", "cache_key_args", "routing_hint",
-        "anti_patterns", "depends_on", "parallel_with",
-        "skip_context_chunk", "persist_context",
-        "sequential_only", "idempotent",
-        "deprecated", "disabled",
-    )
+class ToolConfig(BaseModel):
+    """Generic tool metadata declared on a tool class via @tool_config.
 
-    def __init__(self, **kwargs: Any) -> None:
-        self.is_core: bool = kwargs.get("is_core", False)
-        self.no_cache: bool = kwargs.get("no_cache", False)
-        self.cache_key_args: Optional[List[str]] = kwargs.get("cache_key_args", None)
-        self.routing_hint: Optional[str] = kwargs.get("routing_hint", None)
-        self.anti_patterns: Optional[List[str]] = kwargs.get("anti_patterns", None)
-        self.depends_on: Optional[List[str]] = kwargs.get("depends_on", None)
-        self.parallel_with: Optional[List[str]] = kwargs.get("parallel_with", None)
-        self.skip_context_chunk: bool = kwargs.get("skip_context_chunk", False)
-        self.persist_context: bool = kwargs.get("persist_context", False)
-        self.sequential_only: bool = kwargs.get("sequential_only", False)
-        self.idempotent: bool = kwargs.get("idempotent", True)
-        self.deprecated: bool = kwargs.get("deprecated", False)
-        self.disabled: bool = kwargs.get("disabled", False)
+    These are the surface-agnostic agent concerns (caching, routing, scheduling
+    hints). Platform-specific axes — roles (auth), approval (HITL), UI metadata
+    (canvas), background execution — live in the platform's `ToolMeta`, which
+    SUBCLASSES this (see backend/tools/base.py).
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    is_core: bool = False
+    no_cache: bool = False
+    cache_key_args: Optional[List[str]] = None
+    routing_hint: Optional[str] = None
+    anti_patterns: Optional[List[str]] = None
+    depends_on: Optional[List[str]] = None
+    parallel_with: Optional[List[str]] = None
+    skip_context_chunk: bool = False
+    persist_context: bool = False
+    sequential_only: bool = False
+    idempotent: bool = True
+    deprecated: bool = False
+    disabled: bool = False
 
 
 def tool_config(**kwargs: Any):
@@ -71,8 +70,8 @@ def tool_config(**kwargs: Any):
     config = ToolConfig(**kwargs)
 
     def decorator(cls: type) -> type:
-        for slot in ToolConfig.__slots__:
-            setattr(cls, slot, getattr(config, slot))
+        for field_name in ToolConfig.model_fields:
+            setattr(cls, field_name, getattr(config, field_name))
         return cls
 
     return decorator
