@@ -21,6 +21,9 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
   `active_mcp_tools`. Platform extends with HITL + bg_task fields.
 - `BaseAgentTool` → ABC with `_persistence` injection, `execute()` lifecycle, auto-registration
   via `__init_subclass__`. Registered tools accumulate in `BaseAgentTool._registry`.
+  Platform's `backend/tools/base.py:BaseAgentTool` SUBCLASSES this — inherits identity fields,
+  the 13 generic config defaults, `_owned_resource_checks`, and `_persistence`; adds UI/HITL/roles/
+  background axes and keeps its OWN `_registry` (distinct object, stricter discovery semantics).
 - `tool_config(**kwargs)` → decorator; validates metadata at import time and sets class attrs
 - `ToolResult` → minimal result envelope (pi-style: model-facing `result` + generic `data` bag, canonical payload at `data["output"]`). Factories: `.success/.invalid_input/.tool_error/.empty`. Platform's `backend/models/query.py:ToolResult` SUBCLASSES this, widening `status` and adding question/sources/artifacts.
 - `ToolStatus` → 4 basic outcomes (SUCCESS/EMPTY_RESULT/INVALID_INPUT/TOOL_ERROR). HITL statuses live in the platform enum, not here.
