@@ -48,3 +48,10 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
   subclass must add its own nodes there; then `_tools_routing()` handles the edge
 - `BaseAgentTool._registry` is a class-level list shared across all tool classes
 - `ToolCatalog` BM25 uses lowercase tokenization across both names and descriptions
+- `BaseAgentTool.execute()` is an **override seam, not a hook seam**: it ships a default
+  sync lifecycle (`on_start → _execute() → on_complete/on_error`). Normal consumers
+  *inherit* it (implement `_execute()` only) and the loop *calls* it. The platform
+  *overrides the body* to stream chunks — a deliberate full-override, not a defect. Do NOT
+  refactor this into a `super()` template-method; that would pull streaming/HITL concerns
+  into core. The default body currently has no live consumer (platform overrides it, CLI
+  is a placeholder) — a lifecycle unit test is the open item.
