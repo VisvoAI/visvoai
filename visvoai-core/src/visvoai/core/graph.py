@@ -31,7 +31,6 @@ def build_graph(
     system_prompt: str,
     checkpointer: Optional[BaseCheckpointSaver] = None,
     tool_configs: Optional[Dict[str, Any]] = None,
-    plan_state_ref: Optional[Dict[str, Any]] = None,
     lean_prompt: bool = False,
     per_round_retrieve: Optional[Any] = None,
     _runtime: Optional[Any] = None,
@@ -50,7 +49,6 @@ def build_graph(
         system_prompt:    System instructions prepended to every turn.
         checkpointer:     LangGraph checkpointer for multi-turn state (optional).
         tool_configs:     Per-tool config metadata dict (optional, passed to hooks).
-        plan_state_ref:   Mutable dict for plan state sharing (optional).
         lean_prompt:      If True, skip verbose preamble in system prompt (unused in core).
         per_round_retrieve: Callable for per-round tool retrieval (unused in core).
         _runtime:         AgentRuntime instance — hooks are invoked when set.

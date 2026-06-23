@@ -55,7 +55,6 @@ class AgentRuntime:
         system_prompt: str,
         checkpointer: Optional[BaseCheckpointSaver] = None,
         tool_configs: Optional[Dict[str, Any]] = None,
-        plan_state_ref: Optional[Dict[str, Any]] = None,
         lean_prompt: bool = False,
         per_round_retrieve: Optional[Any] = None,
     ):
@@ -72,7 +71,6 @@ class AgentRuntime:
             system_prompt=system_prompt,
             checkpointer=checkpointer,
             tool_configs=tool_configs,
-            plan_state_ref=plan_state_ref,
             lean_prompt=lean_prompt,
             per_round_retrieve=per_round_retrieve,
             _runtime=self,

@@ -67,8 +67,10 @@ class OpenAICompatProvider(Provider):
         if self.provider_name.lower() != "openai" and not resolved_base_url:
             raise ValueError(
                 f"OpenAICompatProvider('{self.provider_name}') has no base_url. "
-                f"Pass base_url= explicitly or add '{self.provider_name}' to "
-                f"_PROVIDER_BASE_URL in visvoai.ai.providers.config."
+                f"Pass base_url= explicitly when building the chat model. "
+                f"(Packages that ship a built-in default for this provider register "
+                f"it in visvoai.ai.providers.config; third-party callers should just "
+                f"pass base_url=.)"
             )
         return ReasoningChatOpenAI(
             model=model_id,

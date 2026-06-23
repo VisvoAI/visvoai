@@ -11,7 +11,7 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
 - `src/visvoai/core/tools.py` → `BaseAgentTool` ABC + `@tool_config` decorator + auto-registration
 - `src/visvoai/core/results.py` → minimal `ToolResult` envelope (tool_name/status/result/data + 4 factories) + `ToolStatus` (4 outcomes)
 - `src/visvoai/core/persistence.py` → `ToolPersistence` + `LLMPersistence` no-op interfaces
-- `src/visvoai/core/context.py` → `RuntimeContext` (7 surface-agnostic fields)
+- `src/visvoai/core/context.py` → `RuntimeContext` (3 surface-agnostic fields: request_id, subagent_depth, parent_tool_call_id)
 - `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`
 
 # Key Classes / Functions
@@ -33,7 +33,7 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
 - `ToolStatus` → 4 basic outcomes (SUCCESS/EMPTY_RESULT/INVALID_INPUT/TOOL_ERROR). HITL statuses live in the platform enum, not here.
 - `ToolPersistence` → no-op lifecycle hooks (on_start, on_resume, on_complete, on_error)
 - `LLMPersistence` → no-op hooks (on_call_complete, on_thinking_log)
-- `RuntimeContext` → surface-agnostic orchestrator state (7 fields)
+- `RuntimeContext` → surface-agnostic orchestrator state (request_id, subagent_depth, parent_tool_call_id). Plan-mode (`plan_state_ref`/`plan_lock`) and skill (`active_skill_id`) state are NOT here — those are platform concerns on `BackendContext`.
 - `ToolCatalog` → BM25 index; `search(query, k, query_vec=None)` returns tool names;
   HYBRID mode (BM25 ∪ cosine union) when query_vec + per-tool embeddings are present
 - `build_catalog_from_servers(servers)` → constructs ToolCatalog from server objects
