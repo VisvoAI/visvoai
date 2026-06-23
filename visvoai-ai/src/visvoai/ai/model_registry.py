@@ -1,7 +1,10 @@
 """
 model_registry.py
 
-Single source of truth for all LLM models: identity, pricing, capabilities, and UI options.
+Single source of truth for all LLM models: identity, pricing, and capabilities.
+
+UI-facing model options (the ModelOption picker layer) are NOT here — they live in the
+platform at backend/llm/model_registry.py. This package exposes only the model facts.
 
 Pricing source: https://ai.google.dev/gemini-api/docs/pricing (Gemini Developer API)
 Last verified: May 2026
@@ -619,109 +622,6 @@ def default_model_for(capability: Capability) -> str:
     return model_id
 
 
-# =============================================================================
-# Model options — UI-facing combinations of model + thinking level
-# Platform-only: these are not part of the public visvoai-ai API surface.
-# Defined here so the platform's re-export (backend/llm/model_registry.py)
-# has a single source of truth. External users of visvoai-ai do not need them.
-# =============================================================================
-
-THINKING_LEVELS = {
-    "none": None,
-    "think": 1024,
-    "think-hard": 8192,
-}
-
-
-@dataclass
-class ModelOption:
-    id: str                              # opaque ID sent by frontend
-    display_name: str
-    group: str                           # base model name for UI grouping (e.g. "Gemini 3 Flash")
-    thinking_label: Optional[str]        # None = no thinking, "Think", "Think Hard"
-    provider: str                        # "gemini" | "anthropic" | "openai" | "together"
-    icon_url: str
-    api_id: str                          # resolved at query time
-    thinking_budget: Optional[int]       # None = thinking disabled
-    input_cost_per_million: float        # USD/1M input tokens — display only
-    output_cost_per_million: float       # USD/1M output tokens — display only
-    default: bool = False
-    enabled: bool = True
-
-    @property
-    def thinking_level(self) -> str:
-        """Gemini 3+ string level. 'minimal' = no thinking (omitting defaults to 'high')."""
-        if self.thinking_budget is None:
-            return "minimal"
-        if self.thinking_budget >= 8192:
-            return "high"
-        if self.thinking_budget >= 1024:
-            return "medium"
-        return "low"
-
-
-def _build_model_options() -> List[ModelOption]:
-    options: List[ModelOption] = []
-
-    enabled_models = [m for m in MODELS if m.enabled and not m.deprecated and Capability.CHAT in m.capabilities]
-
-    for model in enabled_models:
-        # The option id IS the api_id — one option per model now, so the model's api_id
-        # is a unique, stable option id. (No more `_slug` indirection; thinking variants
-        # that needed distinct ids are gone.) This makes model_option_id ≡ model_name, so
-        # restoring a conversation's model is an exact id match with no translation.
-        base_id = model.api_id
-
-        # Thinking is NOT user-exposed right now: ONE option per model, with the
-        # thinking level baked in server-side — MEDIUM for thinking-capable models,
-        # off otherwise. The per-level Off/Think/Think-Hard expansion is kept below
-        # (commented) so a user-facing toggle can be re-enabled without rewriting this.
-        options.append(ModelOption(
-            id=base_id,
-            display_name=model.display_name,
-            group=model.display_name,
-            thinking_label=None,
-            provider=model.provider,
-            icon_url=model.icon_url,
-            api_id=model.api_id,
-            thinking_budget=THINKING_LEVELS["think"] if model.supports_thinking else None,  # 1024 → "medium"
-            input_cost_per_million=model.input_cost_per_million,
-            output_cost_per_million=model.output_cost_per_million,
-            default=model.default,
-        ))
-
-        # --- User-selectable thinking levels (disabled) -----------------------
-        # is_default_model = model.default
-        # default_label = model.default_thinking_label  # None means base option is default
-        # # (the base option above would use thinking_budget=None and default=is_default_model and default_label is None)
-        # if model.supports_thinking:
-        #     options.append(ModelOption(
-        #         id=f"{base_id}-think", display_name=f"{model.display_name} · Think",
-        #         group=model.display_name, thinking_label="Think",
-        #         provider=model.provider, icon_url=model.icon_url, api_id=model.api_id,
-        #         thinking_budget=THINKING_LEVELS["think"],
-        #         default=is_default_model and default_label == "Think",
-        #     ))
-        #     options.append(ModelOption(
-        #         id=f"{base_id}-think-hard", display_name=f"{model.display_name} · Think Hard",
-        #         group=model.display_name, thinking_label="Think Hard",
-        #         provider=model.provider, icon_url=model.icon_url, api_id=model.api_id,
-        #         thinking_budget=THINKING_LEVELS["think-hard"],
-        #         default=is_default_model and default_label == "Think Hard",
-        #     ))
-
-    return options
-
-
-def _slug(api_id: str) -> str:
-    """LEGACY: the old option-id scheme (api_id → 'gemini-3-flash'). Option ids are now the
-    raw api_id; this is kept only so get_model_option can still resolve ids that were persisted
-    under the old scheme (e.g. an agent's locked model_option_id)."""
-    # Strip trailing -preview/-lite suffixes only when they're purely version noise
-    # Keep 'lite' when it's part of the product name (flash-lite)
-    return api_id.replace("-preview", "").replace(".", "-")
-
-
 # Crash at startup if the registry is misconfigured
 _default_models = [m for m in MODELS if m.default]
 if len(_default_models) == 0:
@@ -743,37 +643,6 @@ for _cap, _mid in DEFAULT_MODEL_FOR.items():
             f"model_registry: DEFAULT_MODEL_FOR[{_cap.value}] = '{_mid}' does not declare capability {_cap.value} "
             f"(has {[c.value for c in _md.capabilities]})."
         )
-
-MODEL_OPTIONS: List[ModelOption] = _build_model_options()
-
-_OPTION_BY_ID: Dict[str, ModelOption] = {o.id: o for o in MODEL_OPTIONS}
-
-
-# Legacy slug → current option (api_id), so ids persisted under the old scheme still resolve.
-_OPTION_BY_LEGACY_SLUG: Dict[str, ModelOption] = {_slug(o.api_id): o for o in MODEL_OPTIONS}
-
-
-def get_model_option(option_id: str) -> Optional[ModelOption]:
-    """Resolve an option by id. Option ids are api_ids now; falls back to the legacy slug
-    scheme so a model_option_id stored before the unification (e.g. a locked agent) still works."""
-    if option_id is None:
-        return None
-    return _OPTION_BY_ID.get(option_id) or _OPTION_BY_LEGACY_SLUG.get(option_id)
-
-
-def get_enabled_options() -> List[ModelOption]:
-    return [o for o in MODEL_OPTIONS if o.enabled]
-
-
-# The default option (the model marked default=True). Exactly one exists — guaranteed by the
-# startup check above. Callers with no/invalid model_option_id fall back to THIS, so they get
-# the default model AND its baked-in thinking level (not a bare model name with thinking off).
-_DEFAULT_OPTION: ModelOption = next(o for o in MODEL_OPTIONS if o.default)
-
-
-def get_default_option() -> ModelOption:
-    """The default model option (default model + its thinking level)."""
-    return _DEFAULT_OPTION
 
 
 def resolve_gemini_thinking_kwargs(model_api_id: str, thinking_level: Optional[str]) -> Dict[str, Any]:
