@@ -9,6 +9,7 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
 - `src/visvoai/core/runtime.py` → `AgentRuntime` base class with 4 hook methods
 - `src/visvoai/core/state.py` → public `AgentState` TypedDict (core fields only)
 - `src/visvoai/core/tools.py` → `BaseAgentTool` ABC + `@tool_config` decorator + auto-registration
+- `src/visvoai/core/results.py` → minimal `ToolResult` envelope (tool_name/status/result/data + 4 factories) + `ToolStatus` (4 outcomes)
 - `src/visvoai/core/persistence.py` → `ToolPersistence` + `LLMPersistence` no-op interfaces
 - `src/visvoai/core/context.py` → `RuntimeContext` (7 surface-agnostic fields)
 - `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`
@@ -21,6 +22,8 @@ building surfaces (CLI, web, IDE) on top of the agent loop.
 - `BaseAgentTool` → ABC with `_persistence` injection, `execute()` lifecycle, auto-registration
   via `__init_subclass__`. Registered tools accumulate in `BaseAgentTool._registry`.
 - `tool_config(**kwargs)` → decorator; validates metadata at import time and sets class attrs
+- `ToolResult` → minimal result envelope (pi-style: model-facing `result` + generic `data` bag, canonical payload at `data["output"]`). Factories: `.success/.invalid_input/.tool_error/.empty`. Platform's `backend/models/query.py:ToolResult` SUBCLASSES this, widening `status` and adding question/sources/artifacts.
+- `ToolStatus` → 4 basic outcomes (SUCCESS/EMPTY_RESULT/INVALID_INPUT/TOOL_ERROR). HITL statuses live in the platform enum, not here.
 - `ToolPersistence` → no-op lifecycle hooks (on_start, on_resume, on_complete, on_error)
 - `LLMPersistence` → no-op hooks (on_call_complete, on_thinking_log)
 - `RuntimeContext` → surface-agnostic orchestrator state (7 fields)

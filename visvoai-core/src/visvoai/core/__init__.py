@@ -7,6 +7,7 @@ and BaseAgentTool for building tools.
 """
 from visvoai.core.context import RuntimeContext
 from visvoai.core.persistence import LLMPersistence, ToolPersistence
+from visvoai.core.results import ToolResult, ToolStatus
 from visvoai.core.runtime import AgentRuntime
 from visvoai.core.state import AgentState
 from visvoai.core.tools import BaseAgentTool, tool_config
@@ -20,6 +21,8 @@ __all__ = [
     "RuntimeContext",
     "ToolCatalog",
     "ToolPersistence",
+    "ToolResult",
+    "ToolStatus",
     "build_catalog_from_servers",
     "tool_config",
 ]
