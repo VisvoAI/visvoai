@@ -57,16 +57,26 @@ async def _run(prompt: str, model_id: str, cwd: str, verbose: bool) -> None:
     # Set cwd for subprocess calls (run_shell tool inherits this)
     os.chdir(cwd)
 
-    # Model — Gemini via LangChain Google GenAI
+    # Model — resolve the provider from the registry so --model works across
+    # families (Gemini, Anthropic, OpenAI-compatible). The provider reads its own
+    # API key from the matching env var; build_chat_model lazily imports the
+    # LangChain integration for that family.
+    from visvoai.ai import get_model, get_provider
+
+    md = get_model(model_id)
+    provider_name = md.provider if md else "gemini"
     try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model=model_id)
-    except ImportError:
+        model = get_provider(provider_name).build_chat_model(model_id=model_id)
+    except ImportError as e:
         click.echo(
-            "ERROR: langchain-google-genai is not installed. "
-            "Run: pip install langchain-google-genai",
+            f"ERROR: the LangChain integration for provider '{provider_name}' is not "
+            f"installed ({e}). Install the matching extra, e.g. "
+            f"pip install 'visvoai-ai[{provider_name}]'.",
             err=True,
         )
+        sys.exit(1)
+    except KeyError as e:
+        click.echo(f"ERROR: {e}", err=True)
         sys.exit(1)
 
     # Tools

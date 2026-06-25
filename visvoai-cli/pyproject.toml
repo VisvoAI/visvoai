@@ -20,9 +20,11 @@ classifiers = [
 ]
 dependencies = [
     "visvoai-core>=0.1.0",
+    # Provider resolution (get_provider/get_model) is used directly in main.py.
+    "visvoai-ai>=0.1.0",
     "click>=8.1",
     "rich>=13.0",
-    # Default model is Gemini, built directly in main.py via this wrapper.
+    # Default model is Gemini; its LangChain integration ships via visvoai-ai[gemini].
     "langchain-google-genai>=2.0",
 ]
 

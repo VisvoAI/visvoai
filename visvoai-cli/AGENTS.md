@@ -9,7 +9,7 @@ loop, no checkpointer — to keep the consuming pattern easy to read. Expect it 
 grow; keep new additions just as small and dependency-light.
 
 # Key Files
-- `src/visvoai/cli/main.py` → Click entry point; builds the model + graph, streams `astream_events` to stdout
+- `src/visvoai/cli/main.py` → Click entry point; resolves the model via `visvoai.ai.get_provider`, builds the graph, streams `astream_events` to stdout
 - `src/visvoai/cli/context.py` → `CLIContext(RuntimeContext)` — CLI-specific state (cwd, terminal width)
 - `src/visvoai/cli/runtime.py` → `CLIRuntime(AgentRuntime)` — adds no extra nodes (pure core loop)
 - `src/visvoai/cli/tools/__init__.py` → file + shell tools as plain LangChain `@tool` functions
@@ -26,4 +26,4 @@ grow; keep new additions just as small and dependency-light.
 - `CLIContext` must not import any private/consumer modules — only `visvoai-core`
 
 # Gotchas
-- The default model is Gemini, built directly in `main.py` via `langchain-google-genai` (declared as a dependency). Set `GEMINI_API_KEY` before running.
+- `--model` is resolved through `visvoai.ai.get_model`/`get_provider`, so any registered model (Gemini, Anthropic, OpenAI-compatible) works — not just Gemini. The provider reads its own API key from the matching env var (e.g. `GEMINI_API_KEY`). The default model is Gemini, so `langchain-google-genai` ships as a dependency; other families need their own extra (`visvoai-ai[anthropic]`, etc.). An unregistered `--model` falls back to the gemini provider.
