@@ -12,12 +12,14 @@ capabilities.
 - `src/visvoai/ai/providers/anthropic.py` → `AnthropicProvider`
 - `src/visvoai/ai/providers/openai_compat.py` → `OpenAICompatProvider` + `ReasoningChatOpenAI`
 - `src/visvoai/ai/providers/config.py` → API-key + base_url resolution
+- `src/visvoai/ai/providers/factory.py` → `get_provider` / `get_provider_for_model` (name/model → facade)
 - `src/visvoai/ai/model_registry.py` → model facts (ids, pricing, capabilities) + helpers
 
 # Key Classes / Functions
 - `Provider` → base facade; `build_chat_model()` returns a streaming LangChain `BaseChatModel`, `normalize_content()` maps stream chunks to `{type, content}` events. Both optional (default `NotSupported`).
 - `GeminiProvider` / `AnthropicProvider` / `OpenAICompatProvider` → one subclass per family; lazily import their LangChain integration inside `build_chat_model()`.
 - `resolve_api_key(provider, key)` / `resolve_base_url(provider, base_url)` → explicit arg wins, else env var / built-in base_url default.
+- `get_provider(name)` → name → facade (gemini/anthropic = bespoke; everything else = OpenAI-compat). `get_provider_for_model(id, capability=None)` → registry-driven model id → facade. Both **key-less** — they pick the class; keys resolve at `build_chat_model()`.
 
 # Conventions
 - No dependency on any agent framework, datastore, web, or auth layer — pure LLM access.
