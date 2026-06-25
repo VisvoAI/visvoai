@@ -26,8 +26,13 @@ from langchain_core.tools import BaseTool, tool
 @tool
 def read_file(path: str) -> str:
     """Read the contents of a file at the given path. Returns the raw text."""
-    with open(path, "r", encoding="utf-8", errors="replace") as f:
-        content = f.read()
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+    except OSError as e:
+        # Report the failure as data so the agent can recover (retry, try another
+        # path) — a raised exception would instead abort the whole turn.
+        return f"ERROR: {e}"
     lines = content.splitlines()
     # Return with line numbers so edits can be precise
     return "\n".join(f"{i+1}\t{line}" for i, line in enumerate(lines))
@@ -37,11 +42,14 @@ def read_file(path: str) -> str:
 def write_file(path: str, content: str) -> str:
     """Write content to a file, creating it (and any parent directories) if needed."""
     abs_path = os.path.abspath(path)
-    parent = os.path.dirname(abs_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    with open(abs_path, "w", encoding="utf-8") as f:
-        f.write(content)
+    try:
+        parent = os.path.dirname(abs_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(abs_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        return f"ERROR: {e}"
     return f"Wrote {len(content)} chars to {abs_path}"
 
 
@@ -52,8 +60,11 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
     Returns an error if old_string is not found or if it is ambiguous (appears more than once).
     """
     abs_path = os.path.abspath(path)
-    with open(abs_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    try:
+        with open(abs_path, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        return f"ERROR: {e}"
     count = content.count(old_string)
     if count == 0:
         return f"ERROR: old_string not found in {path}. No changes made."
@@ -63,8 +74,11 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
             "Provide more surrounding context to make the match unique."
         )
     new_content = content.replace(old_string, new_string, 1)
-    with open(abs_path, "w", encoding="utf-8") as f:
-        f.write(new_content)
+    try:
+        with open(abs_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+    except OSError as e:
+        return f"ERROR: {e}"
     return f"Replaced in {abs_path}"
 
 
@@ -72,7 +86,10 @@ def edit_file(path: str, old_string: str, new_string: str) -> str:
 def list_files(path: str = ".") -> str:
     """List files and directories at path. Directories are marked with a trailing /."""
     abs_path = os.path.abspath(path)
-    entries = sorted(os.listdir(abs_path))
+    try:
+        entries = sorted(os.listdir(abs_path))
+    except OSError as e:
+        return f"ERROR: {e}"
     lines = []
     for entry in entries:
         full = os.path.join(abs_path, entry)
