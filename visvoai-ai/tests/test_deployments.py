@@ -1,6 +1,7 @@
 """Tests for the Model/Deployment layer (registry v2)."""
 from visvoai.ai import deployments as d
-from visvoai.ai.deployments import DeploymentInfo, ThinkingMechanism
+from visvoai.ai.deployments import DeploymentInfo
+from visvoai.ai.thinking import ThinkingLevel, ThinkingMechanism
 from visvoai.ai.model_registry import Capability
 
 
@@ -29,7 +30,18 @@ def test_deployment_info_is_a_safe_projection():
     assert not hasattr(info, "slug")
     assert not hasattr(info, "thinking")
     assert info.reasoning is True
-    assert info.thinking_default == "medium"   # from default_thinking_label "Think"
+    # the consumer renders thinking_levels + preselects default_thinking
+    assert info.supports_thinking is True
+    assert info.thinking_levels == [ThinkingLevel.OFF, ThinkingLevel.LOW,
+                                    ThinkingLevel.MEDIUM, ThinkingLevel.HIGH]
+    assert info.default_thinking is ThinkingLevel.MEDIUM   # from default_thinking_label "Think"
+
+
+def test_non_reasoning_deployment_has_no_levels():
+    info = d.get_deployment_info("together:llama-3.3-70b")
+    assert info.supports_thinking is False
+    assert info.thinking_levels == []
+    assert info.default_thinking is ThinkingLevel.OFF
 
 
 def test_thinking_mechanism_derivation():
