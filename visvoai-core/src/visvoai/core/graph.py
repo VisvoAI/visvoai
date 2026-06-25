@@ -23,6 +23,22 @@ from visvoai.core.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# Default soft step cap. The graph runs `agent` + `tools` as two super-steps per
+# tool-calling round, so a turn of N rounds costs ~2N super-steps against
+# LangGraph's recursion_limit (set by the caller at invoke/astream time; default
+# 25). At this many agent rounds in a turn we force one clean, tool-free finalize
+# so the user gets an intentional answer instead of hitting the hard ceiling mid
+# tool call. 10 rounds fits comfortably under the default recursion_limit; raise
+# both together if you need deeper turns.
+DEFAULT_MAX_AGENT_STEPS = 10
+
+_FINALIZE_INSTRUCTION = (
+    "[SYSTEM] You have reached the maximum number of tool-using steps for this turn. "
+    "Do NOT attempt any further tool calls — they will not be available. Provide your "
+    "best final answer now from the information you already have. If the task is "
+    "incomplete, summarize what you found and state clearly what remains unresolved."
+)
+
 
 def _intent_query(messages: Sequence[BaseMessage]) -> str:
     """The retrieval query for this round: the most recent human message's text."""
@@ -31,6 +47,17 @@ def _intent_query(messages: Sequence[BaseMessage]) -> str:
             content = m.content
             return content if isinstance(content, str) else str(content)
     return ""
+
+
+def _rounds_this_turn(messages: Sequence[BaseMessage]) -> int:
+    """Number of agent (AIMessage) rounds since the last human message — the turn's depth."""
+    n = 0
+    for m in reversed(list(messages)):
+        if isinstance(m, HumanMessage):
+            break
+        if isinstance(m, AIMessage):
+            n += 1
+    return n
 
 
 def build_graph(
@@ -42,6 +69,7 @@ def build_graph(
     tool_configs: Optional[Dict[str, Any]] = None,
     lean_prompt: bool = False,
     per_round_retrieve: Optional[Any] = None,
+    max_agent_steps: Optional[int] = DEFAULT_MAX_AGENT_STEPS,
     _runtime: Optional[Any] = None,
 ):
     """Build the compiled StateGraph for the core agent→tools loop.
@@ -64,6 +92,10 @@ def build_graph(
                           of the always-bound core_tools). When None, all tools are
                           bound every round (bind-everything, backward compatible).
                           Build one with retrieval.make_per_round_retrieve().
+        max_agent_steps:  Soft cap on agent rounds per turn. At this depth the loop
+                          forces one tool-free finalize so the user gets a clean
+                          answer before LangGraph's recursion_limit fires. Default
+                          DEFAULT_MAX_AGENT_STEPS; None disables the guard.
         _runtime:         AgentRuntime instance — hooks are invoked when set.
     """
     tool_configs = tool_configs or {}
@@ -95,8 +127,17 @@ def build_graph(
 
     async def call_model(state: AgentState):
         messages: Sequence[BaseMessage] = state.get("messages", [])
+        sys_parts = [system_prompt] if system_prompt else []
 
-        if _use_retrieval:
+        # Soft step cap: at the ceiling, invoke the UNBOUND model (no tools) so the
+        # model cannot call tools, and instruct it to finalize. Invariant guard —
+        # without it a misbehaving model loops until the hard recursion_limit.
+        force_final = max_agent_steps is not None and _rounds_this_turn(messages) >= max_agent_steps
+        if force_final:
+            logger.warning("[call_model] soft step cap reached (%s) — forcing finalize", max_agent_steps)
+            sys_parts.append(_FINALIZE_INSTRUCTION)
+            bound = model
+        elif _use_retrieval:
             # active = persistent discoveries + TRANSIENT per-round retrieval on the
             # round's intent (binding-only, not persisted → self-evicting). Non-fatal.
             active = list(state.get("active_mcp_tools") or [])
@@ -111,7 +152,6 @@ def build_graph(
         else:
             bound = _bound_all
 
-        sys_parts = [system_prompt] if system_prompt else []
         if sys_parts:
             invoke_messages = [SystemMessage(content="\n\n".join(sys_parts))] + list(messages)
         else:

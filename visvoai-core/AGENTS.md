@@ -49,6 +49,7 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 - `BaseAgentTool._registry` is a class-level list shared across all tool classes.
 - `ToolCatalog` BM25 uses lowercase tokenization across both names and descriptions.
 - `build_graph`'s per-round retrieval is **transient** — the retrieved set is used for THIS round's tool binding only, never written back to `active_mcp_tools` (self-evicting). Tools NOT in `core_tools` are "deferrable" (bound on demand); with no retriever or no deferrables, binding is identical to bind-everything.
+- `build_graph` forces a tool-free finalize at `max_agent_steps` agent rounds/turn (default `DEFAULT_MAX_AGENT_STEPS`, None disables) by invoking the UNBOUND model. This is the loop-safety invariant; it costs ~2 super-steps/round, so keep the caller's `recursion_limit` (set at invoke/astream time) above `2 * max_agent_steps`. Dedup / tool-failure-cap are deliberately NOT here yet — they are tools-node-level policies to add as opt-in knobs once the node-factory hooks exist.
 - `BaseAgentTool.execute()` is an **override seam, not a hook seam**: it ships a default
   sync lifecycle (`on_start → _execute() → on_complete/on_error`). Normal consumers
   *inherit* it (implement `_execute()` only) and the loop *calls* it. A streaming consumer

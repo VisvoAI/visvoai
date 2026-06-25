@@ -15,7 +15,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 
 from visvoai.core import ToolCatalog, make_per_round_retrieve
-from visvoai.core.graph import _intent_query, build_graph
+from visvoai.core.graph import _intent_query, _rounds_this_turn, build_graph
 
 
 @tool
@@ -47,13 +47,20 @@ class _FakeBound:
 
 
 class _FakeModel:
-    """Duck-typed chat model: records the tool set bound on each ainvoke."""
+    """Duck-typed chat model: records the tool set bound on each ainvoke, and
+    records when the UNBOUND model is invoked directly (forced-finalize path)."""
 
     def __init__(self):
         self.bound_sets = []
+        self.unbound_invoked = False
 
     def bind_tools(self, tools):
         return _FakeBound(sorted(t.name for t in tools), self.bound_sets)
+
+    async def ainvoke(self, _messages):
+        # Reached only when build_graph invokes the model WITHOUT binding tools.
+        self.unbound_invoked = True
+        return AIMessage(content="final answer")
 
 
 def _catalog():
@@ -90,3 +97,30 @@ def test_no_retriever_binds_everything():
     graph = build_graph(model, [core_tool], all_map, "sys", per_round_retrieve=None)
     asyncio.run(graph.ainvoke({"messages": [HumanMessage(content="hi")]}))
     assert model.bound_sets[-1] == ["core_tool", "db__run_query", "weather__get_forecast"]
+
+
+def test_rounds_this_turn_counts_since_last_human():
+    msgs = [HumanMessage(content="a"), AIMessage(content="1"), AIMessage(content="2")]
+    assert _rounds_this_turn(msgs) == 2
+    assert _rounds_this_turn([*msgs, HumanMessage(content="b")]) == 0
+
+
+def test_forced_finalize_invokes_unbound_model_at_cap():
+    model = _FakeModel()
+    all_map = {t.name: t for t in (core_tool, db__run_query)}
+    graph = build_graph(model, [core_tool], all_map, "sys", max_agent_steps=2)
+    # 2 AIMessage rounds already this turn → at the cap → finalize (no tools bound).
+    state = {"messages": [HumanMessage(content="go"), AIMessage(content="r1"), AIMessage(content="r2")]}
+    asyncio.run(graph.ainvoke(state))
+    assert model.unbound_invoked is True
+    assert model.bound_sets == []  # never bound tools on the finalize round
+
+
+def test_finalize_disabled_when_max_steps_none():
+    model = _FakeModel()
+    all_map = {t.name: t for t in (core_tool, db__run_query)}
+    graph = build_graph(model, [core_tool], all_map, "sys", max_agent_steps=None)
+    state = {"messages": [HumanMessage(content="go"), AIMessage(content="r1"), AIMessage(content="r2")]}
+    asyncio.run(graph.ainvoke(state))
+    assert model.unbound_invoked is False
+    assert model.bound_sets[-1] == ["core_tool", "db__run_query"]
