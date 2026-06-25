@@ -53,13 +53,16 @@ class Provider(ABC):
     """One provider family's full LLM surface for the agent loop.
     All methods optional (default NotSupported); a provider implements only what it supports."""
 
-    def build_chat_model(self, *, model_id: str, api_key: Optional[str] = None,
-                         base_url: Optional[str] = None, option=None,
-                         thinking_level: Optional[str] = None) -> BaseChatModel:
-        """Return a configured, streaming BaseChatModel for the LangGraph loop.
+    def build(self, slug: str, api_key: Optional[str] = None,
+              base_url: Optional[str] = None, **extra: Any) -> BaseChatModel:
+        """Low-level: construct a streaming BaseChatModel for THIS provider.
 
-        api_key: explicit key; falls back to env var if omitted.
-        base_url: for OpenAI-compatible endpoints; ignored by Gemini/Anthropic.
+        slug:    the exact model string for this provider's API (provider_model_id).
+        extra:   already-resolved provider kwargs (e.g. thinking kwargs).
+        api_key/base_url: explicit; fall back to env / built-in default.
+
+        Consumers should use the top-level visvoai.ai.build_chat_model(deployment_id,
+        level=…) — it resolves the deployment + thinking and calls this.
         """
         raise NotSupported(f"{type(self).__name__} cannot build a LangChain chat model")
 

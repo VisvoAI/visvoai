@@ -58,8 +58,7 @@ class OpenAICompatProvider(Provider):
         if reasoning:
             yield {"type": "thinking", "content": reasoning}
 
-    def build_chat_model(self, *, model_id, api_key=None, base_url=None,
-                         option=None, thinking_level=None):
+    def build(self, slug, api_key=None, base_url=None, **extra):
         resolved_base_url = resolve_base_url(self.provider_name, base_url)
         # OpenAI itself runs on the library default (None). Any other compat
         # provider without a resolvable base_url would silently hit OpenAI's API
@@ -73,10 +72,11 @@ class OpenAICompatProvider(Provider):
                 f"pass base_url=.)"
             )
         return ReasoningChatOpenAI(
-            model=model_id,
+            model=slug,
             api_key=resolve_api_key(self.provider_name, api_key),
             base_url=resolved_base_url,
             temperature=1.0,
             streaming=True,
             stream_usage=True,
+            **extra,
         )

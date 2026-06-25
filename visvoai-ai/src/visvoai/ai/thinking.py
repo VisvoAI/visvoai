@@ -10,7 +10,7 @@ a mechanism + a branch here; the consumer contract never changes.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 
 class ThinkingLevel(str, Enum):
