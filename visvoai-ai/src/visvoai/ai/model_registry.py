@@ -644,30 +644,3 @@ for _cap, _mid in DEFAULT_MODEL_FOR.items():
             f"model_registry: DEFAULT_MODEL_FOR[{_cap.value}] = '{_mid}' does not declare capability {_cap.value} "
             f"(has {[c.value for c in _md.capabilities]})."
         )
-
-
-def resolve_gemini_thinking_kwargs(model_api_id: str, thinking_level: Optional[str]) -> Dict[str, Any]:
-    """Translate the UI-facing thinking_level string into the correct ChatGoogleGenerativeAI kwargs.
-
-    Gemini 3+ → thinking_level string ('minimal'|'low'|'medium'|'high')
-    Gemini 2.x → thinking_budget int (0 = off, >0 = enabled with that token budget)
-
-    The UI only exposes Think / Think Hard labels — this function hides the per-family API difference.
-    """
-    # Gemini 2.x family — detected by major version prefix
-    is_gemini2 = any(model_api_id.startswith(p) for p in ("gemini-2.", "gemini-2-"))
-
-    if is_gemini2:
-        budget_map = {"minimal": 0, "none": 0, "low": 1024, "medium": 4096, "high": 8192}
-        budget = budget_map.get(thinking_level or "minimal", 0)
-        return {
-            "thinking_budget": budget,
-            "include_thoughts": budget > 0,
-        }
-    else:
-        # Gemini 3+ — thinking_level string enum
-        level = thinking_level or "minimal"
-        return {
-            "thinking_level": level,
-            "include_thoughts": level != "minimal",
-        }
