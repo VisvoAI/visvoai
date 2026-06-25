@@ -22,20 +22,60 @@ from typing import List, Optional
 
 from langchain_core.tools import BaseTool, tool
 
+# Bounds that keep a single tool result from flooding the model's context (and the
+# per-turn token cost). Reads page with offset/limit; list/shell output is capped
+# with a clear "N more" marker so the model knows the result was clipped.
+READ_LINE_CAP = 2000     # max lines returned per read_file call
+MAX_LINE_LEN = 2000      # over-long lines are clipped (one line ≠ a whole file)
+LIST_CAP = 1000          # max entries from list_files
+SHELL_LINE_CAP = 1000    # max output lines from run_shell
+
+
+def _clip_line(s: str) -> str:
+    return s if len(s) <= MAX_LINE_LEN else s[:MAX_LINE_LEN] + " …[line truncated]"
+
+
+def cap_lines(text: str, max_lines: int) -> str:
+    """Return text limited to max_lines, with a marker noting how many were dropped."""
+    lines = text.splitlines()
+    if len(lines) <= max_lines:
+        return text
+    return "\n".join(lines[:max_lines]) + (
+        f"\n…[output truncated: showing {max_lines} of {len(lines)} lines]")
+
 
 @tool
-def read_file(path: str) -> str:
-    """Read the contents of a file at the given path. Returns the raw text."""
+def read_file(path: str, offset: int = 1, limit: int = READ_LINE_CAP) -> str:
+    """Read a file as numbered lines. For large files this is paginated: it returns
+    at most `limit` lines (capped at 2000) starting at the 1-based `offset`, and a
+    trailing note tells you the total and how to page (raise `offset`). Over-long
+    lines are clipped. Use this to read a window of a big file rather than all of it.
+    """
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
+            all_lines = f.read().splitlines()
     except OSError as e:
         # Report the failure as data so the agent can recover (retry, try another
         # path) — a raised exception would instead abort the whole turn.
         return f"ERROR: {e}"
-    lines = content.splitlines()
-    # Return with line numbers so edits can be precise
-    return "\n".join(f"{i+1}\t{line}" for i, line in enumerate(lines))
+    total = len(all_lines)
+    if total == 0:
+        return "(empty file)"
+    start = max(1, offset)
+    if start > total:
+        return f"ERROR: offset {start} is past end of file ({total} lines)."
+    limit = max(1, min(limit, READ_LINE_CAP))
+    window = all_lines[start - 1: start - 1 + limit]
+    end = start - 1 + len(window)
+    body = "\n".join(f"{start + i}\t{_clip_line(ln)}" for i, ln in enumerate(window))
+    if start > 1 or end < total:
+        remaining = total - end
+        note = f"[lines {start}–{end} of {total}"
+        if remaining > 0:
+            note += f"; {remaining} more — re-read with offset={end + 1}"
+        note += "]"
+        body += f"\n{note}"
+    return body
 
 
 @tool
@@ -94,7 +134,7 @@ def list_files(path: str = ".") -> str:
     for entry in entries:
         full = os.path.join(abs_path, entry)
         lines.append(entry + ("/" if os.path.isdir(full) else ""))
-    return "\n".join(lines) if lines else "(empty)"
+    return cap_lines("\n".join(lines), LIST_CAP) if lines else "(empty)"
 
 
 @tool
@@ -114,8 +154,10 @@ def run_shell(command: str) -> str:
     output = result.stdout
     if result.stderr:
         output += f"\n[stderr]\n{result.stderr}"
-    output += f"\n[exit: {result.returncode}]"
-    return output.strip()
+    # Cap the body first, then append the exit marker so it survives truncation
+    # (the UI parses '[exit: N]' to decide success/failure).
+    output = cap_lines(output.strip(), SHELL_LINE_CAP)
+    return f"{output}\n[exit: {result.returncode}]".strip()
 
 
 def build_cli_tools(cwd: Optional[str] = None) -> List[BaseTool]:
