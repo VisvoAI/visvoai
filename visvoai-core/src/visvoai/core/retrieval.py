@@ -16,7 +16,7 @@ Usage:
 """
 import math
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 # Split on non-alphanumerics AND camelCase / snake boundaries so
 # "kaggle__search_datasets" and "searchDatasets" both tokenize to
@@ -152,3 +152,24 @@ def build_catalog_from_servers(servers: List) -> ToolCatalog:
                 getattr(tool, "embedding", None),
             ))
     return ToolCatalog(entries)
+
+
+def make_per_round_retrieve(
+    catalog: ToolCatalog,
+    k: int = 8,
+    embed_query: Optional[Callable[[str], Optional[List[float]]]] = None,
+) -> Callable[[str], List[str]]:
+    """Build a per-round retrieval closure for build_graph's `per_round_retrieve`.
+
+    Returns retrieve(query) -> [tool_name, ...]: the top-k tools for the query.
+
+    embed_query is the seam for semantic ranking — it turns a query into an
+    L2-normalized vector. When None (or when it returns None), retrieval is
+    BM25-only, so this works with zero embedding infrastructure. Supplying an
+    embedder (and a catalog whose entries carry embeddings) enables the hybrid
+    BM25 ∪ cosine pool. The embedder owns its own API key / cache, if any.
+    """
+    def retrieve(query: str) -> List[str]:
+        query_vec = embed_query(query) if embed_query is not None else None
+        return catalog.search(query, k=k, query_vec=query_vec)
+    return retrieve

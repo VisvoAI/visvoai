@@ -12,7 +12,7 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 - `src/visvoai/core/results.py` → minimal `ToolResult` envelope (tool_name/status/result/data + 4 factories) + `ToolStatus` (4 outcomes)
 - `src/visvoai/core/persistence.py` → `ToolPersistence` + `LLMPersistence` no-op interfaces
 - `src/visvoai/core/context.py` → `RuntimeContext` (3 surface-agnostic fields: request_id, subagent_depth, parent_tool_call_id)
-- `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`
+- `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`; `make_per_round_retrieve()`
 
 # Key Classes / Functions
 - `AgentRuntime` → buildable base class; override `_extend_graph()`, `_tools_routing()`,
@@ -35,6 +35,7 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 - `ToolCatalog` → BM25 index; `search(query, k, query_vec=None)` returns tool names;
   HYBRID mode (BM25 ∪ cosine union) when query_vec + per-tool embeddings are present.
 - `build_catalog_from_servers(servers)` → constructs ToolCatalog from server objects.
+- `make_per_round_retrieve(catalog, k, embed_query=None)` → builds the `per_round_retrieve(query)->[name]` closure for `build_graph`. `embed_query` is the seam for semantic ranking; `None` ⇒ BM25-only (zero embedding infra).
 
 # Conventions
 - No datastore, no HTTP, no auth, no private/consumer imports in any file in this package.
@@ -47,6 +48,7 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
   a subclass must add its own nodes there; then `_tools_routing()` handles the edge.
 - `BaseAgentTool._registry` is a class-level list shared across all tool classes.
 - `ToolCatalog` BM25 uses lowercase tokenization across both names and descriptions.
+- `build_graph`'s per-round retrieval is **transient** — the retrieved set is used for THIS round's tool binding only, never written back to `active_mcp_tools` (self-evicting). Tools NOT in `core_tools` are "deferrable" (bound on demand); with no retriever or no deferrables, binding is identical to bind-everything.
 - `BaseAgentTool.execute()` is an **override seam, not a hook seam**: it ships a default
   sync lifecycle (`on_start → _execute() → on_complete/on_error`). Normal consumers
   *inherit* it (implement `_execute()` only) and the loop *calls* it. A streaming consumer

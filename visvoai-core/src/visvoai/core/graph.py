@@ -24,6 +24,15 @@ from visvoai.core.state import AgentState
 logger = logging.getLogger(__name__)
 
 
+def _intent_query(messages: Sequence[BaseMessage]) -> str:
+    """The retrieval query for this round: the most recent human message's text."""
+    for m in reversed(list(messages)):
+        if isinstance(m, HumanMessage):
+            content = m.content
+            return content if isinstance(content, str) else str(content)
+    return ""
+
+
 def build_graph(
     model: BaseChatModel,
     core_tools: List[BaseTool],
@@ -49,22 +58,65 @@ def build_graph(
         checkpointer:     LangGraph checkpointer for multi-turn state (optional).
         tool_configs:     Per-tool config metadata dict (optional, passed to hooks).
         lean_prompt:      If True, skip verbose preamble in system prompt (unused in core).
-        per_round_retrieve: Callable for per-round tool retrieval (unused in core).
+        per_round_retrieve: Optional retrieve(query) -> [tool_name, ...]. When set,
+                          tools in all_tools_map but NOT in core_tools are "deferred"
+                          and bound only when retrieved for the current round (on top
+                          of the always-bound core_tools). When None, all tools are
+                          bound every round (bind-everything, backward compatible).
+                          Build one with retrieval.make_per_round_retrieve().
         _runtime:         AgentRuntime instance — hooks are invoked when set.
     """
     tool_configs = tool_configs or {}
-    all_tools = list(all_tools_map.values()) if all_tools_map else list(core_tools)
 
-    _bound_model = model.bind_tools(all_tools) if all_tools else model
+    core_tool_objs = list(core_tools) if core_tools else []
+    core_tool_names = {t.name for t in core_tool_objs}
+    all_tools = list(all_tools_map.values()) if all_tools_map else core_tool_objs
+
+    # Tools not in core_tools are "deferrable" — bound on demand via per_round_retrieve.
+    # With no retriever (or no deferrables), binding is identical to bind-everything.
+    _deferrable_map = {n: t for n, t in (all_tools_map or {}).items() if n not in core_tool_names}
+    _use_retrieval = per_round_retrieve is not None and bool(_deferrable_map)
+
+    # Cache bound models by the frozenset of active tool names so FunctionDeclarations
+    # are only rebuilt when the active set actually changes.
+    _bound_cache: Dict[frozenset, Any] = {}
+
+    def _bind_for(active_names: Sequence[str]):
+        active_deferred = [_deferrable_map[n] for n in (active_names or []) if n in _deferrable_map]
+        key = frozenset(core_tool_names | {t.name for t in active_deferred})
+        bound = _bound_cache.get(key)
+        if bound is None:
+            tools = core_tool_objs + active_deferred
+            bound = model.bind_tools(tools) if tools else model
+            _bound_cache[key] = bound
+        return bound
+
+    _bound_all = model.bind_tools(all_tools) if all_tools else model
 
     async def call_model(state: AgentState):
         messages: Sequence[BaseMessage] = state.get("messages", [])
+
+        if _use_retrieval:
+            # active = persistent discoveries + TRANSIENT per-round retrieval on the
+            # round's intent (binding-only, not persisted → self-evicting). Non-fatal.
+            active = list(state.get("active_mcp_tools") or [])
+            try:
+                fresh = per_round_retrieve(_intent_query(messages)) or []
+                if fresh:
+                    active = list(dict.fromkeys([*active, *fresh]))
+                    logger.debug("[call_model] per-round retrieval (%d) → %s", len(fresh), fresh)
+            except Exception as e:
+                logger.warning("[call_model] per-round retrieval failed (non-fatal): %s", e)
+            bound = _bind_for(active)
+        else:
+            bound = _bound_all
+
         sys_parts = [system_prompt] if system_prompt else []
         if sys_parts:
             invoke_messages = [SystemMessage(content="\n\n".join(sys_parts))] + list(messages)
         else:
             invoke_messages = list(messages)
-        response = await _bound_model.ainvoke(invoke_messages)
+        response = await bound.ainvoke(invoke_messages)
         return {"messages": [response]}
 
     def should_continue(state: AgentState) -> str:
