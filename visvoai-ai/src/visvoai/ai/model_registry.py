@@ -615,14 +615,6 @@ DEFAULT_MODEL_FOR: Dict[Capability, str] = {
 }
 
 
-def default_model_for(capability: Capability) -> str:
-    """The default model id for a capability. Raises if none is configured."""
-    model_id = DEFAULT_MODEL_FOR.get(capability)
-    if model_id is None:
-        raise ValueError(f"No default model configured for capability {capability.value}")
-    return model_id
-
-
 # Crash at startup if the registry is misconfigured
 _default_models = [m for m in MODELS if m.default]
 if len(_default_models) == 0:

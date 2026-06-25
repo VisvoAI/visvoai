@@ -19,7 +19,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from visvoai.ai.identity import DEFAULT_CODEC, IdentityCodec
-from visvoai.ai.model_registry import MODELS as _RAW, Capability, ModelDefinition
+from visvoai.ai.model_registry import (
+    MODELS as _RAW,
+    Capability,
+    ModelDefinition,
+    DEFAULT_MODEL_FOR as _DEFAULT_MODEL_FOR,
+)
 from visvoai.ai.thinking import (
     ThinkingLevel,
     ThinkingMechanism,
@@ -225,8 +230,15 @@ def get_deployment_info(deployment_id: str,
 
 def default_deployment(capability: Capability = Capability.CHAT,
                        codec: IdentityCodec = DEFAULT_CODEC) -> Optional[str]:
-    """Composite id of the default deployment for a capability (the `default=True`
-    entry if it has the capability, else the first enabled one)."""
+    """Composite id of the default deployment for a capability. Precedence: the
+    curated DEFAULT_MODEL_FOR pick (matched by provider wire slug) → the global
+    `default=True` deployment → the first enabled one. Returns None if nothing
+    serves the capability."""
+    curated = _DEFAULT_MODEL_FOR.get(capability)
+    if curated:
+        for d in DEPLOYMENTS:
+            if d.slug == curated and d.enabled and not d.deprecated and capability in d.capabilities:
+                return d.id(codec)
     for d in DEPLOYMENTS:
         if d.default and d.enabled and not d.deprecated and capability in d.capabilities:
             return d.id(codec)
