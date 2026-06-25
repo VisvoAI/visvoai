@@ -39,8 +39,9 @@ class AgentRuntime:
     extra nodes. Override the hook methods to customize behavior:
 
       _extend_graph(workflow, tool_configs) — add nodes (HITL, bg_task, etc.)
-      _wrap_call_model(call_model)          — wrap the agent node
-      _build_tools_node(all_tools, configs) — substitute the tools node
+      _build_agent_node(ctx)                — substitute the agent node
+      _build_tools_node(ctx)                — substitute the tools node
+      _agent_routing(ctx)                   — (fn, map) for the agent→X edge
       _tools_routing(tool_configs)          — (fn, map) for the tools→X edge
       _get_checkpointer(checkpointer)       — inject a checkpointer
       _get_interrupt_nodes()                — declare interrupt_before node names
@@ -81,24 +82,33 @@ class AgentRuntime:
         """Add extra nodes and edges before compilation. Override in subclasses."""
         pass
 
-    def _wrap_call_model(self, call_model):
-        """Wrap the agent node's call_model coroutine before it's added to the graph.
+    def _build_agent_node(self, ctx):
+        """Return the node placed at 'agent', or None to use the core default.
 
-        Receives the core call_model(state)->update and returns a (possibly wrapped)
-        coroutine with the same signature. Default: identity. Override to add
-        cross-cutting behavior around every model call (e.g. timing, message
-        pre/post-processing) without re-implementing the builder.
+        ctx is a GraphBuildContext (model, tools, system_prompt, retrieval, …).
+        Override to supply a richer agent node (custom prompt assembly, message
+        pre/post-processing) built from the same inputs, without re-implementing
+        build_graph. Default None → core's call_model (retrieval + step-budget).
         """
-        return call_model
+        return None
 
-    def _build_tools_node(self, all_tools: list, tool_configs: dict):
-        """Return the node placed at 'tools'. Default: a prebuilt ToolNode(all_tools).
+    def _build_tools_node(self, ctx):
+        """Return the node placed at 'tools', or None to use the core default.
 
-        Override to substitute a custom tools node (e.g. one that gates execution
-        behind an approval step) while keeping the rest of the core builder.
+        ctx is a GraphBuildContext. Override to substitute a custom tools node
+        (e.g. one that gates execution behind an approval step). Default None →
+        ToolNode(ctx.all_tools).
         """
-        from langgraph.prebuilt import ToolNode
-        return ToolNode(all_tools)
+        return None
+
+    def _agent_routing(self, ctx):
+        """Return (routing_fn, routing_map) for the agent→X edge, or None for the default.
+
+        ctx is a GraphBuildContext. Override to route the agent node somewhere
+        other than {tools, END} (e.g. through a finalize-check node). Default None
+        → core's should_continue with {"tools": "tools", END: END}.
+        """
+        return None
 
     def _tools_routing(self, tool_configs: dict):
         """Return (routing_fn, routing_map) for the tools→X conditional edge.

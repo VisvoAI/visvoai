@@ -15,12 +15,16 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 - `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`; `make_per_round_retrieve()`
 
 # Key Classes / Functions
-- `AgentRuntime` → buildable base class; override `_extend_graph()`, `_wrap_call_model()`,
-  `_build_tools_node()`, `_tools_routing()`, `_get_checkpointer()`, `_get_interrupt_nodes()` to add
-  custom behavior (nodes, agent-node wrapping, a custom tools node, a checkpointer, interrupt points).
-  `_wrap_call_model(call_model)` (default identity) wraps the agent node; `_build_tools_node(all_tools, configs)`
-  (default `ToolNode`) substitutes the tools node — together they let a consumer express a rich builder
+- `AgentRuntime` → buildable base class; override `_extend_graph()`, `_build_agent_node()`,
+  `_build_tools_node()`, `_agent_routing()`, `_tools_routing()`, `_get_checkpointer()`, `_get_interrupt_nodes()`
+  to add custom behavior. The three node/routing hooks each receive a `GraphBuildContext` and return
+  `None` (use core default) or a value (override): `_build_agent_node` → the agent node, `_build_tools_node`
+  → the tools node (default `ToolNode`), `_agent_routing` → `(fn, map)` for the agent→X edge
+  (default `should_continue` → `{tools, END}`). Together they let a rich consumer express its whole builder
   through hooks instead of overriding `build_graph`.
+- `GraphBuildContext` → frozen dataclass of build inputs (model, core_tools, all_tools_map, all_tools,
+  system_prompt, tool_configs, per_round_retrieve, lean_prompt, max_agent_steps) handed to the node/routing
+  override hooks. Generic inputs only — surface-specific state lives on the runtime subclass.
 - `AgentState` → LangGraph TypedDict: `messages`, `active_mcp_tools` only. State a consumer
   needs but core does not act on (plan-mode bookkeeping, approval flags, …) is deliberately
   NOT here — a subclass adds it via TypedDict inheritance.

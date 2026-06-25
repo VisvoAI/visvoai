@@ -10,6 +10,7 @@ Graph topology:
                            ↘ END
 """
 import logging
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
 from langchain_core.language_models import BaseChatModel
@@ -22,6 +23,27 @@ from langgraph.prebuilt import ToolNode
 from visvoai.core.state import AgentState
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class GraphBuildContext:
+    """The build-time inputs handed to AgentRuntime's node/routing override hooks.
+
+    A consumer that overrides `_build_agent_node`, `_build_tools_node`, or
+    `_agent_routing` receives this so it can construct its own node bodies from
+    the same inputs the core builder uses — without re-implementing build_graph.
+    Carries only the generic build inputs; surface-specific state (e.g. plan
+    bookkeeping) lives on the runtime subclass itself, not here.
+    """
+    model: BaseChatModel
+    core_tools: List[BaseTool]
+    all_tools_map: Dict[str, BaseTool]
+    all_tools: List[BaseTool]
+    system_prompt: str
+    tool_configs: Dict[str, Any] = field(default_factory=dict)
+    per_round_retrieve: Optional[Any] = None
+    lean_prompt: bool = False
+    max_agent_steps: Optional[int] = None
 
 # Default soft step cap. The graph runs `agent` + `tools` as two super-steps per
 # tool-calling round, so a turn of N rounds costs ~2N super-steps against
@@ -166,19 +188,36 @@ def build_graph(
             return "tools"
         return END
 
-    # Agent/tools nodes — overridable via runtime hooks (default = core behavior).
-    agent_node = _runtime._wrap_call_model(call_model) if _runtime is not None else call_model
-    tools_node = (
-        _runtime._build_tools_node(all_tools, tool_configs)
-        if _runtime is not None else ToolNode(all_tools)
+    # Node bodies and agent routing are overridable via runtime hooks. Each hook
+    # returns None → use the core default below; or a value → override it. This is
+    # what lets a rich consumer (HITL, plan-mode, etc.) supply its own bodies
+    # WITHOUT overriding build_graph.
+    ctx = GraphBuildContext(
+        model=model,
+        core_tools=core_tool_objs,
+        all_tools_map=all_tools_map or {},
+        all_tools=all_tools,
+        system_prompt=system_prompt,
+        tool_configs=tool_configs,
+        per_round_retrieve=per_round_retrieve,
+        lean_prompt=lean_prompt,
+        max_agent_steps=max_agent_steps,
     )
+
+    agent_node = (_runtime._build_agent_node(ctx) if _runtime is not None else None) or call_model
+    tools_node = (_runtime._build_tools_node(ctx) if _runtime is not None else None) or ToolNode(all_tools)
+    _agent_routing = _runtime._agent_routing(ctx) if _runtime is not None else None
+    if _agent_routing is None:
+        _agent_fn, _agent_map = should_continue, {"tools": "tools", END: END}
+    else:
+        _agent_fn, _agent_map = _agent_routing
 
     workflow = StateGraph(AgentState)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tools_node)
 
     workflow.set_entry_point("agent")
-    workflow.add_conditional_edges("agent", should_continue, {"tools": "tools", END: END})
+    workflow.add_conditional_edges("agent", _agent_fn, _agent_map)
 
     if _runtime is None:
         # Default: always route back to agent after tools.
