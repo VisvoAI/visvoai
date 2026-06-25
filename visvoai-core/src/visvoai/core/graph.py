@@ -166,10 +166,15 @@ def build_graph(
             return "tools"
         return END
 
-    tools_node = ToolNode(all_tools)
+    # Agent/tools nodes — overridable via runtime hooks (default = core behavior).
+    agent_node = _runtime._wrap_call_model(call_model) if _runtime is not None else call_model
+    tools_node = (
+        _runtime._build_tools_node(all_tools, tool_configs)
+        if _runtime is not None else ToolNode(all_tools)
+    )
 
     workflow = StateGraph(AgentState)
-    workflow.add_node("agent", call_model)
+    workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tools_node)
 
     workflow.set_entry_point("agent")

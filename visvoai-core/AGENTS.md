@@ -15,8 +15,12 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 - `src/visvoai/core/retrieval.py` → `ToolCatalog` (BM25 + optional cosine-hybrid); `build_catalog_from_servers()`; `make_per_round_retrieve()`
 
 # Key Classes / Functions
-- `AgentRuntime` → buildable base class; override `_extend_graph()`, `_tools_routing()`,
-  `_get_checkpointer()`, `_get_interrupt_nodes()` to add custom behavior (nodes, a checkpointer, interrupt points).
+- `AgentRuntime` → buildable base class; override `_extend_graph()`, `_wrap_call_model()`,
+  `_build_tools_node()`, `_tools_routing()`, `_get_checkpointer()`, `_get_interrupt_nodes()` to add
+  custom behavior (nodes, agent-node wrapping, a custom tools node, a checkpointer, interrupt points).
+  `_wrap_call_model(call_model)` (default identity) wraps the agent node; `_build_tools_node(all_tools, configs)`
+  (default `ToolNode`) substitutes the tools node — together they let a consumer express a rich builder
+  through hooks instead of overriding `build_graph`.
 - `AgentState` → LangGraph TypedDict: `messages`, `active_mcp_tools` only. State a consumer
   needs but core does not act on (plan-mode bookkeeping, approval flags, …) is deliberately
   NOT here — a subclass adds it via TypedDict inheritance.

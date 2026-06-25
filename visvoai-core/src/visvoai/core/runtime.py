@@ -39,6 +39,8 @@ class AgentRuntime:
     extra nodes. Override the hook methods to customize behavior:
 
       _extend_graph(workflow, tool_configs) — add nodes (HITL, bg_task, etc.)
+      _wrap_call_model(call_model)          — wrap the agent node
+      _build_tools_node(all_tools, configs) — substitute the tools node
       _tools_routing(tool_configs)          — (fn, map) for the tools→X edge
       _get_checkpointer(checkpointer)       — inject a checkpointer
       _get_interrupt_nodes()                — declare interrupt_before node names
@@ -78,6 +80,25 @@ class AgentRuntime:
     def _extend_graph(self, workflow: StateGraph, tool_configs: dict) -> None:
         """Add extra nodes and edges before compilation. Override in subclasses."""
         pass
+
+    def _wrap_call_model(self, call_model):
+        """Wrap the agent node's call_model coroutine before it's added to the graph.
+
+        Receives the core call_model(state)->update and returns a (possibly wrapped)
+        coroutine with the same signature. Default: identity. Override to add
+        cross-cutting behavior around every model call (e.g. timing, message
+        pre/post-processing) without re-implementing the builder.
+        """
+        return call_model
+
+    def _build_tools_node(self, all_tools: list, tool_configs: dict):
+        """Return the node placed at 'tools'. Default: a prebuilt ToolNode(all_tools).
+
+        Override to substitute a custom tools node (e.g. one that gates execution
+        behind an approval step) while keeping the rest of the core builder.
+        """
+        from langgraph.prebuilt import ToolNode
+        return ToolNode(all_tools)
 
     def _tools_routing(self, tool_configs: dict):
         """Return (routing_fn, routing_map) for the tools→X conditional edge.
