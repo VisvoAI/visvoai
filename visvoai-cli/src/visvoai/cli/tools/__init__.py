@@ -17,6 +17,7 @@ Usage:
   from visvoai.cli.tools import build_cli_tools
   tools = build_cli_tools(cwd="/path/to/project")
 """
+import inspect
 import os
 import subprocess
 from typing import List, Optional
@@ -261,6 +262,12 @@ def run_shell(command: str) -> str:
     # (the UI parses '[exit: N]' to decide success/failure).
     output = cap_lines(output.strip(), SHELL_LINE_CAP)
     return f"{output}\n[exit: {result.returncode}]".strip()
+
+
+# The model sees each tool's docstring verbatim as its description; dedent the
+# multi-line ones so the schema isn't littered with the source's indentation.
+for _t in (read_file, write_file, edit_file, list_files, list_tree, run_shell):
+    _t.description = inspect.cleandoc(_t.description)
 
 
 def build_cli_tools(cwd: Optional[str] = None) -> List[BaseTool]:
