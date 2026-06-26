@@ -81,6 +81,11 @@ class ModelDefinition:
     # by design — see module docstring; the provider's own billing is authoritative.
     unit_cost: Optional[float] = None        # cost per `unit` in USD
     unit: Optional[str] = None               # e.g. "per_image"
+    # Carried wiring for catalog-sourced (e.g. models.dev) deployments whose provider is
+    # NOT in the static config maps — the deployment is self-contained. Baked, hand-written
+    # entries leave these None and rely on providers/config.py's static base_url/key maps.
+    base_url: Optional[str] = None           # OpenAI-compat endpoint (None = library default / static map)
+    key_env: Optional[str] = None            # API-key env var name (None = resolve via static _ENV_KEY_MAP)
 
 
 # =============================================================================
@@ -314,9 +319,12 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     # Anthropic Claude
     # -------------------------------------------------------------------------
-    # NOTE: thinking is OFF for all Claude models — the Anthropic engine only emits the
-    # legacy {"type":"enabled","budget_tokens":N} thinking API, which 400s on 4.6+ models.
-    # Do NOT set supports_thinking=True here until anthropic.py emits adaptive thinking.
+    # NOTE: thinking is OFF for all Claude models in the registry, but the resolver is now
+    # dialect-correct: thinking.py emits adaptive thinking ({"type":"adaptive"}) for 4.6+ via
+    # ThinkingMechanism.ANTHROPIC_ADAPTIVE, and legacy budget_tokens only for ≤4.5. Flipping
+    # supports_thinking=True on a 4.6+ model (opus-4-8, sonnet-4-6, fable-5) is now safe by
+    # dialect — but LIVE-UNVERIFIED against the Anthropic API; verify one real thinking request
+    # before enabling in the picker.
     ModelDefinition(
         api_id="claude-fable-5",
         context_window=1_048_576,

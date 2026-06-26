@@ -43,21 +43,23 @@ def resolve_base_url(provider: str, base_url: Optional[str] = None) -> Optional[
     return _PROVIDER_BASE_URL.get(provider.lower())
 
 
-def resolve_api_key(provider: str, api_key: Optional[str] = None) -> str:
+def resolve_api_key(provider: str, api_key: Optional[str] = None,
+                    env_var: Optional[str] = None) -> str:
     """Return the API key for provider.
 
-    Priority: explicit api_key arg → environment variable → KeyError.
+    Priority: explicit api_key arg → explicit env_var (carried from a catalog source,
+    e.g. models.dev) → the static _ENV_KEY_MAP env var → KeyError. `env_var` lets a
+    catalog-sourced provider that isn't in the static map name its own key variable.
     """
     if api_key:
         return api_key
-    env_var = _ENV_KEY_MAP.get(provider.lower())
-    if env_var:
-        key = os.environ.get(env_var, "")
-        if key:
-            return key
+    for var in (env_var, _ENV_KEY_MAP.get(provider.lower())):
+        if var:
+            key = os.environ.get(var, "")
+            if key:
+                return key
+    expected = env_var or _ENV_KEY_MAP.get(provider.lower()) or provider.upper() + "_API_KEY"
     raise KeyError(
         f"No API key found for provider '{provider}'. "
-        f"Pass api_key= explicitly or set the "
-        f"{_ENV_KEY_MAP.get(provider.lower(), provider.upper() + '_API_KEY')} "
-        f"environment variable."
+        f"Pass api_key= explicitly or set the {expected} environment variable."
     )

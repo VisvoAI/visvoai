@@ -16,6 +16,7 @@ from langchain_core.language_models import BaseChatModel
 
 from visvoai.ai.deployments import get_deployment
 from visvoai.ai.identity import DEFAULT_CODEC, IdentityCodec
+from visvoai.ai.providers.config import resolve_api_key
 from visvoai.ai.providers.factory import get_provider
 from visvoai.ai.thinking import resolve_level
 
@@ -42,8 +43,16 @@ def build_chat_model(
         lvl = resolve_level(chosen, default=dep.default_thinking)
         extra = dep.thinking_kwargs(lvl)
 
+    # Catalog-sourced deployments carry their own endpoint/key (provider not in the
+    # static config maps). Resolve them to explicit args so the provider facade — which
+    # is unchanged — uses them (explicit wins). Caller-passed base_url/api_key still win.
+    eff_base_url = base_url if base_url is not None else dep.base_url
+    eff_api_key = api_key
+    if eff_api_key is None and dep.key_env:
+        eff_api_key = resolve_api_key(dep.provider, env_var=dep.key_env)
+
     return get_provider(dep.provider).build(
-        slug=dep.slug, api_key=api_key, base_url=base_url, **extra,
+        slug=dep.slug, api_key=eff_api_key, base_url=eff_base_url, **extra,
     )
 
 

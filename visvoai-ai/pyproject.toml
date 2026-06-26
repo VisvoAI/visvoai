@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-ai"
-version = "0.1.0"
+version = "0.2.0"
 description = "VisvoAI — Unified multi-provider LLM access (Gemini, Anthropic, OpenAI, Together)"
 readme = "README.md"
 license = { text = "MIT" }
@@ -41,3 +41,7 @@ dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# Bundled models.dev offline snapshot (catalog/data/) — generated, ships in the wheel.
+"visvoai.ai.catalog.data" = ["*.json.gz"]
