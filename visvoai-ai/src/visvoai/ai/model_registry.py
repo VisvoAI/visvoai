@@ -183,6 +183,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gemini-3-pro-image",
+        context_window=65_536,
         display_name="Gemini 3 Pro Image",
         input_cost_per_million=2.00,
         output_cost_per_million=120.00,
@@ -195,6 +196,7 @@ MODELS: List[ModelDefinition] = [
     # Old ID for gemini-3-pro-image — kept for cost tracking of historical calls
     ModelDefinition(
         api_id="gemini-3-pro-image-preview",
+        context_window=65_536,
         display_name="Gemini 3 Pro Image (Preview)",
         input_cost_per_million=2.00,
         output_cost_per_million=12.00,
@@ -317,7 +319,7 @@ MODELS: List[ModelDefinition] = [
     # Do NOT set supports_thinking=True here until anthropic.py emits adaptive thinking.
     ModelDefinition(
         api_id="claude-fable-5",
-        context_window=200_000,
+        context_window=1_048_576,
         display_name="Claude Fable 5",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -327,7 +329,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-opus-4-8",
-        context_window=200_000,
+        context_window=1_048_576,
         display_name="Claude Opus 4.8",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -337,7 +339,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-sonnet-4-6",
-        context_window=200_000,
+        context_window=1_048_576,
         display_name="Claude Sonnet 4.6",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -432,6 +434,7 @@ MODELS: List[ModelDefinition] = [
     # max_completion_tokens instead of max_tokens. reasoning_effort runs at default.
     ModelDefinition(
         api_id="gpt-5",
+        context_window=400_000,
         display_name="GPT-5",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -472,6 +475,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="deepseek-ai/DeepSeek-V4-Pro",
+        context_window=512_000,
         display_name="DeepSeek V4 Pro",
         provider="together",
         icon_url="https://www.deepseek.com/favicon.ico",
@@ -491,6 +495,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="moonshotai/Kimi-K2.6",
+        context_window=256_000,
         display_name="Kimi K2.6",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=moonshot.ai",
@@ -500,6 +505,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="moonshotai/Kimi-K2.7-Code",
+        context_window=256_000,
         display_name="Kimi K2.7 Code",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=moonshot.ai",
@@ -509,6 +515,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="zai-org/GLM-5.2",
+        context_window=256_000,
         display_name="GLM-5.2",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=z.ai",
@@ -518,6 +525,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="zai-org/GLM-5.1",
+        context_window=200_000,
         display_name="GLM-5.1",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=z.ai",
@@ -527,7 +535,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="meta-llama/Llama-3.3-70B-Instruct-Turbo",
-        context_window=131_072,
+        context_window=128_000,
         display_name="Llama 3.3 70B",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=llama.com",
@@ -537,7 +545,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="openai/gpt-oss-120b",
-        context_window=131_072,
+        context_window=128_000,
         display_name="GPT-OSS 120B",
         provider="together",
         icon_url="https://openai.com/favicon.ico",
@@ -547,6 +555,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="nvidia/nemotron-3-ultra-550b-a55b",
+        context_window=1_048_576,
         display_name="Nemotron 3 Ultra 550B",
         provider="together",
         icon_url="https://www.nvidia.com/favicon.ico",
@@ -556,6 +565,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="MiniMaxAI/MiniMax-M3",
+        context_window=1_048_576,
         display_name="MiniMax M3",
         provider="together",
         icon_url="https://www.minimax.io/favicon.ico",
