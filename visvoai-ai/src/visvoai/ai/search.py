@@ -7,7 +7,7 @@ NotSupported by default; implemented by a provider with native grounding such as
 GeminiProvider via Google Search). It mirrors build_chat_model's
 deployment -> provider resolution, but for the SEARCH capability instead of CHAT.
 
-The backend follows the registry's curated default (default_deployment(SEARCH))
+Resolution follows the registry's curated default (default_deployment(SEARCH))
 rather than a hardcoded provider, so it tracks whatever the default search model is.
 """
 from __future__ import annotations

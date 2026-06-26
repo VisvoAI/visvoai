@@ -98,9 +98,8 @@ async def _run(prompt: str, model_id: str, cwd: str, verbose: bool) -> None:
     state = {"messages": [HumanMessage(content=prompt)]}
 
     try:
-        # Explicit recursion_limit (matches the platform's orchestrator) — keeps a
-        # deep turn from crashing on LangGraph's default 25 before the core graph's
-        # soft step cap can force a clean finalize.
+        # Explicit recursion_limit — keeps a deep turn from crashing on LangGraph's
+        # default 25 before the core graph's soft step cap can force a clean finalize.
         async for event in graph.astream_events(
             state, version="v2", config={"recursion_limit": 100}
         ):
