@@ -5,8 +5,8 @@ ops), grouped by concern. Every tool caps its output so one call can't flood the
 model's context, and returns `ERROR: …` as data (never raises) so the agent recovers.
 
 # Key Files
-- `__init__.py` → aggregator: applies `inspect.cleandoc` to each docstring, exposes `build_cli_tools()` + re-exports every tool/cap.
-- `files.py` → `read_file` (paginated), `write_file`, `edit_file`, `list_files`, `list_tree` (bounded tree) + tree helpers + their caps.
+- `__init__.py` → aggregator: applies `inspect.cleandoc` to each docstring, exposes `build_cli_tools(cwd)` (builds write/edit confined to `cwd` via `pathguard.resolve_roots`) + re-exports the read-only/shell/web tools and the `make_*` factories.
+- `files.py` → `read_file` (paginated), `list_files`, `list_tree` (bounded tree) as module-level tools; `make_write_file(roots)` / `make_edit_file(roots)` factories build path-confined write/edit (`pathguard.confine`). Plus tree helpers + caps.
 - `shell.py` → `run_shell` (30s, combined stdout/stderr + `[exit:N]` marker) + `SHELL_LINE_CAP`.
 - `web.py` → `web_search` (grounded answer + sources) / `web_fetch` (one URL → markdown), both delegating to the `visvoai-ai` seam; `WEB_LINE_CAP`.
 - `_common.py` → shared output bounds: `cap_lines`, `clip_line`, `MAX_LINE_LEN`.

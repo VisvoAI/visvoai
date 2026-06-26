@@ -41,6 +41,10 @@ import click
     help="Resume a conversation by id (or the latest if no id). TUI only.",
 )
 @click.option("--verbose", is_flag=True, help="Single-shot: show tool inputs/outputs.")
+@click.option("--yes", "-y", "assume_yes", is_flag=True,
+              help="Single-shot: auto-approve mutating tools (edit/write/shell). Without "
+                   "it, headless runs DENY mutations except those pre-authorized in "
+                   "[permissions]. Path confinement applies either way.")
 @click.option("--refresh-models", is_flag=True,
               help="Re-fetch the models.dev catalog (drops the cache), then exit.")
 @click.option(
@@ -52,7 +56,7 @@ import click
          "key (hidden) and where to save it (global or this project).",
 )
 def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
-        set_key_provider: str, refresh_models: bool) -> None:
+        assume_yes: bool, set_key_provider: str, refresh_models: bool) -> None:
     """VisvoAI — terminal coding agent. Run with no prompt for the interactive TUI,
     or pass a prompt for a single-shot stream."""
     abs_cwd = os.path.abspath(cwd)
@@ -67,7 +71,7 @@ def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
         return
     text = " ".join(prompt).strip()
     if text:
-        asyncio.run(_run_single_shot(text, model, abs_cwd, verbose))
+        asyncio.run(_run_single_shot(text, model, abs_cwd, verbose, assume_yes))
     else:
         _launch_tui(model, resume, abs_cwd)
 
@@ -128,7 +132,8 @@ def _launch_tui(model: str | None, resume: str | None, cwd: str) -> None:
         )
 
 
-async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bool) -> None:
+async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bool,
+                           assume_yes: bool = False) -> None:
     """Stream one turn to stdout — no TUI. Builds the same CLIRuntime graph the TUI
     uses, through the public visvoai-ai resolver."""
     _bootstrap_env(cwd)            # same key resolution as the TUI (env/.env/stored)
@@ -149,11 +154,32 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
 
     from langchain_core.messages import HumanMessage
 
+    from visvoai.cli.context import build_assembler
     from visvoai.cli.runtime import CLIRuntime
     from visvoai.cli.tools import build_cli_tools
 
-    tools = build_cli_tools(cwd=cwd)
-    graph = CLIRuntime().build_graph(
+    if assume_yes:
+        # Explicit opt-in: auto-approve mutations (still path-confined).
+        tools = build_cli_tools(cwd=cwd)
+    else:
+        # No TTY to approve at: DENY mutations except those pre-authorized in
+        # [permissions]. The agent gets a decline message and adapts/explains.
+        from visvoai.cli.gated_tools import build_gated_tools
+        from visvoai.cli.permissions import load_policy
+
+        policy = load_policy(cwd)
+
+        async def _headless_approve(tool_name: str, args: dict) -> bool:
+            if policy.auto_allow(tool_name, args):
+                return True
+            click.echo(
+                f"\n[blocked: {tool_name} needs approval — re-run with --yes, or "
+                f"pre-authorize it in .visvoai/config.toml [permissions]]", err=True)
+            return False
+
+        tools = build_gated_tools(cwd=cwd, approve=_headless_approve)
+    assembler = build_assembler(SYSTEM_PROMPT, cwd)
+    graph = CLIRuntime(assembler=assembler).build_graph(
         model=chat_model,
         core_tools=tools,
         all_tools_map={t.name: t for t in tools},

@@ -124,48 +124,66 @@ def read_file(path: str, offset: int = 1, limit: int = READ_LINE_CAP) -> str:
     return body
 
 
-@tool
-def write_file(path: str, content: str) -> str:
-    """Write content to a file, creating it (and any parent directories) if needed."""
-    abs_path = os.path.abspath(path)
-    try:
-        parent = os.path.dirname(abs_path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(content)
-    except OSError as e:
-        return f"ERROR: {e}"
-    return f"Wrote {len(content)} chars to {abs_path}"
+def make_write_file(roots: List[str]):
+    """Build a write_file tool confined to `roots` (see pathguard.confine)."""
+    from visvoai.cli.pathguard import PathDenied, confine
+
+    @tool
+    def write_file(path: str, content: str) -> str:
+        """Write content to a file, creating it (and any parent directories) if needed."""
+        try:
+            abs_path = confine(path, roots)
+        except PathDenied as e:
+            return f"ERROR: {e}"
+        try:
+            parent = os.path.dirname(abs_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(abs_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as e:
+            return f"ERROR: {e}"
+        return f"Wrote {len(content)} chars to {abs_path}"
+
+    return write_file
 
 
-@tool
-def edit_file(path: str, old_string: str, new_string: str) -> str:
-    """Replace the first occurrence of old_string with new_string in the file at path.
+def make_edit_file(roots: List[str]):
+    """Build an edit_file tool confined to `roots` (see pathguard.confine)."""
+    from visvoai.cli.pathguard import PathDenied, confine
 
-    Returns an error if old_string is not found or if it is ambiguous (appears more than once).
-    """
-    abs_path = os.path.abspath(path)
-    try:
-        with open(abs_path, "r", encoding="utf-8") as f:
-            content = f.read()
-    except OSError as e:
-        return f"ERROR: {e}"
-    count = content.count(old_string)
-    if count == 0:
-        return f"ERROR: old_string not found in {path}. No changes made."
-    if count > 1:
-        return (
-            f"ERROR: old_string appears {count} times in {path} — cannot edit unambiguously. "
-            "Provide more surrounding context to make the match unique."
-        )
-    new_content = content.replace(old_string, new_string, 1)
-    try:
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(new_content)
-    except OSError as e:
-        return f"ERROR: {e}"
-    return f"Replaced in {abs_path}"
+    @tool
+    def edit_file(path: str, old_string: str, new_string: str) -> str:
+        """Replace the first occurrence of old_string with new_string in the file at path.
+
+        Returns an error if old_string is not found or if it is ambiguous (appears more than once).
+        """
+        try:
+            abs_path = confine(path, roots)
+        except PathDenied as e:
+            return f"ERROR: {e}"
+        try:
+            with open(abs_path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except OSError as e:
+            return f"ERROR: {e}"
+        count = content.count(old_string)
+        if count == 0:
+            return f"ERROR: old_string not found in {path}. No changes made."
+        if count > 1:
+            return (
+                f"ERROR: old_string appears {count} times in {path} — cannot edit unambiguously. "
+                "Provide more surrounding context to make the match unique."
+            )
+        new_content = content.replace(old_string, new_string, 1)
+        try:
+            with open(abs_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+        except OSError as e:
+            return f"ERROR: {e}"
+        return f"Replaced in {abs_path}"
+
+    return edit_file
 
 
 @tool

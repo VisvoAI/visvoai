@@ -48,13 +48,30 @@ async def test_gate_allows_and_blocks_mutations():
 
 # ── _approve HITL ───────────────────────────────────────────────────────────
 @pytest.mark.asyncio
-async def test_yolo_bypasses_prompt():
+async def test_accept_all_mode_bypasses_prompt():
+    from visvoai.cli.hitl_modes import HITLMode
+
     app = VisvoApp()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app._yolo = True
+        app._hitl_mode = HITLMode.ACCEPT_ALL
         assert await app._approve("edit_file", {"path": "a.py"}) is True
+        assert await app._approve("run_shell", {"command": "ls"}) is True
         assert not app.query(Selection)  # no prompt shown
+
+
+@pytest.mark.asyncio
+async def test_auto_edit_mode_gates_shell_only():
+    from visvoai.cli.hitl_modes import HITLMode
+
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._hitl_mode = HITLMode.AUTO_EDIT
+        # file edits auto-approved, no prompt
+        assert await app._approve("edit_file", {"path": "a.py"}) is True
+        assert await app._approve("write_file", {"path": "a.py"}) is True
+        assert not app.query(Selection)
 
 
 async def _drive_approve(app, pilot, tool, args, choice):

@@ -31,16 +31,23 @@ _DENIED = "User declined this action. No changes were made — adjust the plan o
 
 
 def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
-    """Tool set where edit/write/shell await `approve` before any mutation."""
+    """Tool set where edit/write/shell await `approve` before any mutation, and
+    edit/write are path-confined to `cwd` (+ configured extra roots)."""
+    from visvoai.cli.pathguard import PathDenied, confine, resolve_roots
+
+    roots = resolve_roots(cwd)
 
     @tool
     async def edit_file(path: str, old_string: str, new_string: str) -> str:
         """Replace the first occurrence of old_string with new_string in the file at path.
         Errors if old_string is missing or appears more than once."""
+        try:
+            abs_path = confine(path, roots)   # boundary first — never prompt for an out-of-root path
+        except PathDenied as e:
+            return f"ERROR: {e}"
         if not await approve("edit_file", {"path": path, "old_string": old_string,
                                            "new_string": new_string}):
             return _DENIED
-        abs_path = os.path.abspath(path)
         try:
             with open(abs_path, "r", encoding="utf-8") as f:
                 content = f.read()
@@ -62,9 +69,12 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
     @tool
     async def write_file(path: str, content: str) -> str:
         """Write content to a file, creating it (and parent dirs) if needed."""
+        try:
+            abs_path = confine(path, roots)   # boundary first — never prompt for an out-of-root path
+        except PathDenied as e:
+            return f"ERROR: {e}"
         if not await approve("write_file", {"path": path, "content": content}):
             return _DENIED
-        abs_path = os.path.abspath(path)
         try:
             parent = os.path.dirname(abs_path)
             if parent:
