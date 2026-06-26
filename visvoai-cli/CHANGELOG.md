@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.3.1] — 2026-06
+
+### Fixed
+- `pip install visvoai-cli` now bundles **all** provider integrations
+  (`visvoai-ai[all]` — Gemini incl. grounded search, Anthropic, OpenAI + any
+  OpenAI-compatible provider), so every model in the picker's catalog runs out of
+  the box. Previously the base install carried only the Gemini lib, so selecting a
+  Claude/OpenAI model crashed with `No module named 'langchain_openai'` /
+  `langchain_anthropic`. The model picker exposes the full models.dev catalog, so a
+  single-provider install was a footgun; leanness stays in visvoai-ai's extras, not
+  the app.
+
 ## [0.3.0] — 2026-06
 
 ### Added

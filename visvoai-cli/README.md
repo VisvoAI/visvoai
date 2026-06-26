@@ -11,7 +11,19 @@ a real surface.
 pip install visvoai-cli
 ```
 
-This pulls `visvoai-core` and the default Gemini model integration.
+That's everything — `visvoai-core`, `visvoai-ai`, and **all** provider integrations
+(Gemini, Anthropic, OpenAI + any OpenAI-compatible provider). The model picker's full
+catalog works out of the box; you only supply an API key for the provider you use.
+
+### From source (local checkout)
+
+Install as an editable command on your PATH — code changes are picked up live:
+
+```bash
+uv tool install --editable path/to/visvoai-cli
+# then, from any directory:
+visvoai
+```
 
 ## Usage
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-cli"
-version = "0.3.0"
+version = "0.3.1"
 description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,7 +21,11 @@ classifiers = [
 dependencies = [
     "visvoai-core>=0.1.0",
     # Provider resolution (get_provider/get_model) is used directly in main.py.
-    "visvoai-ai>=0.2.0",
+    # [all] — the CLI bundles EVERY provider integration on purpose: its model
+    # picker exposes the full models.dev catalog, so any provider must be runnable
+    # out of the box (a Gemini-only install would crash on selecting a Claude/OpenAI
+    # model). Leanness lives in visvoai-ai's per-provider extras, not in the app.
+    "visvoai-ai[all]>=0.2.0",
     "click>=8.1",
     "rich>=13.0",
     # The terminal UI (REPL) is built on Textual; .env auto-load via python-dotenv.
@@ -29,14 +33,14 @@ dependencies = [
     "python-dotenv>=1.0",
     # Syntax highlighting for diffs/code blocks (used directly in widgets/diff.py).
     "pygments>=2.17",
-    # Default model is Gemini; its LangChain integration ships via visvoai-ai[gemini].
-    "langchain-google-genai>=2.0",
 ]
 
 [project.scripts]
 visvoai = "visvoai.cli.main:cli"
 
 [project.optional-dependencies]
+# No per-provider extras: the base install already bundles every integration
+# (visvoai-ai[all]) so the model picker's full catalog is runnable out of the box.
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "pytest-timeout>=2.3", "pytest-xdist>=3.6"]
 
 [tool.setuptools.packages.find]
