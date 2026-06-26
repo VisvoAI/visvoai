@@ -83,8 +83,8 @@ class StatusBar(Horizontal):
         t.append(r["name"], style=tv["foreground"])
         if r["level"]:
             label = _THINK_LABEL.get(r["level"], r["level"].title())
-            t.append(f"   Thinking Level: {label}", style=f"dim {tv['muted']}")
-        t.append(f"   ${r['in_cost']:g}/${r['out_cost']:g} per 1M tokens",
+            t.append(f" ({label})", style=f"dim {tv['muted']}")
+        t.append(f" | ${r['in_cost']:g}/${r['out_cost']:g} per 1M tks",
                  style=f"dim {tv['muted']}")
         return t
 

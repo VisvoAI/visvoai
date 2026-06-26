@@ -34,6 +34,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("login", "Add a provider API key"),
     ("resume", "Resume a past conversation"),
     ("compact", "Compact the context window"),
+    ("mode", "Cycle approval mode (normal / auto-edit / accept-all)"),
     ("commit", "Review & commit changes"),
     ("theme", "Choose a brand palette (Ctrl+T toggles light/dark)"),
     ("clear", "Clear the conversation"),
@@ -283,6 +284,8 @@ class CommandsMixin:
             self.run_worker(self._open_sessions())
         elif name == "compact":
             self.run_worker(self._compact_flow())
+        elif name == "mode":
+            self.action_cycle_hitl_mode()
         elif name == "commit":
             self.run_worker(self._open_git())
         elif name == "choice":

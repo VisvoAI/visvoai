@@ -3,6 +3,35 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.3.0] — 2026-06
+
+### Added
+- **Configurable context-assembly pipeline** (`context/`): per-turn system-prompt
+  assembly via `CLIRuntime._build_agent_node`, replacing the single static prompt.
+  Ordered providers (`base_prompt`, `project_instructions` — auto-discovers AGENTS.md /
+  CLAUDE.md up from cwd —, `environment`, `datetime`, `git_state`), each budget-clipped.
+  Static providers form a byte-stable cacheable prefix; per-turn providers the volatile
+  suffix. Configurable via `.visvoai/context.toml` (`[context]`, layered project→global):
+  toggle/order/budget per provider, plus a global token budget (truncate-per-section).
+- **Path confinement** (`pathguard.py`): `write_file`/`edit_file` are confined to the
+  working directory (+ `[permissions].write_roots`); symlink/`..` escapes and writes into
+  `.git/` are rejected. Reads stay unconfined. Applied in both tool sets.
+- **Permission policy** (`permissions.py`): pre-authorize known-safe ops in
+  `.visvoai/config.toml [permissions]` (`allow_shell` command prefixes, `allow_write`
+  globs) so the gate skips them.
+- **Graduated HITL approval modes** (`hitl_modes.py`): normal / auto-edit / accept-all,
+  cycled live by **shift+tab** or `/mode`, shown as a status-bar chip. Auto-edit
+  auto-approves file writes but still gates shell. Session-only (resets to normal).
+  Modes relax approval only — path confinement is never relaxed.
+- Single-shot `--yes`/`-y`: headless runs now **deny mutations by default** (except
+  policy-allowed ops); `--yes` opts into auto-approve. Path confinement applies regardless.
+
+### Changed
+- File-mutation tools (`tools/files.py`) are now built per-cwd via `make_write_file` /
+  `make_edit_file` factories (path-confined); read-only tools stay module-level.
+- Info-level toast notifications are suppressed (status bar / inline UI carry state);
+  warning/error toasts still show.
+
 ## [0.2.0] — 2026-06
 
 ### Added

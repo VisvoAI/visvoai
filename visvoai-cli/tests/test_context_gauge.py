@@ -56,7 +56,11 @@ async def test_gauge_hidden_when_none():
         bar = app.query_one("#status", StatusBar)
         bar.set_context(None)
         await pilot.pause()
-        assert "context" not in _right(app)
+        # gauge hidden → no percentage/token label in the right cell. (Match the
+        # gauge indicator, not the bare word "context" — that collided with branch
+        # names like "feat/cli-context-engineering" in the status location.)
+        right = _right(app)
+        assert "%" not in right and "tokens" not in right
 
 
 @pytest.mark.asyncio

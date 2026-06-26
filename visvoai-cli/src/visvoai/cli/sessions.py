@@ -26,7 +26,7 @@ def _footer_text(receipt: dict) -> str:
     if tin or tout:
         parts.append(f"{tin + tout:,} tok")
         parts.append(f"~${receipt.get('cost', 0):.4f}")
-    return "  ·  ".join(p for p in parts if p)
+    return " · ".join(p for p in parts if p)
 
 
 class SessionsMixin:

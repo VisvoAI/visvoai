@@ -10,17 +10,21 @@ Two surfaces, one console script (`visvoai`):
 - `visvoai "prompt"`   → single-shot: stream one turn to stdout
 
 # Key Files
-- `main.py` → the `visvoai` entry point: no prompt → `_launch_tui` (VisvoApp); a prompt → `_run_single_shot` (CLIRuntime graph → `astream_events` → stdout). Both build the model via `visvoai.ai.build_chat_model`.
-- `app.py` → `VisvoApp` — the Textual app: shell (CSS, bindings, compose/lifecycle, theme, welcome, quit/clear) + shared turn/HITL primitives (`_begin_turn`/`_mount_block`/`_tool_node`, `ask_choice`/`ask_form`/`ask_text`). Composed from mixins.
+- `main.py` → the `visvoai` entry point: no prompt → `_launch_tui` (VisvoApp); a prompt → `_run_single_shot` (CLIRuntime graph → `astream_events` → stdout). Both build the model via `visvoai.ai.build_chat_model`. Single-shot is headless: `--yes` auto-approves mutations; without it the gated tool set DENIES mutations except those `[permissions]` pre-authorizes (path confinement applies either way).
+- `app.py` → `VisvoApp` — the Textual app: shell (CSS, bindings, compose/lifecycle, theme, welcome, quit/clear) + shared turn/HITL primitives (`_begin_turn`/`_mount_block`/`_tool_node`, `ask_choice`/`ask_form`/`ask_text`). Composed from mixins. Owns `_hitl_mode` + `action_cycle_hitl_mode` (shift+tab). Overrides `notify` to suppress info-level toasts (warning/error still show).
 - `agent_turn.py` / `commands.py` / `sessions.py` / `render.py` / `demo.py` → VisvoApp mixins (real turn, slash commands, resume/screens, answer+mermaid rendering, the test-only mock).
 - `agent.py` → pipeline glue: `build_agent_graph` (provider → CLIRuntime graph), chunk classification, `SYSTEM_PROMPT`, deployment/usage/cost views. Textual-free.
-- `runtime.py` → `CLIRuntime(AgentRuntime)` — the default agent→tools loop, no interrupts/checkpointer.
+- `runtime.py` → `CLIRuntime(AgentRuntime)` — agent→tools loop, no interrupts/checkpointer; when built with a `ContextAssembler` it overrides `_build_agent_node` for per-turn prompt assembly (still honouring the soft-step-cap finalize), else falls back to the core static-prompt node.
 - `context.py` → `CLIContext(RuntimeContext)` — cwd / terminal width; no auth/datastore.
 - `store.py` → folder-per-conversation persistence (`history.jsonl` + `meta.json` + `receipts.jsonl`), no DB.
 - `keys.py` → layered API-key resolution + storage: `load_keys_into_env(cwd)` (env > project secrets > global config), `set_key(provider, key, scope, cwd)` (0600, auto-gitignore for project).
 - `catalog.py` → `install_cli_catalog()` — at startup installs `build_catalog([BakedSource(), RemoteModelsDevSource(cache)])` as the default registry so the picker shows the live models.dev catalog (cached `~/.visvoai/cache/models.json`, offline-tolerant). `--refresh-models` re-fetches. The picker (`agent.chat_deployments`) shows curated baked deployments always + a provider's full catalog only when keyed.
-- `gated_tools.py` → edit/write/shell behind a permission gate; web tools ungated.
-- `gitio.py` → real git: working-tree status / stage / unstage / commit / project files.
+- `gated_tools.py` → edit/write/shell behind a permission gate; edit/write also path-confined (`pathguard.confine`, boundary checked BEFORE the prompt); web tools ungated.
+- `pathguard.py` → `resolve_roots(cwd)` (cwd + `.visvoai/config.toml [permissions].write_roots`) + `confine(path, roots)` → realpath-resolved, escape/symlink/`.git`-blocked; raises `PathDenied`. Confines WRITES only (reads free); `run_shell` is gate-governed, not confinable.
+- `permissions.py` → `PermissionPolicy.auto_allow(tool, args)` from `.visvoai/config.toml [permissions]` (`allow_shell` command prefixes, `allow_write` path globs); `load_policy(cwd)` layers global→project. Pre-authorized ops skip the gate.
+- `hitl_modes.py` → `HITLMode` (NORMAL/AUTO_EDIT/ACCEPT_ALL): `next()` cycles, `auto_approves(tool)` (auto-edit = file writes only, shell stays gated), `chip` (None in NORMAL). Session-only; cycled by shift+tab (`action_cycle_hitl_mode`, priority binding) or `/mode`. Relaxes approval only — path confinement is independent.
+- `gitio.py` → real git: working-tree status / `status_summary` (diff-free per-turn snapshot) / stage / unstage / commit / project files.
+- `context/` → configurable per-turn system-prompt assembly (`build_assembler`); slots into `CLIRuntime._build_agent_node` (see `context/`).
 - `mermaid.py` → ```mermaid fence → segments + a self-contained HTML viewer (pure helpers).
 - `theme.py` / `grid.py` / `termbg.py` → 12-palette theme (reads `palette_tokens.json`), grid alignment, terminal-bg detection.
 - `tools/` → the agent tool set (files/shell/web split; see `tools/`).
@@ -29,7 +33,7 @@ Two surfaces, one console script (`visvoai`):
 
 # Key Classes / Functions
 - `VisvoApp(App)` → the Textual app; exposed lazily via `visvoai.cli.__getattr__` so `import visvoai.cli` / single-shot don't pull in Textual.
-- `CLIRuntime(AgentRuntime)` → no `_extend_graph` additions — the pure core loop.
+- `CLIRuntime(AgentRuntime)` → no `_extend_graph` additions; optional `_build_agent_node` override for the context-assembly pipeline (`__init__(assembler=…)`).
 - `cli` (main.py) → Click command, the `visvoai` console script; routes prompt→single-shot, no-prompt→TUI.
 - `build_agent_graph()` (agent.py) → builds the graph the TUI streams; `build_chat_model` applies the deployment's default thinking.
 

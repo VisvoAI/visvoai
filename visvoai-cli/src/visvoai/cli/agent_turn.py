@@ -316,10 +316,13 @@ class AgentTurnMixin:
                   "run_shell": "run"}
 
     async def _approve(self, tool_name: str, args: dict) -> bool:
-        """Permission gate for a mutating tool. Returns True to proceed. --yolo and
-        a per-tool 'allow all this session' bypass the prompt. Shown inline as the
-        Selection HITL while the tool is paused mid-execution (Phase-0 mechanism)."""
-        if self._yolo or tool_name in self._approved_all:
+        """Permission gate for a mutating tool. Returns True to proceed. The HITL
+        mode (auto-edit/accept-all), a per-tool 'allow all this session', and the
+        config policy each bypass the prompt. Shown inline as the Selection HITL
+        while the tool is paused mid-execution (Phase-0 mechanism)."""
+        if self._hitl_mode.auto_approves(tool_name) or tool_name in self._approved_all:
+            return True
+        if self._policy.auto_allow(tool_name, args):
             return True
         verb = self._GATE_VERB.get(tool_name, tool_name)
         target = args.get("path") or args.get("command") or ""

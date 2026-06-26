@@ -108,6 +108,9 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMi
 
     BINDINGS = [
         Binding("ctrl+t,super+t", "toggle_mode", "Theme", key_display="Ctrl+T"),
+        # priority: the focused prompt (a TextArea) otherwise swallows shift+tab
+        # (its default is focus-previous), so the App must intercept it first.
+        Binding("shift+tab", "cycle_hitl_mode", "Mode", priority=True, key_display="⇧Tab"),
         Binding("pageup", "scroll_up", "Scroll", priority=True, key_display="PgUp"),
         Binding("pagedown", "scroll_down", "Scroll", priority=True, show=False),
         Binding("ctrl+up,super+up", "scroll_up", "Scroll", priority=True, show=False),
@@ -147,10 +150,15 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMi
         # Cumulative conversation cost (USD), shown in the footer; summed from saved
         # receipts on resume. UI/budget signal only — not in model context.
         self._conv_cost = 0.0
-        # Permission gate: mutating tools ask before acting. --yolo bypasses;
-        # "allow all this session" accumulates per-tool in _approved_all.
-        self._yolo = False
+        # Permission gate: mutating tools ask before acting. The HITL mode
+        # (shift+tab / /mode) relaxes WHEN it asks; "allow all this session"
+        # accumulates per-tool in _approved_all; the config-driven policy
+        # pre-authorizes known-safe ops. Session-only — resets to NORMAL each launch.
+        from visvoai.cli.hitl_modes import HITLMode
+        from visvoai.cli.permissions import load_policy
+        self._hitl_mode = HITLMode.NORMAL
         self._approved_all: set[str] = set()
+        self._policy = load_policy(self._cwd)
         self._ctx_pct: int | None = None  # context % — hidden until a real turn reports usage
         self._ctx_tokens: int | None = None  # raw tokens in context (footer label)
         self._pace = 1.0    # demo speed multiplier (tests set this low to run fast)
@@ -306,6 +314,21 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMi
         new_mode = "light" if mode == "dark" else "dark"
         self._apply_theme(theme.theme_name(palette, new_mode))
         self.notify(f"theme: {palette} · {new_mode}")
+
+    def action_cycle_hitl_mode(self) -> None:
+        """Shift+Tab (and /mode) — cycle the approval mode: normal → auto-edit →
+        accept-all. Relaxes WHEN the gate asks; path confinement is unaffected.
+        The active mode shows as the status-bar chip — no toast needed."""
+        self._hitl_mode = self._hitl_mode.next()
+        self.query_one("#status", StatusBar).set_mode(self._hitl_mode.chip)
+
+    def notify(self, message: str, *, severity: str = "information", **kwargs) -> None:
+        """Suppress info-level toasts — they were noise (every theme/model/mode/resume
+        action popped one); state lives in the status bar and inline UI instead.
+        warning/error toasts still show, so boundary failures are never silenced."""
+        if severity == "information":
+            return
+        super().notify(message, severity=severity, **kwargs)
 
     # ── model picker / sessions ───────────────────────────────────────────────
     def _tv(self, key: str) -> str:
