@@ -3,9 +3,27 @@ from __future__ import annotations
 
 import pytest
 
+from textual.widgets import OptionList
+
 from visvoai.cli import VisvoApp
 from visvoai.cli.agent import DeployView
-from visvoai.cli.screens.model_view import ModelScreen, ModelRow, ThinkChip
+from visvoai.cli.screens.model_view import ModelScreen, ThinkChip
+
+
+def _row_ids(screen) -> list[str]:
+    """Selectable option ids in display order (skips disabled group headers)."""
+    ol = screen.query_one("#model-list", OptionList)
+    return [ol.get_option_at_index(i).id for i in range(ol.option_count)
+            if ol.get_option_at_index(i).id is not None]
+
+
+def _highlight(screen, dep_id: str) -> None:
+    ol = screen.query_one("#model-list", OptionList)
+    for i in range(ol.option_count):
+        if ol.get_option_at_index(i).id == dep_id:
+            ol.highlighted = i
+            return
+    raise AssertionError(f"{dep_id} not in the list")
 
 
 def _dv(id, name, provider, connected, thinking=("off", "low", "medium", "high"), default="medium"):
@@ -38,9 +56,30 @@ async def test_connected_first_then_locked():
         await pilot.pause()
         screen = await _push(app, pilot, ModelScreen(deps, current_id="gemini:f"), lambda r: None)
         # connected (sorted by provider) come first, locked last — all selectable.
-        assert [d.connected for d in screen._selectable] == [True, True, False]
-        assert [d.id for d in screen._selectable] == ["anthropic:s", "gemini:f", "openai:gpt"]
-        assert len(screen.query(ModelRow)) == 3
+        assert _row_ids(screen) == ["anthropic:s", "gemini:f", "openai:gpt"]
+        # opens highlighted on the current model
+        ol = screen.query_one("#model-list", OptionList)
+        assert ol.get_option_at_index(ol.highlighted).id == "gemini:f"
+
+
+@pytest.mark.asyncio
+async def test_search_filters_rows():
+    deps = [
+        _dv("gemini:f", "Flash", "gemini", connected=True),
+        _dv("openrouter:grok", "Grok 3", "openrouter", connected=True),
+        _dv("together:llama", "Llama 3.3", "together", connected=True),
+    ]
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = await _push(app, pilot, ModelScreen(deps), lambda r: None)
+        screen.query_one("#model-search").value = "grok"
+        await pilot.pause()
+        assert _row_ids(screen) == ["openrouter:grok"]
+        # provider name also matches
+        screen.query_one("#model-search").value = "together"
+        await pilot.pause()
+        assert _row_ids(screen) == ["together:llama"]
 
 
 @pytest.mark.asyncio
@@ -52,7 +91,6 @@ async def test_pick_thinking_model_returns_id_and_level():
         await pilot.pause()
         screen = await _push(app, pilot, ModelScreen(deps, current_id="gemini:f", current_level="medium"),
                              lambda r: result.update(r=r))
-        screen._idx = 0
         await screen.action_confirm()          # → thinking phase (model has 4 levels)
         await pilot.pause()
         assert screen._phase == "think"
@@ -71,7 +109,6 @@ async def test_clicking_think_chip_selects_and_confirms():
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = await _push(app, pilot, ModelScreen(deps), lambda r: result.update(r=r))
-        screen._idx = 0
         await screen.action_confirm()           # → thinking chooser
         await pilot.pause()
         chips = list(screen.query(ThinkChip))
@@ -96,7 +133,6 @@ async def test_single_level_model_dismisses_immediately():
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = await _push(app, pilot, ModelScreen(deps), lambda r: result.update(r=r))
-        screen._idx = 0
         await screen.action_confirm()           # no real thinking choice → straight to result
         await pilot.pause()
         assert result["r"] == ("img:x", "off")
@@ -110,7 +146,6 @@ async def test_esc_from_thinking_returns_to_list():
     async with app.run_test() as pilot:
         await pilot.pause()
         screen = await _push(app, pilot, ModelScreen(deps), lambda r: None)
-        screen._idx = 0
         await screen.action_confirm()           # → thinking
         await pilot.pause()
         assert screen._phase == "think"

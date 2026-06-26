@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "visvoai-core>=0.1.0",
     # Provider resolution (get_provider/get_model) is used directly in main.py.
-    "visvoai-ai>=0.1.0",
+    "visvoai-ai>=0.2.0",
     "click>=8.1",
     "rich>=13.0",
     # The terminal UI (REPL) is built on Textual; .env auto-load via python-dotenv.

@@ -92,10 +92,15 @@ async def test_model_picker_changes_status_bar():
             if isinstance(app.screen, ModelScreen):
                 break
         screen = app.screen
-        # Pick a model different from the current one.
-        target = next(i for i, d in enumerate(screen._selectable) if d.id != app._model)
-        target_id = screen._selectable[target].id
-        screen._idx = target
+        # Pick a model different from the current one (highlight it in the OptionList).
+        from textual.widgets import OptionList
+        ol = screen.query_one("#model-list", OptionList)
+        target_id = None
+        for i in range(ol.option_count):
+            oid = ol.get_option_at_index(i).id
+            if oid is not None and oid != app._model:
+                target_id, ol.highlighted = oid, i
+                break
         await screen.action_confirm()
         await pilot.pause()
         # A thinking-capable model opens the level chooser → confirm the default too.

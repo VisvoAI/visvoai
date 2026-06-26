@@ -1,24 +1,30 @@
 """ModelScreen — the full-screen model page.
 
 Two phases in one screen:
-  1. Pick a model — grouped by provider, **connected providers first**, locked
-     (needs-a-key) ones shown after but not selectable. Full width: name left,
-     thinking + per-MTok cost right.
-  2. Pick a thinking level — the chosen model's possible levels as chips, its
-     default preselected. Skipped for models that expose only one level.
+  1. Pick a model — a searchable, virtualized list (handles the full ~4000-model
+     catalog smoothly). Type to filter by name/provider; connected models first,
+     locked (needs-a-key) ones after. Name left, ctx · thinking · per-MTok cost right.
+  2. Pick a thinking level — the chosen model's levels as chips, default preselected.
+     Skipped for models that expose only one level.
 
-`dismiss((deployment_id, level))` on confirm, or `dismiss(None)` on cancel.
-Driven a DeployView list from `agent.chat_deployments()` so the screen stays off
-direct visvoai.ai imports.
+`dismiss((deployment_id, level))` on confirm, or `dismiss(None)` on cancel. Driven by a
+DeployView list from `agent.chat_deployments()` so the screen stays off direct
+visvoai.ai imports.
+
+Performance: the picker is a single `OptionList` (rows are lightweight Options, rendered
+only when visible) — NOT one Widget per model. Searching rebuilds the option set; nothing
+is mounted per row, so hundreds/thousands of models stay responsive.
 """
 from __future__ import annotations
 
+from rich.table import Table
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Static
+from textual.widgets import Input, OptionList, Static
+from textual.widgets.option_list import Option
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
@@ -39,60 +45,10 @@ def _fmt_ctx(n: int) -> str:
     if not n:
         return ""
     if n >= 1_000_000:
-        return f"{n / 1_000_000:g}M ctx"
+        return f"{n / 1_000_000:.1f}".rstrip("0").rstrip(".") + "M"   # 1048576 → "1M"
     if n >= 1_000:
-        return f"{n // 1000}K ctx"
-    return f"{n} ctx"
-
-
-class ModelRow(Horizontal):
-    """One model: `dot name … think  $in/$out`. Always selectable; locked (no-key)
-    rows render dimmed so the separation reads, but you can still switch to one
-    (the turn surfaces the missing key)."""
-
-    DEFAULT_CSS = """
-    ModelRow { height: 1; padding: 0 1; }
-    ModelRow:hover { background: $hover; }
-    ModelRow.current { background: $hover; }
-    ModelRow > .mr-name { width: 1fr; text-overflow: ellipsis; }
-    ModelRow > .mr-ctx { width: 10; content-align: right middle; }
-    ModelRow > .mr-think { width: 8; content-align: right middle; }
-    ModelRow > .mr-cost { width: 18; content-align: right middle; }
-    """
-
-    class Selected(Message):
-        def __init__(self, index: int) -> None:
-            self.index = index
-            super().__init__()
-
-    def __init__(self, dep, index: int) -> None:
-        super().__init__()
-        self.dep = dep
-        self.index = index   # -1 = locked / not selectable
-
-    def on_click(self) -> None:
-        if self.index >= 0:
-            self.post_message(self.Selected(self.index))
-
-    def compose(self) -> ComposeResult:
-        yield Static(classes="mr-name")
-        yield Static(classes="mr-ctx")
-        yield Static(classes="mr-think")
-        yield Static(classes="mr-cost")
-
-    def on_mount(self) -> None:
-        tv = theme.palette(self)
-        d = self.dep
-        locked = not d.connected
-        name = Text()
-        name.append("● " if not locked else "○ ", style=tv["primary"] if not locked else f"dim {tv['muted']}")
-        name.append(d.display_name, style=tv["foreground"] if not locked else f"dim {tv['muted']}")
-        self.query_one(".mr-name", Static).update(name)
-        self.query_one(".mr-ctx", Static).update(Text(_fmt_ctx(d.context_window), style=f"dim {tv['muted']}"))
-        think = "think" if d.selectable_thinking else ""
-        self.query_one(".mr-think", Static).update(Text(think, style=f"dim {tv['muted']}"))
-        cost = f"${d.in_cost:g}/${d.out_cost:g}" if not locked else "needs key"
-        self.query_one(".mr-cost", Static).update(Text(cost, style=f"dim {tv['muted']}"))
+        return f"{n // 1000}K"
+    return str(n)
 
 
 class ThinkChip(Static):
@@ -141,15 +97,18 @@ class ModelScreen(BlendScreen):
 
     DEFAULT_CSS = """
     ModelScreen { align: center top; }
-    ModelScreen > #model-box { width: 100%; max-width: 96; padding: 1 3; height: 1fr; }
+    ModelScreen > #model-box { width: 100%; max-width: 120; padding: 1 4; height: 1fr; }
 
     #model-title { text-style: bold; color: $primary; padding: 0 1; }
-    #model-hint { color: $muted; padding: 0 1; margin: 0 0 1 0; }
-    #model-list { height: 1fr; }
-    .model-section { text-style: bold; padding: 0 1; margin: 1 0 0 0; border-bottom: solid $primary-darken-2; }
-    .model-section-connected { color: $success; }
-    .model-section-locked { color: $warning; }
-    .model-provider { color: $muted; padding: 0 1; margin: 1 0 0 0; }
+    #model-search, #model-search:focus {
+        border: none; background: transparent; padding: 0 1; margin: 0 0 1 0;
+        border-bottom: solid $primary;
+    }
+    #model-list { height: 1fr; border: none; padding: 0; background: transparent; }
+    #model-list:focus { border: none; }
+    #model-list > .option-list--option-highlighted { background: $hover; }
+    #model-list > .option-list--option-disabled { color: $muted; }
+    #model-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
 
     #think-panel { height: auto; display: none; padding: 1 1 0 1; border-top: solid $primary-darken-2; margin: 1 0 0 0; }
     #think-panel.shown { display: block; }
@@ -160,98 +119,155 @@ class ModelScreen(BlendScreen):
     def __init__(self, deployments: list, current_id: str = "", current_level=None) -> None:
         super().__init__()
         self.deps = deployments
+        self._by_id = {d.id: d for d in deployments}
         self._current_id = current_id
         self._current_level = current_level
         self._phase = "model"            # "model" | "think"
-        self._selectable: list = []      # DeployView per selectable row, by index
-        self._idx = 0
         self._picked = None              # DeployView chosen in phase 1
         self._think_levels: list[str] = []
         self._think_idx = 0
 
-    # ── phase 1: model list ───────────────────────────────────────────────────
-    def _list_widgets(self) -> list:
-        connected = sorted([d for d in self.deps if d.connected], key=lambda d: (d.provider, d.display_name))
-        locked = sorted([d for d in self.deps if not d.connected], key=lambda d: (d.provider, d.display_name))
-        self._selectable = []
-        widgets: list = []
+    # ── phase 1: searchable model list ────────────────────────────────────────
+    def _row(self, dep) -> Table:
+        """One model row: indented dot+name (left) + aligned ctx / thinking / cost columns.
+        Fixed column widths so the meta lines up as a table down the page."""
+        tv = theme.palette(self)
+        locked = not dep.connected
+        fg = tv["foreground"] if not locked else f"dim {tv['muted']}"
+        muted = f"dim {tv['muted']}"
 
-        def _provider_groups(deps):
-            last_provider = None
-            for d in deps:
-                if d.provider != last_provider:
-                    widgets.append(Static(_provider_label(d.provider), classes="model-provider"))
-                    last_provider = d.provider
-                idx = len(self._selectable)
-                self._selectable.append(d)
-                widgets.append(ModelRow(d, index=idx))
+        name = Text("  ")  # indent under the provider header
+        name.append("● " if not locked else "○ ", style=tv["primary"] if not locked else muted)
+        name.append(dep.display_name, style=fg)
 
-        if connected:
-            widgets.append(Static("Connected", classes="model-section model-section-connected"))
-            _provider_groups(connected)
-        if locked:
-            widgets.append(Static("Needs an API key", classes="model-section model-section-locked"))
-            _provider_groups(locked)
-        return widgets
+        ctx = _fmt_ctx(dep.context_window)
+        ctx_t = Text(f"{ctx} ctx" if ctx else "", style=muted)
+        think_t = Text("thinking" if dep.selectable_thinking else "", style=muted)
+        cost_t = Text(f"${dep.in_cost:g} / ${dep.out_cost:g}" if not locked else "needs key", style=muted)
+
+        g = Table.grid(expand=True, padding=(0, 2, 0, 0))
+        g.add_column(ratio=1, overflow="ellipsis", no_wrap=True)  # name
+        g.add_column(width=12, justify="right", no_wrap=True)     # context
+        g.add_column(width=10, justify="right", no_wrap=True)     # thinking
+        g.add_column(width=16, justify="right", no_wrap=True)     # cost
+        g.add_row(name, ctx_t, think_t, cost_t)
+        return g
+
+    def _header(self, provider: str, connected: bool, first: bool) -> Option:
+        """A provider group header (disabled). A leading blank line spaces groups apart;
+        locked providers are tagged so the missing-key state reads at the group level."""
+        tv = theme.palette(self)
+        t = Text() if first else Text("\n")
+        t.append(_provider_label(provider), style=f"bold {tv['foreground']}" if connected
+                 else f"bold {tv['muted']}")
+        if not connected:
+            t.append("   · needs key", style=f"dim {tv['warning']}")
+        return Option(t, disabled=True)
+
+    def _options(self, query: str = "") -> list[Option]:
+        """Filtered options, grouped by provider — connected providers first, then locked."""
+        q = query.strip().lower()
+
+        def _match(d) -> bool:
+            return not q or q in d.display_name.lower() or q in _provider_label(d.provider).lower()
+
+        groups: dict[str, list] = {}
+        for d in self.deps:
+            if _match(d):
+                groups.setdefault(d.provider, []).append(d)
+
+        # connected providers first, then alphabetical by display label
+        def _connected(p: str) -> bool:
+            return any(d.connected for d in groups[p])
+
+        order = sorted(groups, key=lambda p: (not _connected(p), _provider_label(p).lower()))
+
+        opts: list[Option] = []
+        for p in order:
+            opts.append(self._header(p, _connected(p), first=not opts))
+            for d in sorted(groups[p], key=lambda d: d.display_name.lower()):
+                opts.append(Option(self._row(d), id=d.id))
+        if not opts:
+            opts.append(Option(Text("no models match", style=theme.palette(self)["muted"]), disabled=True))
+        return opts
+
+    def _rebuild(self, query: str = "") -> None:
+        ol = self.query_one("#model-list", OptionList)
+        ol.clear_options()
+        ol.add_options(self._options(query))
+        # highlight the current model if present, else the first selectable row
+        target = None
+        for i in range(ol.option_count):
+            opt = ol.get_option_at_index(i)
+            if opt.id == self._current_id:
+                target = i
+                break
+            if target is None and opt.id is not None:
+                target = i
+        ol.highlighted = target
 
     def compose(self) -> ComposeResult:
         with Vertical(id="model-box"):
             yield Static("Select model", id="model-title")
-            yield Static("↑/↓ choose  ·  enter select  ·  esc cancel", id="model-hint")
-            with VerticalScroll(id="model-list"):
-                yield from self._list_widgets()
+            yield Input(placeholder="search models…", id="model-search")
+            yield OptionList(id="model-list")
             with Vertical(id="think-panel"):
                 yield Static("", id="think-label")
                 yield Horizontal(id="think-chips")
+            yield Static("type to search   ↑/↓ choose   enter select   esc cancel", id="model-hint")
 
     def on_mount(self) -> None:
         super().on_mount()
-        # Start on the current model if it's selectable, else the first.
-        for i, d in enumerate(self._selectable):
-            if d.id == self._current_id:
-                self._idx = i
-                break
-        self._sync_rows()
+        self._rebuild("")
+        self.query_one("#model-search", Input).focus()
 
-    def _rows(self) -> list:
-        return [r for r in self.query(ModelRow) if r.index >= 0]
+    # search box drives the filter live
+    def on_input_changed(self, msg: Input.Changed) -> None:
+        if msg.input.id == "model-search" and self._phase == "model":
+            self._rebuild(msg.value)
 
-    def _sync_rows(self) -> None:
-        for r in self.query(ModelRow):
-            r.set_class(r.index == self._idx, "current")
+    def on_input_submitted(self, msg: Input.Submitted) -> None:
+        if msg.input.id == "model-search" and self._phase == "model":
+            msg.stop()
+            self.run_worker(self.action_confirm())
+
+    # clicking a row (OptionList fires this for non-disabled options only)
+    async def on_option_list_option_selected(self, msg: OptionList.OptionSelected) -> None:
+        if self._phase != "model":
+            return
+        msg.stop()
+        dep = self._by_id.get(msg.option.id)
+        if dep:
+            await self._activate(dep)
+
+    def _highlighted_dep(self):
+        """The DeployView for the currently highlighted row, or None."""
+        ol = self.query_one("#model-list", OptionList)
+        if ol.highlighted is None:
+            return None
+        return self._by_id.get(ol.get_option_at_index(ol.highlighted).id)
 
     def action_prev(self) -> None:
-        if self._phase != "model" or not self._selectable:
-            return
-        self._idx = (self._idx - 1) % len(self._selectable)
-        self._sync_rows()
+        if self._phase == "model":
+            self.query_one("#model-list", OptionList).action_cursor_up()
 
     def action_next(self) -> None:
-        if self._phase != "model" or not self._selectable:
-            return
-        self._idx = (self._idx + 1) % len(self._selectable)
-        self._sync_rows()
-
-    async def on_model_row_selected(self, msg: ModelRow.Selected) -> None:
-        msg.stop()
-        self._idx = msg.index
-        self._sync_rows()
-        await self._activate()
+        if self._phase == "model":
+            self.query_one("#model-list", OptionList).action_cursor_down()
 
     # ── phase 2: thinking ─────────────────────────────────────────────────────
-    async def _activate(self) -> None:
+    async def _activate(self, dep) -> None:
         """Enter on a model: go to the thinking chooser, or dismiss if there's no
         real choice (single level)."""
-        if not self._selectable:
+        if not dep.selectable_thinking:
+            self.dismiss((dep.id, dep.default_thinking))
             return
-        d = self._selectable[self._idx]
-        if not d.selectable_thinking:
-            self.dismiss((d.id, d.default_thinking))
-            return
-        self._picked = d
+        self._picked = dep
         self._phase = "think"
-        self._think_levels = list(d.thinking_levels)
-        start = self._current_level if (self._current_id == d.id and self._current_level in d.thinking_levels) else d.default_thinking
+        self.set_focus(None)             # let left/right/enter bindings drive the chips
+        self._think_levels = list(dep.thinking_levels)
+        start = (self._current_level if (self._current_id == dep.id and self._current_level in dep.thinking_levels)
+                 else dep.default_thinking)
         self._think_idx = self._think_levels.index(start) if start in self._think_levels else 0
         await self._render_think()
 
@@ -293,7 +309,9 @@ class ModelScreen(BlendScreen):
     # ── confirm / back ────────────────────────────────────────────────────────
     async def action_confirm(self) -> None:
         if self._phase == "model":
-            await self._activate()
+            dep = self._highlighted_dep()
+            if dep:
+                await self._activate(dep)
         else:
             self.dismiss((self._picked.id, self._think_levels[self._think_idx]))
 
@@ -301,5 +319,6 @@ class ModelScreen(BlendScreen):
         if self._phase == "think":
             self._phase = "model"
             self.query_one("#think-panel", Vertical).set_class(False, "shown")
+            self.query_one("#model-search", Input).focus()
         else:
             self.dismiss(None)
