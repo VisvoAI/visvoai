@@ -196,6 +196,27 @@ def working_tree_status(cwd: str) -> Optional[dict]:
     }
 
 
+def status_summary(cwd: str) -> Optional[dict]:
+    """A cheap, diff-free snapshot for per-turn context: branch, ahead/behind, and
+    the dirty paths with their porcelain state. Returns None if not a repo (a clean
+    tree still returns a dict with an empty `files` list). Unlike
+    `working_tree_status`, this computes NO diffs — safe to call every turn."""
+    if not _is_repo(cwd):
+        return None
+    upstream, behind, ahead = _upstream_counts(cwd)
+    files = [
+        {"state": (x if x != " " else y), "path": path, "staged": x not in (" ", "?")}
+        for x, y, path in _porcelain_entries(cwd)
+    ]
+    return {
+        "branch": _branch(cwd),
+        "upstream": upstream,
+        "ahead": ahead,
+        "behind": behind,
+        "files": files,
+    }
+
+
 def project_files(cwd: str, limit: int = 4000) -> List[str]:
     """Candidate paths for the @-mention picker: git-tracked + untracked (respecting
     .gitignore). Falls back to a bounded recursive walk when cwd is not a repo."""

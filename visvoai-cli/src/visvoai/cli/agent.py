@@ -190,6 +190,7 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     key/integration/unknown deployment — the caller surfaces it in the UI.
     """
     from visvoai.ai import build_chat_model
+    from visvoai.cli.context import build_assembler
     from visvoai.cli.runtime import CLIRuntime
     from visvoai.cli.tools import build_cli_tools
 
@@ -200,7 +201,8 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
         tools = build_gated_tools(cwd=cwd, approve=approve)
     else:
         tools = build_cli_tools(cwd=cwd)
-    return CLIRuntime().build_graph(
+    assembler = build_assembler(SYSTEM_PROMPT, cwd)
+    return CLIRuntime(assembler=assembler).build_graph(
         model=model,
         core_tools=tools,
         all_tools_map={t.name: t for t in tools},
