@@ -34,9 +34,16 @@ SYSTEM_PROMPT = (
 
 
 def provider_has_key(provider_name: str) -> bool:
-    """True if provider_name has a resolvable API key (explicit or env var)."""
-    from visvoai.ai.providers.config import resolve_api_key
+    """True if provider_name has a resolvable API key. Checks the {PROVIDER}_API_KEY
+    convention first (covers models.dev providers not in the static key map — e.g.
+    deepseek, nebius), then visvoai-ai's static resolution (gemini/anthropic/…)."""
+    import os
 
+    from visvoai.ai.providers.config import resolve_api_key
+    from visvoai.cli.keys import env_var_for
+
+    if os.environ.get(env_var_for(provider_name)):
+        return True
     try:
         resolve_api_key(provider_name)
         return True
@@ -112,11 +119,28 @@ def usage_of(message_or_chunk) -> dict:
     return usage_from(message_or_chunk)
 
 
+def _baked_deployment_ids() -> set:
+    """Composite ids of the curated baked deployments (~the hand-picked floor). These are
+    always shown in the picker (connected or locked); a provider's broader models.dev
+    catalog appears only when that provider is keyed — so abundance doesn't drown the list
+    yet the curated set stays visible on a keyless install."""
+    from visvoai.ai import BakedSource, Capability, DeploymentRegistry
+    reg = DeploymentRegistry(BakedSource().models())
+    return {info.id for info in reg.list_deployments(Capability.CHAT)}
+
+
 def chat_deployments() -> List["DeployView"]:
-    """All selectable CHAT deployments as DeployView, each tagged connected/locked.
+    """Selectable CHAT deployments as DeployView, tagged connected/locked. Shows the
+    curated baked deployments plus models.dev models for providers you have a key for.
     The model page groups + orders these (connected first)."""
-    from visvoai.ai import list_deployments, Capability
-    return [_to_view(d, provider_has_key(d.provider)) for d in list_deployments(Capability.CHAT)]
+    from visvoai.ai import Capability, list_deployments
+    baked_ids = _baked_deployment_ids()
+    out: List["DeployView"] = []
+    for d in list_deployments(Capability.CHAT):
+        keyed = provider_has_key(d.provider)
+        if keyed or d.id in baked_ids:
+            out.append(_to_view(d, keyed))
+    return out
 
 
 def deployment_view(deployment_id: str) -> "DeployView | None":

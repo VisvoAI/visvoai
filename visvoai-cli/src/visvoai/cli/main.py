@@ -41,6 +41,8 @@ import click
     help="Resume a conversation by id (or the latest if no id). TUI only.",
 )
 @click.option("--verbose", is_flag=True, help="Single-shot: show tool inputs/outputs.")
+@click.option("--refresh-models", is_flag=True,
+              help="Re-fetch the models.dev catalog (drops the cache), then exit.")
 @click.option(
     "--set-key",
     "set_key_provider",
@@ -50,12 +52,18 @@ import click
          "key (hidden) and where to save it (global or this project).",
 )
 def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
-        set_key_provider: str) -> None:
+        set_key_provider: str, refresh_models: bool) -> None:
     """VisvoAI — terminal coding agent. Run with no prompt for the interactive TUI,
     or pass a prompt for a single-shot stream."""
     abs_cwd = os.path.abspath(cwd)
     if set_key_provider:
         _set_key_flow(set_key_provider, abs_cwd)
+        return
+    if refresh_models:
+        from visvoai.cli.catalog import install_cli_catalog
+        n = install_cli_catalog(force_refresh=True)
+        click.echo(f"Refreshed model catalog — {n} models." if n
+                   else "Could not refresh (offline?) — using the baked floor.")
         return
     text = " ".join(prompt).strip()
     if text:
@@ -69,10 +77,12 @@ def _bootstrap_env(cwd: str) -> None:
     Loads the nearest .env, then fills os.environ from the stored key layers
     (project secrets → global config) for anything not already set."""
     from dotenv import load_dotenv
+    from visvoai.cli.catalog import install_cli_catalog
     from visvoai.cli.keys import load_keys_into_env
 
     load_dotenv()                  # .env → os.environ (counts as the env layer)
     load_keys_into_env(cwd)        # project/global stored keys fill the rest
+    install_cli_catalog()          # baked + cached models.dev → the live picker catalog
 
 
 def _set_key_flow(provider: str, cwd: str) -> None:

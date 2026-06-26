@@ -18,6 +18,7 @@ Two surfaces, one console script (`visvoai`):
 - `context.py` → `CLIContext(RuntimeContext)` — cwd / terminal width; no auth/datastore.
 - `store.py` → folder-per-conversation persistence (`history.jsonl` + `meta.json` + `receipts.jsonl`), no DB.
 - `keys.py` → layered API-key resolution + storage: `load_keys_into_env(cwd)` (env > project secrets > global config), `set_key(provider, key, scope, cwd)` (0600, auto-gitignore for project).
+- `catalog.py` → `install_cli_catalog()` — at startup installs `build_catalog([BakedSource(), RemoteModelsDevSource(cache)])` as the default registry so the picker shows the live models.dev catalog (cached `~/.visvoai/cache/models.json`, offline-tolerant). `--refresh-models` re-fetches. The picker (`agent.chat_deployments`) shows curated baked deployments always + a provider's full catalog only when keyed.
 - `gated_tools.py` → edit/write/shell behind a permission gate; web tools ungated.
 - `gitio.py` → real git: working-tree status / stage / unstage / commit / project files.
 - `mermaid.py` → ```mermaid fence → segments + a self-contained HTML viewer (pure helpers).
