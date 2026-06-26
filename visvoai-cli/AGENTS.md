@@ -1,29 +1,45 @@
 # visvoai-cli
 
-A working developer-tool CLI built on `visvoai-core`: an agent that reads and
-edits the filesystem, runs shell commands, and streams output to the terminal.
-It is the reference example of consuming the runtime from a real surface.
+A terminal-native coding agent built on `visvoai-core` + `visvoai-ai`: a Textual
+TUI (interactive REPL) plus a single-shot mode. The agent reads/edits files, runs
+shell commands, searches the web, and renders its work — streaming replies, tool
+activity, diffs, thinking, and mermaid diagrams — in the terminal.
 
-It is intentionally minimal — plain LangChain `@tool` functions, a synchronous
-loop, no checkpointer — to keep the consuming pattern easy to read. Expect it to
-grow; keep new additions just as small and dependency-light.
+Two surfaces, one console script (`visvoai`):
+- `visvoai`            → launch the Textual TUI
+- `visvoai "prompt"`   → single-shot: stream one turn to stdout
 
 # Key Files
-- `src/visvoai/cli/main.py` → Click entry point; resolves the model via `visvoai.ai.get_provider`, builds the graph, streams `astream_events` to stdout
-- `src/visvoai/cli/context.py` → `CLIContext(RuntimeContext)` — CLI-specific state (cwd, terminal width)
-- `src/visvoai/cli/runtime.py` → `CLIRuntime(AgentRuntime)` — adds no extra nodes (pure core loop)
-- `src/visvoai/cli/tools/__init__.py` → file + shell tools as plain LangChain `@tool` functions
+- `main.py` → the `visvoai` entry point: no prompt → `_launch_tui` (VisvoApp); a prompt → `_run_single_shot` (CLIRuntime graph → `astream_events` → stdout). Both build the model via `visvoai.ai.build_chat_model`.
+- `app.py` → `VisvoApp` — the Textual app: shell (CSS, bindings, compose/lifecycle, theme, welcome, quit/clear) + shared turn/HITL primitives (`_begin_turn`/`_mount_block`/`_tool_node`, `ask_choice`/`ask_form`/`ask_text`). Composed from mixins.
+- `agent_turn.py` / `commands.py` / `sessions.py` / `render.py` / `demo.py` → VisvoApp mixins (real turn, slash commands, resume/screens, answer+mermaid rendering, the test-only mock).
+- `agent.py` → pipeline glue: `build_agent_graph` (provider → CLIRuntime graph), chunk classification, `SYSTEM_PROMPT`, deployment/usage/cost views. Textual-free.
+- `runtime.py` → `CLIRuntime(AgentRuntime)` — the default agent→tools loop, no interrupts/checkpointer.
+- `context.py` → `CLIContext(RuntimeContext)` — cwd / terminal width; no auth/datastore.
+- `store.py` → folder-per-conversation persistence (`history.jsonl` + `meta.json` + `receipts.jsonl`), no DB.
+- `gated_tools.py` → edit/write/shell behind a permission gate; web tools ungated.
+- `gitio.py` → real git: working-tree status / stage / unstage / commit / project files.
+- `mermaid.py` → ```mermaid fence → segments + a self-contained HTML viewer (pure helpers).
+- `theme.py` / `grid.py` / `termbg.py` → 12-palette theme (reads `palette_tokens.json`), grid alignment, terminal-bg detection.
+- `tools/` → the agent tool set (files/shell/web split; see `tools/`).
+- `widgets/`, `screens/` → reusable Textual widgets and full-screen views (each has its own AGENTS.md).
+- `palette_tokens.json`, `assets/` → shipped package data (see `[tool.setuptools.package-data]`).
 
 # Key Classes / Functions
-- `CLIContext(RuntimeContext)` → adds cwd / terminal width; no auth or datastore fields
-- `CLIRuntime(AgentRuntime)` → `_extend_graph()` adds nothing — the default agent→tools loop
-- `cli` → Click entry point (registered as the `visvoai` console script)
+- `VisvoApp(App)` → the Textual app; exposed lazily via `visvoai.cli.__getattr__` so `import visvoai.cli` / single-shot don't pull in Textual.
+- `CLIRuntime(AgentRuntime)` → no `_extend_graph` additions — the pure core loop.
+- `cli` (main.py) → Click command, the `visvoai` console script; routes prompt→single-shot, no-prompt→TUI.
+- `build_agent_graph()` (agent.py) → builds the graph the TUI streams; `build_chat_model` applies the deployment's default thinking.
 
 # Conventions
-- No graph interrupts — the CLI is synchronous (the user is already in the loop)
-- Tools write to stdout via Rich; no SSE, no WebSockets
-- Tools are plain `@tool` functions (not `BaseAgentTool`) — demonstrates that `visvoai-core` binds any LangChain `BaseTool`
-- `CLIContext` must not import any private/consumer modules — only `visvoai-core`
+- Pure public-package consumer: imports only `visvoai-ai`, `visvoai-core`, relative modules, and declared third-party deps (textual, rich, click, pygments, python-dotenv, langchain-google-genai). NEVER a private/platform module.
+- No private names in shipped text (docstrings/comments/AGENTS.md) — boundary rule 2.
+- Every widget owns its styling via Textual `DEFAULT_CSS`; colours come only from `theme.py`.
+- `app.py` holds the shell + shared primitives; feature concerns live in mixins.
+- No graph interrupts/checkpointer — the CLI is synchronous (the human is in the loop).
 
 # Gotchas
-- `--model` is resolved through `visvoai.ai.get_model`/`get_provider`, so any registered model (Gemini, Anthropic, OpenAI-compatible) works — not just Gemini. The provider reads its own API key from the matching env var (e.g. `GEMINI_API_KEY`). The default model is Gemini, so `langchain-google-genai` ships as a dependency; other families need their own extra (`visvoai-ai[anthropic]`, etc.). An unregistered `--model` falls back to the gemini provider.
+- `astream_events` is called with an explicit `recursion_limit=100` (both surfaces) — the LangGraph default 25 crashes a deep turn before the core graph's soft step cap can force a clean finalize.
+- The mock showcase (DemoMixin + mock.py) is kept for tests but is NOT reachable from the menu, by typing `/demo`, or any key binding — tests drive it via `run_command`.
+- `theme.py` reads `palette_tokens.json` from its own directory at import time → it must ship as package data (it does).
+- Tests live in `tests/` and run in the package's own env (`uv run --extra dev pytest`); `[tool.uv.sources]` resolves the sibling packages by path for dev (pip/PyPI ignore that table).

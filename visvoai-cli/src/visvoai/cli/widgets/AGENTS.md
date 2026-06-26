@@ -1,0 +1,24 @@
+# widgets
+
+Reusable Textual widgets in the "Style-B wired-schematic" identity. Each owns its
+styling via `DEFAULT_CSS` and pulls colours only from `theme.py`, so it renders
+consistently wherever mounted. `__init__.py` is the re-export surface.
+
+# Key Files
+- `conversation.py` → conversation-stream widgets: `UserMsg` (turn anchor), `Assistant` (streaming markdown, keeps `_raw` for mermaid split), `Thinking` (collapsible, hover-brighten), `TurnFooter`, `WorkingIndicator`.
+- `welcome.py` → launch chrome: `Welcome`, `WelcomeBanner` (factory-driven so they re-theme).
+- `tool_row.py` → Style-B tool wire: `ToolRow` / `ToolGroup` / `ToolNode` (auto-clustering, hover-brighten) + `ToolErrorBody`; `VERB_MAP`/`TOOL_DISPLAY` maps.
+- `diff.py` → `CleanDiff` (pygments-highlighted side-by-side / unified diff).
+- `output.py` → `ToolOutput` / `ShowMore`; `output_toolbar.py` → `OutputToolbar` / `SearchInput` / `SearchRow` (in-output search); `streaming_output.py`, `severity_output.py`, `read_chain.py`.
+- `selection.py` / `form.py` / `free_text.py` → inline HITL widgets.
+- `plan.py`, `system_note.py`, `error.py`, `reconciliation.py`, `citation.py`, `structure_tree.py`, `file_creation.py` → notices / structured blocks.
+- `status.py` → `StatusBar` (model line + cumulative cost + context gauge with token label); `slash.py` → `SlashMenu`; `prompt.py` → `PromptArea` (paste-pill + slash/@ keys); `file_menu.py` → `FileMenu` (@-mention picker).
+- `mermaid_card.py` → `MermaidCard` — the clickable inline diagram card.
+
+# Conventions
+- Colours only from `theme.palette(self)`; never hardcode hex. Indentation numbers live only in `grid.py`.
+- Inline Rich styles override CSS `color`, so hover/state effects re-render via a tracked flag (see `Thinking`/`ToolRow`).
+
+# Gotchas
+- `Assistant` subclasses Textual `Markdown` and keeps a `_raw` buffer (Markdown.append discards source) — the mermaid reflow needs it.
+- Widgets with timers (spinners) must stop them in `on_unmount` to avoid post-teardown warnings.

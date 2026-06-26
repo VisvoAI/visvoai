@@ -4,7 +4,7 @@ visvoai.cli.context — CLI-specific runtime context.
 CLIContext extends RuntimeContext with filesystem context for developer tool use.
 No auth, no DB, no streaming queues — just the working directory and path constraints.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 from visvoai.core.context import RuntimeContext
 

@@ -1,0 +1,300 @@
+"""
+agent.py — the real visvoai-core pipeline behind the TUI (integration Phase 1).
+
+Keeps all live-pipeline glue in one place so app.py only orchestrates widgets:
+  - chat_models() / default_chat_model() : the model picker, driven by the registry
+  - build_agent_graph()                  : provider (visvoai-ai) → CLIRuntime graph
+  - chunk_text / tool_output_text / fmt_args : astream_events payload extractors
+
+No private imports — a pure public-package consumer (visvoai-ai + visvoai-core).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, List, Optional, Tuple
+
+from visvoai.ai import get_deployment
+
+SYSTEM_PROMPT = (
+    "You are a developer tool with access to the local filesystem and a shell.\n"
+    "Help the developer with coding tasks: read files, edit code, run commands, "
+    "explain what you find. Be precise and minimal. Always read a file before "
+    "editing it. After changes, verify by reading back or running tests.\n"
+    "For a SIMPLE relationship or flow (a few nodes, a linear or lightly-branched "
+    "path), draw it inline as a compact arrow diagram (e.g. `parse -> validate -> "
+    "store`) so it reads directly in the terminal — do not use mermaid for these. "
+    "Reserve a fenced ```mermaid code block for genuinely COMPLEX diagrams (many "
+    "nodes, real branching, or sequence/state/ER/class diagrams); the CLI renders "
+    "those in the browser. Use that fence, not any other diagram syntax or HTML tag.\n"
+    "Use web_search only when the answer depends on current, changing, or external "
+    "information you don't already have — don't search for stable facts you can "
+    "answer directly. Use web_fetch to read a specific URL you already have; use "
+    "web_search (not web_fetch) when you don't have the URL yet."
+)
+
+
+def provider_has_key(provider_name: str) -> bool:
+    """True if provider_name has a resolvable API key (explicit or env var)."""
+    from visvoai.ai.providers.config import resolve_api_key
+
+    try:
+        resolve_api_key(provider_name)
+        return True
+    except KeyError:
+        return False
+
+
+def chat_models(available_only: bool = False) -> List[Tuple[str, str]]:
+    """(deployment_id, label) for selectable CHAT deployments in the registry.
+
+    Excludes disabled/deprecated. With available_only=True, also excludes
+    deployments whose provider has no API key configured — so the picker shows
+    only what you can actually run. Label is provider + display name.
+    """
+    from visvoai.ai import list_deployments, Capability
+
+    out: List[Tuple[str, str]] = []
+    for d in list_deployments(Capability.CHAT):
+        if available_only and not provider_has_key(d.provider):
+            continue
+        out.append((d.id, f"{d.provider} · {d.display_name}"))
+    return out
+
+
+@dataclass(frozen=True)
+class DeployView:
+    """UI-facing view of a chat deployment — the fields the model page + footer
+    render. Keeps the screens off direct visvoai.ai imports."""
+    id: str
+    display_name: str
+    provider: str
+    family: str
+    in_cost: float
+    out_cost: float
+    supports_thinking: bool
+    thinking_levels: List[str]   # e.g. ["off", "low", "medium", "high"]
+    default_thinking: str
+    context_window: int          # max context tokens (0 = unknown → no gauge)
+    connected: bool              # provider has a usable key right now
+
+    @property
+    def selectable_thinking(self) -> bool:
+        """True when there's a real choice to make (more than one level)."""
+        return self.supports_thinking and len(self.thinking_levels) > 1
+
+
+def _to_view(info, connected: bool) -> "DeployView":
+    return DeployView(
+        id=info.id, display_name=info.display_name, provider=info.provider,
+        family=info.family,
+        in_cost=info.input_cost_per_million, out_cost=info.output_cost_per_million,
+        supports_thinking=info.supports_thinking,
+        thinking_levels=[lvl.value for lvl in info.thinking_levels],
+        default_thinking=info.default_thinking.value,
+        context_window=info.context_window,
+        connected=connected,
+    )
+
+
+def turn_cost(deployment_id: str, input_tokens: int, output_tokens: int) -> float:
+    """USD cost of a turn's token usage against the deployment's rate card (input +
+    output only; cache/thinking refinements deferred). 0.0 on an unknown id."""
+    from visvoai.ai import cost_of
+    try:
+        return cost_of(deployment_id, input_tokens, output_tokens)
+    except Exception:
+        return 0.0
+
+
+def usage_of(message_or_chunk) -> dict:
+    """{'input','output','total'} token counts from a message/chunk (0s if absent)."""
+    from visvoai.ai import usage_from
+    return usage_from(message_or_chunk)
+
+
+def chat_deployments() -> List["DeployView"]:
+    """All selectable CHAT deployments as DeployView, each tagged connected/locked.
+    The model page groups + orders these (connected first)."""
+    from visvoai.ai import list_deployments, Capability
+    return [_to_view(d, provider_has_key(d.provider)) for d in list_deployments(Capability.CHAT)]
+
+
+def deployment_view(deployment_id: str) -> "DeployView | None":
+    """The DeployView for one deployment id (footer/startup), or None if unknown."""
+    from visvoai.ai import get_deployment_info
+    info = get_deployment_info(deployment_id)
+    return _to_view(info, provider_has_key(info.provider)) if info else None
+
+
+def default_chat_model() -> str:
+    """Default deployment: the registry default if its provider is connected, else
+    the first connected CHAT deployment, else the registry default (app still
+    starts; the turn will prompt for a key)."""
+    from visvoai.ai import default_deployment, Capability
+
+    rd = default_deployment(Capability.CHAT)
+    if rd is None:
+        raise RuntimeError("model registry has no selectable CHAT deployment")
+    dep = get_deployment(rd)
+    if dep and provider_has_key(dep.provider):
+        return rd
+    connected = chat_models(available_only=True)
+    return connected[0][0] if connected else rd
+
+
+def api_key_available(deployment_id: str) -> bool:
+    """True if the provider for deployment_id has a resolvable API key.
+
+    Lets the UI fail fast with a clear message instead of building a graph and
+    blocking on a doomed provider call — and keeps tests/headless runs from ever
+    opening a real client when no key is configured.
+    """
+    dep = get_deployment(deployment_id)
+    return provider_has_key(dep.provider if dep else "gemini")
+
+
+def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None):
+    """Resolve the deployment via visvoai-ai and build the CLIRuntime agent graph.
+
+    level: the chosen thinking level ('off'|'low'|'medium'|'high'), or None to let
+    build_chat_model apply the deployment's declared default_thinking. The model page
+    lets the user pick a level; an unset level still falls back to the safe default.
+
+    approve: optional async approve(tool_name, args)->bool gate. When given,
+    mutating tools (edit/write/shell) require approval; when None, the ungated
+    package tools are used. Raises (KeyError/ImportError/ValueError) on a missing
+    key/integration/unknown deployment — the caller surfaces it in the UI.
+    """
+    from visvoai.ai import build_chat_model
+    from visvoai.cli.runtime import CLIRuntime
+    from visvoai.cli.tools import build_cli_tools
+
+    model = build_chat_model(deployment_id, level=level)
+
+    if approve is not None:
+        from visvoai.cli.gated_tools import build_gated_tools
+        tools = build_gated_tools(cwd=cwd, approve=approve)
+    else:
+        tools = build_cli_tools(cwd=cwd)
+    return CLIRuntime().build_graph(
+        model=model,
+        core_tools=tools,
+        all_tools_map={t.name: t for t in tools},
+        system_prompt=SYSTEM_PROMPT,
+    )
+
+
+# A cheap, fast deployment for the one-shot title summary. Falls back gracefully
+# if it isn't in the registry.
+_TITLE_DEPLOYMENT = "gemini:gemini-3.1-flash-lite"
+_TITLE_PROMPT = (
+    "Generate a terse 3–6 word title for a coding conversation that opens with the "
+    "message below. Title case, no quotes, no trailing punctuation, no preamble — "
+    "output ONLY the title."
+)
+
+
+async def generate_title(opening: str) -> Optional[str]:
+    """One-shot cheap-LLM summary of the opening turn into a short title. Returns
+    None when the provider has no key or the call fails — the caller keeps its
+    first-prompt fallback. Never raises."""
+    dep = get_deployment(_TITLE_DEPLOYMENT)
+    if dep is None or not provider_has_key(dep.provider):
+        return None
+    try:
+        from visvoai.ai import build_chat_model
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        model = build_chat_model(_TITLE_DEPLOYMENT, level="off")
+        resp = await model.ainvoke(
+            [SystemMessage(content=_TITLE_PROMPT), HumanMessage(content=opening[:2000])]
+        )
+        text = resp.content if isinstance(resp.content, str) else chunk_text(resp)
+        title = " ".join(text.split()).strip().strip('"').strip("'")
+        return title[:60] or None
+    except Exception:
+        return None
+
+
+def classify_chunk(chunk: Any):
+    """Yield (kind, text) for a stream chunk — kind in {'text', 'thinking'}.
+
+    Mirrors the provider facade's content mapping: a chunk's content is a plain
+    string (text) or a list of typed blocks ('text' vs 'thinking'/reasoning). The
+    UI renders 'thinking' into the collapsible Thinking block and 'text' into the
+    Assistant reply. Reasoning only arrives when the model has thinking enabled
+    (the deployment's default_thinking, applied by build_chat_model)."""
+    content = getattr(chunk, "content", None)
+    if isinstance(content, str):
+        if content:
+            yield ("text", content)
+        return
+    if isinstance(content, list):
+        for p in content:
+            if isinstance(p, dict):
+                bt = p.get("type")
+                if bt == "thinking":
+                    t = p.get("thinking") or p.get("thinking_delta") or ""
+                    if t:
+                        yield ("thinking", t)
+                elif bt in (None, "text"):
+                    t = p.get("text") or p.get("text_delta") or ""
+                    if t:
+                        yield ("text", t)
+            elif isinstance(p, str) and p:
+                yield ("text", p)
+
+
+def thinking_text(message: Any) -> str:
+    """Concatenated reasoning text from a message's content blocks (empty if none).
+    Used on resume to rebuild the collapsed Thinking block from saved history."""
+    content = getattr(message, "content", None)
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for p in content:
+        if isinstance(p, dict) and p.get("type") == "thinking":
+            parts.append(p.get("thinking") or p.get("thinking_delta") or "")
+    return "".join(parts)
+
+
+def chunk_text(chunk: Any) -> str:
+    """Plain text from an on_chat_model_stream chunk (str content or list-of-parts)."""
+    content = getattr(chunk, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for p in content:
+            if isinstance(p, dict):
+                # skip thinking parts here — those render as a Thinking block (Phase 4)
+                if p.get("type") in (None, "text"):
+                    parts.append(p.get("text", ""))
+            elif isinstance(p, str):
+                parts.append(p)
+        return "".join(parts)
+    return ""
+
+
+def tool_output_text(output: Any) -> str:
+    """Plain text from an on_tool_end output (ToolMessage, str, or other)."""
+    content = getattr(output, "content", output)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            p.get("text", "") if isinstance(p, dict) else str(p) for p in content
+        )
+    return str(content)
+
+
+def fmt_args(tool_input: Any) -> str:
+    """Compact one-line arg summary for a tool node target (e.g. 'api/main.py')."""
+    if isinstance(tool_input, dict):
+        if not tool_input:
+            return ""
+        # Prefer a single salient path-like value; else key=value pairs.
+        if len(tool_input) == 1:
+            return str(next(iter(tool_input.values())))
+        return ", ".join(f"{k}={v}" for k, v in tool_input.items())
+    return str(tool_input) if tool_input is not None else ""

@@ -1,43 +1,29 @@
 """
-visvoai.cli.main — CLI entry point.
+visvoai.cli.main — the `visvoai` entry point.
 
-Usage:
-  visvoai "your prompt here"
-  visvoai --cwd /path/to/project "refactor the auth module"
-  visvoai --model gemini-2.5-pro "write tests for the new feature"
+Two surfaces share one command:
+  visvoai                       → launch the Textual TUI (interactive REPL)
+  visvoai "refactor the auth"   → single-shot: stream one turn to stdout
+  visvoai --cwd path "..."      → run against another working directory
+  visvoai --model <id> ...      → pick a deployment (default = registry default)
 
-Runs an agent loop that can read/edit files, run shell commands, and stream
-its thinking to the terminal.
+The agent reads/edits files, runs shell commands, and searches the web.
 """
 import asyncio
 import os
 import sys
 
 import click
-from langchain_core.messages import HumanMessage
-
-_SYSTEM_PROMPT = """\
-You are a developer tool. You have access to the local filesystem and a shell.
-
-Your job: help the developer with coding tasks — reading files, editing code,
-running tests, refactoring, debugging, and explaining what you find.
-
-Rules:
-- Be precise and minimal. Only change what the task requires.
-- Before editing, always read the file first.
-- Prefer edit_file over write_file for existing files — edit is safer.
-- When running shell commands, prefer read-only commands unless a change is requested.
-- After making changes, verify by reading the file back or running relevant tests.
-"""
 
 
 @click.command()
-@click.argument("prompt", nargs=-1, required=True)
+@click.argument("prompt", nargs=-1, required=False)
 @click.option(
     "--model",
-    default="gemini-2.5-flash",
-    show_default=True,
-    help="Model API ID to use.",
+    default=None,
+    metavar="DEPLOYMENT_ID",
+    help="Deployment id (e.g. gemini:gemini-3-flash-preview). Default: the "
+         "registry's default chat model.",
 )
 @click.option(
     "--cwd",
@@ -46,55 +32,78 @@ Rules:
     show_default=True,
     help="Working directory for file operations.",
 )
-@click.option("--verbose", is_flag=True, help="Show tool inputs and outputs.")
-def cli(prompt: tuple, model: str, cwd: str, verbose: bool) -> None:
-    """VisvoAI — AI developer tool. Edits files and runs commands in your codebase."""
-    full_prompt = " ".join(prompt)
-    asyncio.run(_run(full_prompt, model, os.path.abspath(cwd), verbose))
+@click.option(
+    "--resume",
+    is_flag=False,
+    flag_value="__last__",
+    default=None,
+    metavar="ID",
+    help="Resume a conversation by id (or the latest if no id). TUI only.",
+)
+@click.option("--verbose", is_flag=True, help="Single-shot: show tool inputs/outputs.")
+def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool) -> None:
+    """VisvoAI — terminal coding agent. Run with no prompt for the interactive TUI,
+    or pass a prompt for a single-shot stream."""
+    text = " ".join(prompt).strip()
+    abs_cwd = os.path.abspath(cwd)
+    if text:
+        asyncio.run(_run_single_shot(text, model, abs_cwd, verbose))
+    else:
+        _launch_tui(model, resume, abs_cwd)
 
 
-async def _run(prompt: str, model_id: str, cwd: str, verbose: bool) -> None:
-    # Set cwd for subprocess calls (run_shell tool inherits this)
+def _launch_tui(model: str | None, resume: str | None, cwd: str) -> None:
+    """Launch the Textual REPL. Loads provider keys from the nearest .env so the TUI
+    can chat without a manual export, and queries the terminal background BEFORE
+    Textual grabs stdin so the app can paint that exact colour and blend in."""
+    from dotenv import load_dotenv
+    load_dotenv()
     os.chdir(cwd)
 
-    # Model — resolve the provider from the registry so --model works across
-    # families (Gemini, Anthropic, OpenAI-compatible). The provider reads its own
-    # API key from the matching env var; build_chat_model lazily imports the
-    # LangChain integration for that family.
-    from visvoai.ai import get_model, get_provider
+    from visvoai.cli import VisvoApp
+    from visvoai.cli.termbg import detect_terminal_bg
 
-    md = get_model(model_id)
-    provider_name = md.provider if md else "gemini"
-    try:
-        model = get_provider(provider_name).build_chat_model(model_id=model_id)
-    except ImportError as e:
+    app = VisvoApp(term_bg=detect_terminal_bg(), model=model, resume=resume)
+    app.run()
+    # After the alt-screen tears down, drop a resume hint into normal scrollback —
+    # only when a conversation actually happened (a turn was persisted).
+    if app._conv_id:
         click.echo(
-            f"ERROR: the LangChain integration for provider '{provider_name}' is not "
-            f"installed ({e}). Install the matching extra, e.g. "
-            f"pip install 'visvoai-ai[{provider_name}]'.",
-            err=True,
+            f"\n  Conversation saved (id: {app._conv_id}).\n"
+            f"  Resume it next time with  visvoai --resume  (or /resume in the TUI).\n"
         )
+
+
+async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bool) -> None:
+    """Stream one turn to stdout — no TUI. Builds the same CLIRuntime graph the TUI
+    uses, through the public visvoai-ai resolver."""
+    os.chdir(cwd)  # run_shell + file tools inherit this
+
+    from visvoai.ai import build_chat_model, default_deployment
+    from visvoai.cli.agent import SYSTEM_PROMPT
+
+    deployment_id = model or default_deployment()
+    if not deployment_id:
+        click.echo("ERROR: no chat model available in the registry.", err=True)
         sys.exit(1)
-    except KeyError as e:
+    try:
+        chat_model = build_chat_model(deployment_id)
+    except (KeyError, ValueError, ImportError) as e:
         click.echo(f"ERROR: {e}", err=True)
         sys.exit(1)
 
-    # Tools
-    from visvoai.cli.tools import build_cli_tools
-    tools = build_cli_tools(cwd=cwd)
-    tools_map = {t.name: t for t in tools}
+    from langchain_core.messages import HumanMessage
 
-    # Runtime + graph
     from visvoai.cli.runtime import CLIRuntime
-    runtime = CLIRuntime()
-    graph = runtime.build_graph(
-        model=model,
-        core_tools=tools,
-        all_tools_map=tools_map,
-        system_prompt=_SYSTEM_PROMPT,
-    )
+    from visvoai.cli.tools import build_cli_tools
 
-    # Stream the agent loop to stdout
+    tools = build_cli_tools(cwd=cwd)
+    graph = CLIRuntime().build_graph(
+        model=chat_model,
+        core_tools=tools,
+        all_tools_map={t.name: t for t in tools},
+        system_prompt=SYSTEM_PROMPT,
+    )
     state = {"messages": [HumanMessage(content=prompt)]}
 
     try:
@@ -104,29 +113,23 @@ async def _run(prompt: str, model_id: str, cwd: str, verbose: bool) -> None:
             state, version="v2", config={"recursion_limit": 100}
         ):
             kind = event.get("event", "")
-
             if kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
+                if chunk and getattr(chunk, "content", None):
                     click.echo(chunk.content, nl=False)
-
             elif kind == "on_tool_start":
-                tool_name = event.get("name", "tool")
+                name = event.get("name", "tool")
                 if verbose:
-                    inputs = event["data"].get("input", {})
-                    click.echo(f"\n\n[tool: {tool_name}] {inputs}", err=True)
+                    click.echo(f"\n\n[tool: {name}] {event['data'].get('input', {})}", err=True)
                 else:
-                    click.echo(f"\n[{tool_name}]", err=True)
-
+                    click.echo(f"\n[{name}]", err=True)
             elif kind == "on_tool_end" and verbose:
-                output = event["data"].get("output", "")
-                preview = str(output)[:200] + ("…" if len(str(output)) > 200 else "")
-                click.echo(f"  → {preview}", err=True)
-
+                out = str(event["data"].get("output", ""))
+                click.echo(f"  → {out[:200]}{'…' if len(out) > 200 else ''}", err=True)
     except KeyboardInterrupt:
         click.echo("\n[interrupted]", err=True)
 
-    click.echo()  # trailing newline after streamed response
+    click.echo()  # trailing newline after the streamed response
 
 
 if __name__ == "__main__":
