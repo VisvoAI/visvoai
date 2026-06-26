@@ -31,6 +31,7 @@ _MENTION_RE = re.compile(r"(?:^|\s)@(\S*)$")
 SLASH_COMMANDS: list[tuple[str, str]] = [
     ("help", "Show keys and commands"),
     ("model", "Switch the active model"),
+    ("login", "Add a provider API key"),
     ("resume", "Resume a past conversation"),
     ("compact", "Compact the context window"),
     ("commit", "Review & commit changes"),
@@ -71,6 +72,47 @@ class CommandsMixin:
             self._refresh_model_status()
             think = f" · think:{self._thinking}" if self._thinking else ""
             self.notify(f"model: {self._model}{think}")
+
+    async def _login_flow(self) -> None:
+        """`/login` — store a provider API key (global or this project) and make it
+        live immediately, so keyless models unlock without a restart."""
+        from visvoai.cli import keys
+
+        providers = sorted({d.provider for d in agent.chat_deployments()})
+        if not providers:
+            self.notify("no providers in the registry")
+            return
+        labels = []
+        for p in providers:
+            src = keys.resolved_source(p, self._cwd)
+            labels.append(f"{p}" + (f"  (key set · {src})" if src else "  (no key)"))
+        idx, _ = await self.ask_choice("Add an API key for which provider?", labels)
+        if idx is None:
+            return
+        provider = providers[idx]
+
+        key = await self.ask_text(
+            f"Paste the {keys.env_var_for(provider)} value:",
+            placeholder="stored locally, never committed", multiline=False)
+        if not key or not key.strip():
+            self.notify("no key entered")
+            return
+
+        s_idx, _ = await self.ask_choice(
+            "Save where?",
+            ["Global — ~/.visvoai (all projects)",
+             "This project — .visvoai/secrets.toml (gitignored)"])
+        if s_idx is None:
+            return
+        scope = "global" if s_idx == 0 else "project"
+        try:
+            keys.set_key(provider, key.strip(), scope, self._cwd)
+            keys.load_keys_into_env(self._cwd)   # make it live now
+        except OSError as e:
+            self.notify(f"could not save key: {e}")
+            return
+        self._refresh_model_status()
+        self.notify(f"{provider} key saved ({scope}) — models now available.")
 
     async def _compact_flow(self) -> None:
         """`/compact` — fold older turns into a summary. Drops a prominent marker
@@ -220,6 +262,8 @@ class CommandsMixin:
             self.run_worker(self._demo_picker())
         elif name == "model":
             self.run_worker(self._model_picker_flow())
+        elif name == "login":
+            self.run_worker(self._login_flow())
         elif name == "resume":
             self.run_worker(self._open_sessions())
         elif name == "compact":

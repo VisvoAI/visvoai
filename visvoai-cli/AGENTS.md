@@ -17,6 +17,7 @@ Two surfaces, one console script (`visvoai`):
 - `runtime.py` → `CLIRuntime(AgentRuntime)` — the default agent→tools loop, no interrupts/checkpointer.
 - `context.py` → `CLIContext(RuntimeContext)` — cwd / terminal width; no auth/datastore.
 - `store.py` → folder-per-conversation persistence (`history.jsonl` + `meta.json` + `receipts.jsonl`), no DB.
+- `keys.py` → layered API-key resolution + storage: `load_keys_into_env(cwd)` (env > project secrets > global config), `set_key(provider, key, scope, cwd)` (0600, auto-gitignore for project).
 - `gated_tools.py` → edit/write/shell behind a permission gate; web tools ungated.
 - `gitio.py` → real git: working-tree status / stage / unstage / commit / project files.
 - `mermaid.py` → ```mermaid fence → segments + a self-contained HTML viewer (pure helpers).
@@ -39,6 +40,7 @@ Two surfaces, one console script (`visvoai`):
 - No graph interrupts/checkpointer — the CLI is synchronous (the human is in the loop).
 
 # Gotchas
+- API keys: `main._bootstrap_env(cwd)` (both surfaces) loads `.env` then fills `os.environ` from the stored layers. Precedence is env > project (`.visvoai/secrets.toml`, gitignored) > global (`~/.visvoai/config.toml` `[api_keys]`); an exported var always wins. Keys NEVER go in the committed `.visvoai/config.toml`. Per-provider: the active model's provider determines which `{PROVIDER}_API_KEY` is needed; web search/fetch always need Gemini's. Add a key via `/login` (TUI) or `visvoai --set-key <provider>`.
 - `astream_events` is called with an explicit `recursion_limit=100` (both surfaces) — the LangGraph default 25 crashes a deep turn before the core graph's soft step cap can force a clean finalize.
 - The mock showcase (DemoMixin + mock.py) is kept for tests but is NOT reachable from the menu, by typing `/demo`, or any key binding — tests drive it via `run_command`.
 - `theme.py` reads `palette_tokens.json` from its own directory at import time → it must ship as package data (it does).

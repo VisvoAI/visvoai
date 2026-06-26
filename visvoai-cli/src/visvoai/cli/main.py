@@ -41,23 +41,61 @@ import click
     help="Resume a conversation by id (or the latest if no id). TUI only.",
 )
 @click.option("--verbose", is_flag=True, help="Single-shot: show tool inputs/outputs.")
-def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool) -> None:
+@click.option(
+    "--set-key",
+    "set_key_provider",
+    default=None,
+    metavar="PROVIDER",
+    help="Store an API key for a provider (e.g. gemini), then exit. Prompts for the "
+         "key (hidden) and where to save it (global or this project).",
+)
+def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
+        set_key_provider: str) -> None:
     """VisvoAI — terminal coding agent. Run with no prompt for the interactive TUI,
     or pass a prompt for a single-shot stream."""
-    text = " ".join(prompt).strip()
     abs_cwd = os.path.abspath(cwd)
+    if set_key_provider:
+        _set_key_flow(set_key_provider, abs_cwd)
+        return
+    text = " ".join(prompt).strip()
     if text:
         asyncio.run(_run_single_shot(text, model, abs_cwd, verbose))
     else:
         _launch_tui(model, resume, abs_cwd)
 
 
+def _bootstrap_env(cwd: str) -> None:
+    """Make provider keys available before any model is built — for BOTH surfaces.
+    Loads the nearest .env, then fills os.environ from the stored key layers
+    (project secrets → global config) for anything not already set."""
+    from dotenv import load_dotenv
+    from visvoai.cli.keys import load_keys_into_env
+
+    load_dotenv()                  # .env → os.environ (counts as the env layer)
+    load_keys_into_env(cwd)        # project/global stored keys fill the rest
+
+
+def _set_key_flow(provider: str, cwd: str) -> None:
+    """Headless `--set-key`: prompt (hidden) for the key + scope, store it."""
+    from visvoai.cli import keys
+
+    key = click.prompt(f"{keys.env_var_for(provider)}", hide_input=True).strip()
+    if not key:
+        click.echo("No key entered — nothing saved.", err=True)
+        return
+    scope = click.prompt(
+        "Save where? [g]lobal (~/.visvoai) or [p]roject (.visvoai, gitignored)",
+        type=click.Choice(["g", "p"]), default="g", show_choices=False,
+    )
+    path = keys.set_key(provider, key, "global" if scope == "g" else "project", cwd)
+    click.echo(f"Saved {provider} key to {path}")
+
+
 def _launch_tui(model: str | None, resume: str | None, cwd: str) -> None:
-    """Launch the Textual REPL. Loads provider keys from the nearest .env so the TUI
+    """Launch the Textual REPL. Resolves provider keys (env/.env/stored) so the TUI
     can chat without a manual export, and queries the terminal background BEFORE
     Textual grabs stdin so the app can paint that exact colour and blend in."""
-    from dotenv import load_dotenv
-    load_dotenv()
+    _bootstrap_env(cwd)
     os.chdir(cwd)
 
     from visvoai.cli import VisvoApp
@@ -77,6 +115,7 @@ def _launch_tui(model: str | None, resume: str | None, cwd: str) -> None:
 async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bool) -> None:
     """Stream one turn to stdout — no TUI. Builds the same CLIRuntime graph the TUI
     uses, through the public visvoai-ai resolver."""
+    _bootstrap_env(cwd)            # same key resolution as the TUI (env/.env/stored)
     os.chdir(cwd)  # run_shell + file tools inherit this
 
     from visvoai.ai import build_chat_model, default_deployment
