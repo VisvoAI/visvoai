@@ -18,6 +18,7 @@ from visvoai.ai.deployments import (
     default_deployment,
 )
 from visvoai.ai.resolve import build_chat_model, cost_of
+from visvoai.ai.search import FetchError, SearchResult, SearchSource, fetch_url, run_search
 from visvoai.ai.usage import usage_from
 from visvoai.ai.providers.base import Provider, NotSupported, default_content_events
 from visvoai.ai.providers.config import resolve_api_key
@@ -28,7 +29,8 @@ from visvoai.ai.providers.factory import get_provider, get_provider_for_model
 
 __all__ = [
     # primary entry points
-    "build_chat_model", "cost_of", "usage_from",
+    "build_chat_model", "cost_of", "usage_from", "run_search", "fetch_url",
+    "SearchResult", "SearchSource", "FetchError",
     "list_deployments", "get_deployment_info", "default_deployment", "deployments_for",
     # thinking (public)
     "ThinkingLevel",

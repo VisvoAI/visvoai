@@ -5,9 +5,10 @@ A single class per provider exposes what's needed for the LangGraph agent loop:
 
   • build_chat_model()     → return a streaming BaseChatModel for LangGraph
   • normalize_content()    → map streamed chunks to {type, content} events
+  • search()               → grounded web search (optional; native-grounding providers)
 
-Native one-shot generate/search/embed calls are intentionally out of scope for
-this facade — a consumer that needs them adds its own methods on a subclass.
+One-shot generate/embed calls remain out of scope — a consumer that needs them
+adds its own methods on a subclass.
 
 Rules:
   - All methods OPTIONAL (default NotSupported) — a provider implements only what it has.
@@ -15,9 +16,12 @@ Rules:
   - Provider-neutral — never typed to a vendor SDK input.
 """
 from abc import ABC
-from typing import Any, Dict, Generator, Optional
+from typing import TYPE_CHECKING, Any, Dict, Generator, Optional
 
 from langchain_core.language_models import BaseChatModel
+
+if TYPE_CHECKING:
+    from visvoai.ai.search import SearchResult
 
 
 class NotSupported(NotImplementedError):
@@ -70,3 +74,20 @@ class Provider(ABC):
         """Map a streamed chunk's CONTENT/THINKING to events {type, content}. Default =
         langchain-core list-of-blocks shape (Gemini + Anthropic); OpenAI-compat overrides."""
         yield from default_content_events(chunk)
+
+    def search(self, query: str, *, slug: str, api_key: Optional[str] = None,
+               system: Optional[str] = None) -> "SearchResult":
+        """Grounded web search for THIS provider. Optional — default NotSupported.
+
+        Returns a SearchResult (grounded prose + sources). Implemented by providers
+        with native grounding (e.g. Gemini Google Search). Consumers should prefer
+        the top-level visvoai.ai.run_search(query), which resolves the deployment.
+        """
+        raise NotSupported(f"{type(self).__name__} does not support grounded search")
+
+    def fetch_url(self, url: str, *, slug: str, api_key: Optional[str] = None) -> str:
+        """Fetch one URL and return its content as clean markdown. Optional — default
+        NotSupported. Implemented by providers with native URL retrieval (e.g. Gemini
+        URL Context — the provider fetches server-side, not the caller's machine).
+        Consumers should prefer the top-level visvoai.ai.fetch_url(url)."""
+        raise NotSupported(f"{type(self).__name__} does not support URL fetch")

@@ -235,20 +235,27 @@ def get_deployment_info(deployment_id: str,
 
 
 def default_deployment(capability: Capability = Capability.CHAT,
-                       codec: IdentityCodec = DEFAULT_CODEC) -> Optional[str]:
-    """Composite id of the default deployment for a capability. Precedence: the
-    curated DEFAULT_MODEL_FOR pick (matched by provider wire slug) → the global
-    `default=True` deployment → the first enabled one. Returns None if nothing
-    serves the capability."""
+                       codec: IdentityCodec = DEFAULT_CODEC,
+                       provider: Optional[str] = None) -> Optional[str]:
+    """Composite id of the default deployment for a capability, optionally scoped
+    to one provider. Precedence: the curated DEFAULT_MODEL_FOR pick (matched by
+    provider wire slug) → the global `default=True` deployment → the first enabled
+    one. With `provider` set, only that provider's deployments are considered (so a
+    consumer can ask "this provider's default SEARCH/CHAT model"), and the curated
+    pick only counts if it belongs to that provider. Returns None if nothing serves it."""
+    def _ok(d) -> bool:
+        return (d.enabled and not d.deprecated and capability in d.capabilities
+                and (provider is None or d.provider == provider))
+
     curated = _DEFAULT_MODEL_FOR.get(capability)
     if curated:
         for d in DEPLOYMENTS:
-            if d.slug == curated and d.enabled and not d.deprecated and capability in d.capabilities:
+            if d.slug == curated and _ok(d):
                 return d.id(codec)
     for d in DEPLOYMENTS:
-        if d.default and d.enabled and not d.deprecated and capability in d.capabilities:
+        if d.default and _ok(d):
             return d.id(codec)
     for d in DEPLOYMENTS:
-        if d.enabled and not d.deprecated and capability in d.capabilities:
+        if _ok(d):
             return d.id(codec)
     return None

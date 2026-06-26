@@ -26,7 +26,8 @@ dependencies = [
 [project.optional-dependencies]
 # Per-provider extras pull only the LangChain integration you actually use.
 # Each provider's chat model is imported lazily, so the base install stays light.
-gemini = ["langchain-google-genai>=2.0"]
+# google-genai is the official SDK used directly for grounded search (GeminiProvider.search).
+gemini = ["langchain-google-genai>=2.0", "google-genai>=1.0"]
 anthropic = ["langchain-anthropic>=0.2"]
 # Covers OpenAI plus every OpenAI-compatible provider (Together/Groq/OpenRouter/
 # vLLM/…) — they all run on the ChatOpenAI + base_url path (providers/openai_compat.py).
