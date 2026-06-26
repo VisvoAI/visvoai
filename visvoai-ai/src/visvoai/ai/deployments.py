@@ -137,53 +137,6 @@ def _default_level(md: ModelDefinition) -> ThinkingLevel:
     return ThinkingLevel.OFF
 
 
-# PER-MODEL context windows (max input tokens), keyed by api_id. Context window is a
-# model fact, not a provider one. Used only when a ModelDefinition doesn't set its own
-# context_window. A model absent here resolves to 0 → the UI context gauge is hidden
-# (we never fabricate a window). Verified real models + safe family extrapolations
-# (Gemini = 1M, Claude = 200k are stable family traits); genuinely-unknown forward
-# models are intentionally omitted until their specs are confirmed.
-_CONTEXT_WINDOWS: Dict[str, int] = {
-    # Gemini — 1M across the family
-    "gemini-3.5-flash": 1_048_576,
-    "gemini-3.1-pro-preview": 1_048_576,
-    "gemini-3.1-pro-preview-customtools": 1_048_576,
-    "gemini-3.1-flash-lite": 1_048_576,
-    "gemini-3.1-flash-live-preview": 1_048_576,
-    "gemini-3-flash-preview": 1_048_576,
-    "gemini-2.5-pro": 1_048_576,
-    "gemini-2.5-flash": 1_048_576,
-    "gemini-2.5-flash-preview": 1_048_576,
-    "gemini-2.5-flash-lite": 1_048_576,
-    "gemini-2.5-flash-lite-preview-09-2025": 1_048_576,
-    # Anthropic — 200k across the family
-    "claude-fable-5": 200_000,
-    "claude-opus-4-8": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-haiku-4-5": 200_000,
-    "claude-3-5-sonnet-20241022": 200_000,
-    "claude-3-5-haiku-20241022": 200_000,
-    # OpenAI
-    "gpt-4.1": 1_047_576,
-    "gpt-4.1-mini": 1_047_576,
-    "gpt-4o": 128_000,
-    "gpt-4o-mini": 128_000,
-    "o3": 200_000,
-    "o4-mini": 200_000,
-    # Together / OpenRouter — the ones with known windows
-    "meta-llama/Llama-3.3-70B-Instruct-Turbo": 131_072,
-    "meta-llama/llama-3.3-70b-instruct": 131_072,
-    "openai/gpt-oss-120b": 131_072,
-    "Qwen/Qwen3-235B-A22B-Instruct-2507-tput": 262_144,
-    "mistralai/mistral-large": 128_000,
-    "x-ai/grok-3": 131_072,
-    # Omitted (unknown forward models → gauge hidden): gpt-5, deepseek-v4-pro,
-    # moonshotai/kimi-*, zai-org/GLM-5.*, MiniMaxAI/MiniMax-M3, nvidia/nemotron-3-*.
-}
-
-
-def _window(md: ModelDefinition) -> int:
-    return md.context_window or _CONTEXT_WINDOWS.get(md.api_id, 0)
 
 
 def _build() -> tuple[List[Model], List[Deployment]]:
@@ -195,7 +148,7 @@ def _build() -> tuple[List[Model], List[Deployment]]:
             model=mid, provider=md.provider, slug=md.api_id,
             input_cost_per_million=md.input_cost_per_million,
             output_cost_per_million=md.output_cost_per_million,
-            context_window=_window(md),
+            context_window=md.context_window,   # single source of truth on the definition
             cache_read_cost_per_million=md.cache_read_cost_per_million,
             thinking=_mechanism(md), default_thinking=_default_level(md),
             capabilities=list(md.capabilities), enabled=md.enabled,

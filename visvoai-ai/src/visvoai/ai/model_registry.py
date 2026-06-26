@@ -64,7 +64,7 @@ class ModelDefinition:
     display_name: str                        # shown in UI
     input_cost_per_million: float
     output_cost_per_million: float
-    context_window: int = 0                  # max context tokens (0 = unknown → provider default)
+    context_window: int = 0                  # max context tokens (0 = unknown → UI gauge hidden)
     cache_read_cost_per_million: float = 0.0
     search_query_cost: float = 0.0
     search_billed_per_request: bool = False
@@ -94,6 +94,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="gemini-3.5-flash",
+        context_window=1_048_576,
         display_name="Gemini 3.5 Flash",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=1.50,
@@ -110,6 +111,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="gemini-3.1-pro-preview",
+        context_window=1_048_576,
         display_name="Gemini 3.1 Pro",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=2.00,
@@ -123,6 +125,7 @@ MODELS: List[ModelDefinition] = [
     # Internal variant used by tools — not exposed in UI
     ModelDefinition(
         api_id="gemini-3.1-pro-preview-customtools",
+        context_window=1_048_576,
         display_name="Gemini 3.1 Pro (Custom Tools)",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=2.00,
@@ -135,6 +138,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gemini-3.1-flash-lite",
+        context_window=1_048_576,
         display_name="Gemini 3.1 Flash Lite",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.25,
@@ -148,6 +152,7 @@ MODELS: List[ModelDefinition] = [
     # Live/real-time model — not for standard chat
     ModelDefinition(
         api_id="gemini-3.1-flash-live-preview",
+        context_window=1_048_576,
         display_name="Gemini 3.1 Flash Live",
         input_cost_per_million=0.75,
         output_cost_per_million=4.50,
@@ -163,6 +168,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="gemini-3-flash-preview",
+        context_window=1_048_576,
         display_name="Gemini 3 Flash",
         capabilities=[Capability.CHAT, Capability.SEARCH, Capability.DEEP_RESEARCH],
         input_cost_per_million=0.50,
@@ -205,6 +211,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="gemini-2.5-pro",
+        context_window=1_048_576,
         display_name="Gemini 2.5 Pro",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=1.25,
@@ -217,6 +224,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gemini-2.5-flash",
+        context_window=1_048_576,
         display_name="Gemini 2.5 Flash",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.30,
@@ -230,6 +238,7 @@ MODELS: List[ModelDefinition] = [
     # Old preview alias — kept for cost tracking of historical calls
     ModelDefinition(
         api_id="gemini-2.5-flash-preview",
+        context_window=1_048_576,
         display_name="Gemini 2.5 Flash (Preview)",
         input_cost_per_million=0.30,
         output_cost_per_million=2.50,
@@ -242,6 +251,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gemini-2.5-flash-lite",
+        context_window=1_048_576,
         display_name="Gemini 2.5 Flash Lite",
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.10,
@@ -255,6 +265,7 @@ MODELS: List[ModelDefinition] = [
     # Old preview alias — kept for cost tracking of historical calls
     ModelDefinition(
         api_id="gemini-2.5-flash-lite-preview-09-2025",
+        context_window=1_048_576,
         display_name="Gemini 2.5 Flash Lite (Preview)",
         input_cost_per_million=0.10,
         output_cost_per_million=0.40,
@@ -306,6 +317,7 @@ MODELS: List[ModelDefinition] = [
     # Do NOT set supports_thinking=True here until anthropic.py emits adaptive thinking.
     ModelDefinition(
         api_id="claude-fable-5",
+        context_window=200_000,
         display_name="Claude Fable 5",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -315,6 +327,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-opus-4-8",
+        context_window=200_000,
         display_name="Claude Opus 4.8",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -324,6 +337,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-sonnet-4-6",
+        context_window=200_000,
         display_name="Claude Sonnet 4.6",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -333,6 +347,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-haiku-4-5",
+        context_window=200_000,
         display_name="Claude Haiku 4.5",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -342,6 +357,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-3-5-sonnet-20241022",
+        context_window=200_000,
         display_name="Claude 3.5 Sonnet",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -352,6 +368,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="claude-3-5-haiku-20241022",
+        context_window=200_000,
         display_name="Claude Haiku 3.5",
         provider="anthropic",
         icon_url="https://www.anthropic.com/favicon.ico",
@@ -371,6 +388,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="gpt-4.1",
+        context_window=1_047_576,
         display_name="GPT-4.1",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -380,6 +398,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gpt-4.1-mini",
+        context_window=1_047_576,
         display_name="GPT-4.1 mini",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -389,6 +408,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gpt-4o",
+        context_window=128_000,
         display_name="GPT-4o",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -398,6 +418,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="gpt-4o-mini",
+        context_window=128_000,
         display_name="GPT-4o mini",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -421,6 +442,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="o4-mini",
+        context_window=200_000,
         display_name="o4 Mini",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -431,6 +453,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="o3",
+        context_window=200_000,
         display_name="o3",
         provider="openai",
         icon_url="https://openai.com/favicon.ico",
@@ -458,6 +481,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+        context_window=262_144,
         display_name="Qwen3 235B",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=qwen.ai",
@@ -503,6 +527,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        context_window=131_072,
         display_name="Llama 3.3 70B",
         provider="together",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=llama.com",
@@ -512,6 +537,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="openai/gpt-oss-120b",
+        context_window=131_072,
         display_name="GPT-OSS 120B",
         provider="together",
         icon_url="https://openai.com/favicon.ico",
@@ -553,6 +579,7 @@ MODELS: List[ModelDefinition] = [
     # -------------------------------------------------------------------------
     ModelDefinition(
         api_id="x-ai/grok-3",
+        context_window=131_072,
         display_name="Grok 3",
         provider="openrouter",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=x.ai",
@@ -562,6 +589,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="mistralai/mistral-large",
+        context_window=128_000,
         display_name="Mistral Large",
         provider="openrouter",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=mistral.ai",
@@ -571,6 +599,7 @@ MODELS: List[ModelDefinition] = [
     ),
     ModelDefinition(
         api_id="meta-llama/llama-3.3-70b-instruct",
+        context_window=131_072,
         display_name="Llama 3.3 70B (OpenRouter)",
         provider="openrouter",
         icon_url="https://www.google.com/s2/favicons?sz=64&domain=llama.com",
