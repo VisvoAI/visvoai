@@ -8,6 +8,8 @@ replaced by real threads from `~/.visvoai/projects/<id>/conversations/`.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
+
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -17,6 +19,21 @@ from textual.widgets import Input, Static
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+
+
+def _date_group(ts: float) -> str:
+    """Bucket a conversation's last-updated timestamp into a recency group. Sessions
+    arrive newest-first, so groups come out contiguous in this same order."""
+    delta = (date.today() - datetime.fromtimestamp(ts).date()).days
+    if delta <= 0:
+        return "Today"
+    if delta == 1:
+        return "Yesterday"
+    if delta <= 7:
+        return "Last 7 days"
+    if delta <= 30:
+        return "Last month"
+    return "Older"
 
 
 class SessionRow(Horizontal):
@@ -83,13 +100,15 @@ class SessionsScreen(BlendScreen):
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
     DEFAULT_CSS = """
-    SessionsScreen > #sessions-box { padding: 1 2; height: 1fr; }
+    SessionsScreen { align: center top; }
+    SessionsScreen > #sessions-box { width: 100%; max-width: 110; padding: 1 4; height: 1fr; }
     #sessions-title { text-style: bold; color: $primary; padding: 0 1; }
     #sessions-search, #sessions-search:focus {
         border: none; background: transparent; padding: 0 1; margin: 0 0 1 0;
         border-bottom: solid $primary;
     }
     #sessions-list { height: 1fr; }
+    .sessions-group { text-style: bold; color: $muted; padding: 0 1; margin: 1 0 0 0; }
     #sessions-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
     #sessions-empty { color: $muted; padding: 0 1; }
     """
@@ -100,13 +119,25 @@ class SessionsScreen(BlendScreen):
         self.filtered = list(sessions)
         self.idx = 0
 
+    def _list_widgets(self):
+        """Grouped widgets: a date-group header before each recency bucket, then its rows.
+        `self.filtered` stays the flat selectable list (idx maps to SessionRow order)."""
+        widgets: list = []
+        last_group = None
+        for i, s in enumerate(self.filtered):
+            g = _date_group(s.get("_sort", 0))
+            if g != last_group:
+                widgets.append(Static(g, classes="sessions-group"))
+                last_group = g
+            widgets.append(SessionRow(i, s))
+        return widgets
+
     def compose(self) -> ComposeResult:
         with Vertical(id="sessions-box"):
             yield Static("Resume a conversation", id="sessions-title")
             yield Input(placeholder="search sessions…", id="sessions-search")
             with VerticalScroll(id="sessions-list"):
-                for i, s in enumerate(self.filtered):
-                    yield SessionRow(i, s)
+                yield from self._list_widgets()
             yield Static("↑/↓ navigate   enter resume   esc close", id="sessions-hint")
 
     def on_mount(self) -> None:
@@ -128,7 +159,7 @@ class SessionsScreen(BlendScreen):
         lst = self.query_one("#sessions-list", VerticalScroll)
         await lst.remove_children()
         if self.filtered:
-            await lst.mount_all(SessionRow(i, s) for i, s in enumerate(self.filtered))
+            await lst.mount_all(self._list_widgets())
             self._sync()
         else:
             await lst.mount(Static("no matching sessions", id="sessions-empty"))

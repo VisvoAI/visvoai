@@ -93,7 +93,18 @@ class ModelScreen(BlendScreen):
         Binding("left", "think_prev", "Prev level", show=False),
         Binding("right", "think_next", "Next level", show=False),
         Binding("enter", "confirm", "Select", show=False),
+        # sort / filter controls — ctrl combos so they don't collide with the search box
+        Binding("ctrl+s", "cycle_sort", "Sort", show=False),
+        Binding("ctrl+t", "toggle_thinking", "Thinking only", show=False),
+        Binding("ctrl+k", "toggle_connected", "Connected only", show=False),
     ]
+
+    _SORTS = ("name", "cost", "context")
+    _SORT_KEY = {
+        "name": lambda d: d.display_name.lower(),
+        "cost": lambda d: (d.in_cost, d.out_cost, d.display_name.lower()),
+        "context": lambda d: (-d.context_window, d.display_name.lower()),
+    }
 
     DEFAULT_CSS = """
     ModelScreen { align: center top; }
@@ -126,6 +137,9 @@ class ModelScreen(BlendScreen):
         self._picked = None              # DeployView chosen in phase 1
         self._think_levels: list[str] = []
         self._think_idx = 0
+        self._sort = "name"              # name | cost | context (within each provider group)
+        self._thinking_only = False      # filter: only models that expose a thinking choice
+        self._connected_only = False     # filter: hide locked (no-key) providers
 
     # ── phase 1: searchable model list ────────────────────────────────────────
     def _row(self, dep) -> Table:
@@ -169,6 +183,10 @@ class ModelScreen(BlendScreen):
         q = query.strip().lower()
 
         def _match(d) -> bool:
+            if self._thinking_only and not d.selectable_thinking:
+                return False
+            if self._connected_only and not d.connected:
+                return False
             return not q or q in d.display_name.lower() or q in _provider_label(d.provider).lower()
 
         groups: dict[str, list] = {}
@@ -181,11 +199,12 @@ class ModelScreen(BlendScreen):
             return any(d.connected for d in groups[p])
 
         order = sorted(groups, key=lambda p: (not _connected(p), _provider_label(p).lower()))
+        sort_key = self._SORT_KEY[self._sort]
 
         opts: list[Option] = []
         for p in order:
             opts.append(self._header(p, _connected(p), first=not opts))
-            for d in sorted(groups[p], key=lambda d: d.display_name.lower()):
+            for d in sorted(groups[p], key=sort_key):
                 opts.append(Option(self._row(d), id=d.id))
         if not opts:
             opts.append(Option(Text("no models match", style=theme.palette(self)["muted"]), disabled=True))
@@ -219,6 +238,7 @@ class ModelScreen(BlendScreen):
     def on_mount(self) -> None:
         super().on_mount()
         self._rebuild("")
+        self.query_one("#model-hint", Static).update(self._hint_text())
         self.query_one("#model-search", Input).focus()
 
     # search box drives the filter live
@@ -254,6 +274,36 @@ class ModelScreen(BlendScreen):
     def action_next(self) -> None:
         if self._phase == "model":
             self.query_one("#model-list", OptionList).action_cursor_down()
+
+    # ── sort / filter ─────────────────────────────────────────────────────────
+    def _apply(self) -> None:
+        """Re-render the list for the current search + sort + filters, and refresh the hint."""
+        self._rebuild(self.query_one("#model-search", Input).value)
+        self.query_one("#model-hint", Static).update(self._hint_text())
+
+    def _hint_text(self) -> str:
+        t = "thinking-only" if self._thinking_only else "all"
+        c = "connected-only" if self._connected_only else "all"
+        return (f"⌃s sort: {self._sort}   ⌃t models: {t}   ⌃k providers: {c}"
+                f"   ·   type to search   ↑/↓ enter   esc cancel")
+
+    def action_cycle_sort(self) -> None:
+        if self._phase != "model":
+            return
+        self._sort = self._SORTS[(self._SORTS.index(self._sort) + 1) % len(self._SORTS)]
+        self._apply()
+
+    def action_toggle_thinking(self) -> None:
+        if self._phase != "model":
+            return
+        self._thinking_only = not self._thinking_only
+        self._apply()
+
+    def action_toggle_connected(self) -> None:
+        if self._phase != "model":
+            return
+        self._connected_only = not self._connected_only
+        self._apply()
 
     # ── phase 2: thinking ─────────────────────────────────────────────────────
     async def _activate(self, dep) -> None:

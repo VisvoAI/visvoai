@@ -26,12 +26,13 @@ def _highlight(screen, dep_id: str) -> None:
     raise AssertionError(f"{dep_id} not in the list")
 
 
-def _dv(id, name, provider, connected, thinking=("off", "low", "medium", "high"), default="medium"):
+def _dv(id, name, provider, connected, thinking=("off", "low", "medium", "high"),
+        default="medium", ic=0.3, oc=2.5, ctx=1_048_576):
     return DeployView(
         id=id, display_name=name, provider=provider, family=provider,
-        in_cost=0.3, out_cost=2.5, supports_thinking=len(thinking) > 1,
+        in_cost=ic, out_cost=oc, supports_thinking=len(thinking) > 1,
         thinking_levels=list(thinking), default_thinking=default,
-        context_window=1_048_576, connected=connected,
+        context_window=ctx, connected=connected,
     )
 
 
@@ -80,6 +81,45 @@ async def test_search_filters_rows():
         screen.query_one("#model-search").value = "together"
         await pilot.pause()
         assert _row_ids(screen) == ["together:llama"]
+
+
+@pytest.mark.asyncio
+async def test_sort_cycle_reorders_within_provider():
+    deps = [
+        _dv("together:a", "Alpha", "together", connected=True, ic=5.0),
+        _dv("together:b", "Beta", "together", connected=True, ic=1.0),
+    ]
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = await _push(app, pilot, ModelScreen(deps), lambda r: None)
+        assert _row_ids(screen) == ["together:a", "together:b"]   # name order
+        screen.action_cycle_sort()                                # name → cost
+        await pilot.pause()
+        assert screen._sort == "cost"
+        assert _row_ids(screen) == ["together:b", "together:a"]   # cheapest first
+
+
+@pytest.mark.asyncio
+async def test_thinking_only_and_connected_only_filters():
+    deps = [
+        _dv("gemini:f", "Flash", "gemini", connected=True),                       # thinks, connected
+        _dv("together:ll", "Llama", "together", connected=True, thinking=("off",)),  # no thinking
+        _dv("openai:gpt", "GPT", "openai", connected=False),                      # locked
+    ]
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = await _push(app, pilot, ModelScreen(deps), lambda r: None)
+        assert set(_row_ids(screen)) == {"gemini:f", "together:ll", "openai:gpt"}
+        screen.action_toggle_thinking()          # only thinking-capable (Llama has none)
+        await pilot.pause()
+        assert set(_row_ids(screen)) == {"gemini:f", "openai:gpt"}
+        screen.action_toggle_thinking()          # back to all
+        await pilot.pause()
+        screen.action_toggle_connected()         # hide locked providers
+        await pilot.pause()
+        assert "openai:gpt" not in _row_ids(screen)
 
 
 @pytest.mark.asyncio

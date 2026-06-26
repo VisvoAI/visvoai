@@ -18,8 +18,12 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 ### Changed
 - **Model page redesigned** (`screens/model_view.py`): replaced the per-model Widget list
   (which mounted ~2000 widgets and lagged at catalog scale) with a virtualized `OptionList`
-  + a live search `Input`. Type to filter by name/provider; connected-first grouping kept.
-  Rows render only when visible.
+  + a live search `Input`. Provider grouping (connected first, locked tagged "· needs key"),
+  aligned ctx/thinking/cost columns, spacing between groups. Rows render only when visible.
+  Adds **sort** (⌃s: name / cost / context, within each group) and **filter** toggles
+  (⌃t thinking-only, ⌃k connected-only).
+- **Conversations list** (`screens/sessions.py`): grouped by recency — Today / Yesterday /
+  Last 7 days / Last month / Older — with spacing and centered layout matching the model page.
 
 ### Requires
 - `visvoai-ai >= 0.2.0` (catalog engine APIs).

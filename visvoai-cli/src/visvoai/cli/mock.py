@@ -492,13 +492,19 @@ BIG_DIFF: list[tuple[str, str]] = (
 # Fake past conversations for the sessions view (--resume / fork). At integration
 # these come from ~/.visvoai/projects/<id>/conversations/. `when` is a pre-rendered
 # relative string here; real data stores timestamps and renders relative at view.
+import time as _time
+
+_NOW = _time.time()
+_DAY = 86400
+# `_sort` (epoch seconds) drives recency grouping in SessionsScreen; computed from now so
+# the demo always shows a realistic Today / Yesterday / Last 7 days / Last month / Older spread.
 SESSIONS: list[dict] = [
-    {"id": "a1c3", "title": "Add Anthropic provider to config", "when": "2h ago", "msgs": 14},
-    {"id": "b2d4", "title": "Fix the failing auth test", "when": "yesterday", "msgs": 31},
-    {"id": "c3e5", "title": "Investigate slow cold-start", "when": "3d ago", "msgs": 8},
-    {"id": "d4f6", "title": "Refactor the streaming pipeline", "when": "5d ago", "msgs": 52},
-    {"id": "e5a7", "title": "Add pytest fixtures for the sandbox", "when": "1w ago", "msgs": 19},
-    {"id": "f6b8", "title": "Wire up MinIO artifact previews", "when": "2w ago", "msgs": 27},
+    {"id": "a1c3", "title": "Add Anthropic provider to config", "when": "2h ago", "msgs": 14, "_sort": _NOW - 2 * 3600},
+    {"id": "b2d4", "title": "Fix the failing auth test", "when": "yesterday", "msgs": 31, "_sort": _NOW - 1 * _DAY},
+    {"id": "c3e5", "title": "Investigate slow cold-start", "when": "3d ago", "msgs": 8, "_sort": _NOW - 3 * _DAY},
+    {"id": "d4f6", "title": "Refactor the streaming pipeline", "when": "6d ago", "msgs": 52, "_sort": _NOW - 6 * _DAY},
+    {"id": "e5a7", "title": "Add pytest fixtures for the sandbox", "when": "3w ago", "msgs": 19, "_sort": _NOW - 21 * _DAY},
+    {"id": "f6b8", "title": "Wire up MinIO artifact previews", "when": "2mo ago", "msgs": 27, "_sort": _NOW - 60 * _DAY},
 ]
 
 # Selectable models for the /model picker (mock; real list comes from visvoai-ai).

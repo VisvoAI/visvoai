@@ -41,6 +41,19 @@ async def test_sessions_screen_lists_all_then_filters():
 
 
 @pytest.mark.asyncio
+async def test_sessions_grouped_by_recency():
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = await _open_sessions(app, pilot)
+        groups = [str(s.render()) for s in screen.query(".sessions-group")]
+        # mock spans every bucket, newest-first; headers appear in recency order
+        assert groups == ["Today", "Yesterday", "Last 7 days", "Last month", "Older"]
+        # every session still rendered as a row (headers are extra, not replacements)
+        assert len(screen.query(SessionRow)) == len(SESSIONS)
+
+
+@pytest.mark.asyncio
 async def test_sessions_search_no_match_shows_empty():
     app = VisvoApp()
     async with app.run_test() as pilot:
