@@ -27,7 +27,8 @@ class ThinkingMechanism(str, Enum):
     NONE = "none"
     GEMINI_LEVEL = "gemini_level"                # Gemini 3+: thinking_level enum
     GEMINI_BUDGET = "gemini_budget"              # Gemini 2.x: thinking_budget int
-    ANTHROPIC_BUDGET = "anthropic_budget"        # Claude: extended thinking budget_tokens
+    ANTHROPIC_BUDGET = "anthropic_budget"        # Claude ≤4.5 (Haiku 4.5, 3.5): legacy budget_tokens
+    ANTHROPIC_ADAPTIVE = "anthropic_adaptive"    # Claude 4.6+ (Opus 4.6/4.7/4.8, Sonnet 4.6, Fable 5): adaptive thinking
     OPENAI_EFFORT = "openai_effort"              # OpenAI o-series/gpt-5: reasoning_effort
     OPENAI_COMPAT_REASONING = "openai_compat_reasoning"  # Together/Groq compat reasoning
     OPENROUTER_REASONING = "openrouter_reasoning"        # OpenRouter `reasoning` field
@@ -74,9 +75,19 @@ def thinking_kwargs(mechanism: ThinkingMechanism, level: ThinkingLevel) -> Dict[
         return {"thinking_budget": _GEMINI_BUDGET[L], "include_thoughts": True}
 
     if m is ThinkingMechanism.ANTHROPIC_BUDGET:
+        # Legacy: Claude ≤4.5 only. budget_tokens 400s on 4.6+ — see ANTHROPIC_ADAPTIVE.
         if L is ThinkingLevel.OFF:
             return {}   # Claude thinking is opt-in; omitting the param = off
         return {"thinking": {"type": "enabled", "budget_tokens": _ANTHROPIC_BUDGET[L]}}
+
+    if m is ThinkingMechanism.ANTHROPIC_ADAPTIVE:
+        # Claude 4.6+: adaptive thinking is the only on-mode (legacy budget_tokens 400s).
+        # OFF = omit the param entirely — an explicit {"type":"disabled"} 400s on Fable 5, and
+        # omitting works across the whole 4.6+ family. Depth (effort) is a separate output_config
+        # control, deferred until the provider build path threads it through.
+        if L is ThinkingLevel.OFF:
+            return {}
+        return {"thinking": {"type": "adaptive"}}
 
     if m in (ThinkingMechanism.OPENAI_EFFORT, ThinkingMechanism.OPENAI_COMPAT_REASONING):
         return {} if L is ThinkingLevel.OFF else {"reasoning_effort": L.value}
