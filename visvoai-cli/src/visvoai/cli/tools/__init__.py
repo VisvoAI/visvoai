@@ -12,6 +12,8 @@ Available tools:
   list_files  — list one directory's contents
   list_tree   — show the directory structure as a bounded tree
   run_shell   — run a shell command (30s timeout)
+  web_search  — grounded web search → synthesized, cited answer
+  web_fetch   — read one URL's content as clean markdown (provider-side fetch)
 
 Usage:
   from visvoai.cli.tools import build_cli_tools
@@ -31,6 +33,14 @@ READ_LINE_CAP = 2000     # max lines returned per read_file call
 MAX_LINE_LEN = 2000      # over-long lines are clipped (one line ≠ a whole file)
 LIST_CAP = 1000          # max entries from list_files
 SHELL_LINE_CAP = 1000    # max output lines from run_shell
+WEB_LINE_CAP = 500       # max lines from web_search / web_fetch (prose, not a file)
+
+# Keeps the grounded answer tight + sourced — the model synthesizes from the search
+# snippets, not from its own priors.
+_SEARCH_SYNTHESIS = (
+    "You are an expert web researcher. Answer the query concisely and factually, "
+    "based only on the live search results. If the answer isn't found, say so plainly."
+)
 
 
 def _clip_line(s: str) -> str:
@@ -264,12 +274,71 @@ def run_shell(command: str) -> str:
     return f"{output}\n[exit: {result.returncode}]".strip()
 
 
+@tool
+def web_search(query: str) -> str:
+    """Search the public web and return a synthesized, cited answer.
+
+    Reach for this when the answer depends on CURRENT, CHANGING, or EXTERNAL
+    information you don't already have: recent events, today's data, specific
+    people/companies/products, or web documentation. The tool runs the search and
+    returns prose with a numbered Sources list — you describe what to find, it picks
+    the queries. If you can already answer reliably from your own knowledge, do that
+    instead. To read one specific page you already have a URL for, use web_fetch.
+    """
+    from visvoai.ai import run_search
+    from visvoai.ai.providers.base import NotSupported
+
+    try:
+        result = run_search(query, system=_SEARCH_SYNTHESIS)
+    except NotSupported:
+        return "ERROR: web search is not available for the configured provider."
+    except KeyError:
+        return "ERROR: GEMINI_API_KEY is not configured — web search needs it."
+    except Exception as e:  # network / SDK / quota — report as data so the agent recovers
+        return f"ERROR: {e}"
+
+    if not result.text:
+        return f"No results found for '{query}'."
+    out = [result.text]
+    if result.sources:
+        out.append("\nSources:")
+        for i, s in enumerate(result.sources, 1):
+            out.append(f"[{i}] {s.title or s.url} — {s.url}")
+    return cap_lines("\n".join(out), WEB_LINE_CAP)
+
+
+@tool
+def web_fetch(url: str) -> str:
+    """Fetch and read one specific web page you already have the URL for, as clean
+    markdown. Use it to open a link the user pasted, read a full article, or pull a
+    known page's content for close reading. You supply the exact URL — this does not
+    search. Paywalled/login-only/JS-rendered/local pages may return nothing; if so,
+    try web_search. (Retrieval is done by the model provider, not this machine.)
+    """
+    from visvoai.ai import FetchError, fetch_url as _fetch_url
+    from visvoai.ai.providers.base import NotSupported
+
+    try:
+        content = _fetch_url(url)
+    except NotSupported:
+        return "ERROR: URL fetch is not available for the configured provider."
+    except KeyError:
+        return "ERROR: GEMINI_API_KEY is not configured — web_fetch needs it."
+    except FetchError as e:
+        return f"ERROR: {e}. Try web_search instead."
+    except Exception as e:  # network / SDK / quota — report as data so the agent recovers
+        return f"ERROR: {e}"
+    return cap_lines(content, WEB_LINE_CAP)
+
+
 # The model sees each tool's docstring verbatim as its description; dedent the
 # multi-line ones so the schema isn't littered with the source's indentation.
-for _t in (read_file, write_file, edit_file, list_files, list_tree, run_shell):
+for _t in (read_file, write_file, edit_file, list_files, list_tree, run_shell,
+           web_search, web_fetch):
     _t.description = inspect.cleandoc(_t.description)
 
 
 def build_cli_tools(cwd: Optional[str] = None) -> List[BaseTool]:
     """Return the standard CLI tool set. cwd is reserved for future path-scoping."""
-    return [read_file, write_file, edit_file, list_files, list_tree, run_shell]
+    return [read_file, write_file, edit_file, list_files, list_tree, run_shell,
+            web_search, web_fetch]
