@@ -64,6 +64,7 @@ class ModelDefinition:
     display_name: str                        # shown in UI
     input_cost_per_million: float
     output_cost_per_million: float
+    context_window: int = 0                  # max context tokens (0 = unknown → provider default)
     cache_read_cost_per_million: float = 0.0
     search_query_cost: float = 0.0
     search_billed_per_request: bool = False

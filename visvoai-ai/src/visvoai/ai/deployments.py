@@ -54,6 +54,7 @@ class Deployment:
     slug: str                  # provider_model_id: the exact API string
     input_cost_per_million: float
     output_cost_per_million: float
+    context_window: int = 0    # max context tokens (0 = unknown → gauge hidden)
     cache_read_cost_per_million: float = 0.0
     thinking: ThinkingMechanism = ThinkingMechanism.NONE
     default_thinking: ThinkingLevel = ThinkingLevel.OFF
@@ -91,6 +92,7 @@ class DeploymentInfo:
     reasoning: bool
     input_cost_per_million: float
     output_cost_per_million: float
+    context_window: int                    # max context tokens (0 = unknown)
     supports_thinking: bool
     thinking_levels: List[ThinkingLevel]   # options to render (empty when unsupported)
     default_thinking: ThinkingLevel        # preselected option
@@ -135,6 +137,23 @@ def _default_level(md: ModelDefinition) -> ThinkingLevel:
     return ThinkingLevel.OFF
 
 
+# Approximate context windows by provider, used when a ModelDefinition doesn't pin
+# its own context_window. Approximate by design (drives a UI gauge, not billing) —
+# set context_window on a ModelDefinition to override per-model.
+_PROVIDER_WINDOW: Dict[str, int] = {
+    "gemini": 1_048_576,
+    "anthropic": 200_000,
+    "openai": 128_000,
+    "together": 128_000,
+    "openrouter": 128_000,
+    "groq": 128_000,
+}
+
+
+def _window(md: ModelDefinition) -> int:
+    return md.context_window or _PROVIDER_WINDOW.get(md.provider, 0)
+
+
 def _build() -> tuple[List[Model], List[Deployment]]:
     deployments: List[Deployment] = []
     models: Dict[str, Model] = {}
@@ -144,6 +163,7 @@ def _build() -> tuple[List[Model], List[Deployment]]:
             model=mid, provider=md.provider, slug=md.api_id,
             input_cost_per_million=md.input_cost_per_million,
             output_cost_per_million=md.output_cost_per_million,
+            context_window=_window(md),
             cache_read_cost_per_million=md.cache_read_cost_per_million,
             thinking=_mechanism(md), default_thinking=_default_level(md),
             capabilities=list(md.capabilities), enabled=md.enabled,
@@ -202,6 +222,7 @@ def _to_info(d: Deployment, codec: IdentityCodec) -> DeploymentInfo:
         family=m.family, capabilities=list(d.capabilities), reasoning=m.reasoning,
         input_cost_per_million=d.input_cost_per_million,
         output_cost_per_million=d.output_cost_per_million,
+        context_window=d.context_window,
         supports_thinking=d.supports_thinking,
         thinking_levels=d.thinking_levels(),
         default_thinking=d.default_thinking,
