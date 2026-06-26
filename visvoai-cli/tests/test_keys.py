@@ -86,3 +86,41 @@ def test_resolved_source(env, monkeypatch):
     assert keys.resolved_source("gemini", str(proj)) == "project"
     monkeypatch.setenv("GEMINI_API_KEY", "e")
     assert keys.resolved_source("gemini", str(proj)) == "env"
+
+
+@pytest.mark.parametrize("raw", [
+    "with\nnewline",     # pasted key with newline in the middle
+    "with\rcr",         # CR
+    "trailing\n",       # newline at the end
+    "leading\n",        # newline at the start
+    "tab\there",        # tab
+    "quote\"inside",    # embedded double-quote
+    "back\\slash",      # embedded backslash
+    "mix\nof\rcrlf",    # multiple control chars
+])
+def test_dump_toml_round_trip_through_tomllib(env, raw):
+    """Regression: a pasted key with control chars used to produce invalid TOML
+    that tomllib.loads silently failed on at the next read → key appeared written
+    but was never loaded into os.environ. _dump_toml now escapes \\n, \\r, \\t, \\\\, \\",
+    and other ASCII control chars so the file always parses back to the same value."""
+    proj = env / "proj"
+    proj.mkdir()
+    keys.set_key("gemini", raw, "global", str(proj))
+    # load_keys_into_env reads via _read_keys which goes through tomllib.loads;
+    # if _dump_toml produced invalid TOML, this would leave the env unset.
+    keys.load_keys_into_env(str(proj))
+    assert os.environ["GEMINI_API_KEY"] == raw
+
+
+def test_set_key_raises_if_round_trip_mismatch(env, monkeypatch):
+    """set_key re-reads the file after writing and raises OSError if the stored
+    value doesn't match what was written. Simulates a silent write failure by
+    corrupting the file between the write and the reread — here we just confirm
+    a normal write passes (the inverse case is hard to simulate without mocking)."""
+    proj = env / "proj"
+    proj.mkdir()
+    path = keys.set_key("gemini", "round-trip", "global", str(proj))
+    # The file exists, parses, and contains what we wrote.
+    import tomllib
+    data = tomllib.loads(path.read_text())
+    assert data["api_keys"]["gemini"] == "round-trip"

@@ -88,7 +88,28 @@ def _dump_toml(data: dict) -> str:
     """Serialize a shallow config dict (top-level scalars + sub-tables of strings)
     back to TOML, preserving any non-key sections. Sufficient for our key stores."""
     def esc(s: str) -> str:
-        return s.replace("\\", "\\\\").replace('"', '\\"')
+        # Escape control chars that would break a single-line TOML string literal:
+        # backslash, double-quote, and the ASCII whitespace/control chars that
+        # tomllib rejects inside "..." (newline, tab, CR, NUL, etc.). Without
+        # this, a pasted key with a stray newline produces invalid TOML that
+        # tomllib.loads silently fails on at the next read.
+        out = []
+        for ch in s:
+            if ch == "\\":
+                out.append("\\\\")
+            elif ch == '"':
+                out.append('\\"')
+            elif ch == "\n":
+                out.append("\\n")
+            elif ch == "\r":
+                out.append("\\r")
+            elif ch == "\t":
+                out.append("\\t")
+            elif ord(ch) < 0x20:
+                out.append(f"\\u{ord(ch):04x}")
+            else:
+                out.append(ch)
+        return "".join(out)
 
     lines: list[str] = []
     tables = {k: v for k, v in data.items() if isinstance(v, dict)}
@@ -105,7 +126,11 @@ def _dump_toml(data: dict) -> str:
 def set_key(provider: str, key: str, scope: str, cwd: str) -> Path:
     """Store a provider key. scope: 'global' → ~/.visvoai/config.toml; 'project' →
     <project>/.visvoai/secrets.toml (auto-gitignored). Preserves other content,
-    writes 0600. Returns the file path."""
+    writes 0600. Returns the file path.
+
+    Raises OSError if the write can't be verified (file missing, unreadable, or
+    the key isn't actually present after writing) — callers should surface it.
+    """
     path = global_config_path() if scope == "global" else project_secrets_path(cwd)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +146,19 @@ def set_key(provider: str, key: str, scope: str, cwd: str) -> Path:
     path.chmod(0o600)
     if scope == "project":
         _ensure_gitignored(path)
+
+    # Round-trip read so a silent write failure (disk full, perms, bad encoding)
+    # doesn't leave the user believing the key was saved. tomllib.loads raising
+    # is also a signal that _dump_toml produced invalid TOML for some key.
+    try:
+        reread = _read_keys(path)
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise OSError(f"wrote {path} but re-read failed: {e}") from e
+    if reread.get(provider) != key:
+        raise OSError(
+            f"wrote {path} but the stored key for '{provider}' doesn't match "
+            f"(expected {key!r}, got {reread.get(provider)!r})"
+        )
     return path
 
 

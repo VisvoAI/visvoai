@@ -111,7 +111,22 @@ class CommandsMixin:
         except OSError as e:
             self.notify(f"could not save key: {e}")
             return
-        self._refresh_model_status()
+        # If the just-saved provider differs from the active model's provider, the
+        # footer stays unchanged and the user reads "models now available" against a
+        # still-locked active model — looks like the key didn't take. When the active
+        # model lacks a key (the common case — that was why /login ran), switch to
+        # the registry's first connected deployment so the change is visible without
+        # a manual /model dance. Match the startup logic (app.py:133-134) for the
+        # thinking default so the footer reflects the new model.
+        if not agent.api_key_available(self._model):
+            new_default = agent.default_chat_model()
+            if new_default and new_default != self._model:
+                self._model = new_default
+                _dv = agent.deployment_view(self._model)
+                self._thinking = _dv.default_thinking if _dv else None
+            self._refresh_model_status()
+        else:
+            self._refresh_model_status()
         self.notify(f"{provider} key saved ({scope}) — models now available.")
 
     async def _compact_flow(self) -> None:

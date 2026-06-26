@@ -76,7 +76,9 @@ def _bootstrap_env(cwd: str) -> None:
 
 
 def _set_key_flow(provider: str, cwd: str) -> None:
-    """Headless `--set-key`: prompt (hidden) for the key + scope, store it."""
+    """Headless `--set-key`: prompt (hidden) for the key + scope, store it. set_key
+    re-reads the file after writing and raises OSError if the key didn't land —
+    we surface that rather than printing "saved" against a broken file."""
     from visvoai.cli import keys
 
     key = click.prompt(f"{keys.env_var_for(provider)}", hide_input=True).strip()
@@ -87,7 +89,11 @@ def _set_key_flow(provider: str, cwd: str) -> None:
         "Save where? [g]lobal (~/.visvoai) or [p]roject (.visvoai, gitignored)",
         type=click.Choice(["g", "p"]), default="g", show_choices=False,
     )
-    path = keys.set_key(provider, key, "global" if scope == "g" else "project", cwd)
+    try:
+        path = keys.set_key(provider, key, "global" if scope == "g" else "project", cwd)
+    except OSError as e:
+        click.echo(f"ERROR: {e}", err=True)
+        sys.exit(1)
     click.echo(f"Saved {provider} key to {path}")
 
 
