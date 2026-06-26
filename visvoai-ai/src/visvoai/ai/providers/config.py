@@ -15,11 +15,12 @@ import os
 from typing import Optional
 
 _ENV_KEY_MAP = {
-    "gemini":    "GEMINI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai":    "OPENAI_API_KEY",
-    "together":  "TOGETHER_API_KEY",
-    "groq":      "GROQ_API_KEY",
+    "gemini":     "GEMINI_API_KEY",
+    "anthropic":  "ANTHROPIC_API_KEY",
+    "openai":     "OPENAI_API_KEY",
+    "together":   "TOGETHER_API_KEY",
+    "groq":       "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
 }
 
 # OpenAI-compatible providers reached via ChatOpenAI + base_url. "openai" itself
