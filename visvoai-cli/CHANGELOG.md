@@ -3,6 +3,12 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.3.4] — 2026-06
+
+### Fixed
+- A failed tool's error message rendered vertically (one character per line). The
+  failure body `list()`-ed a str into characters; it now splits on newlines.
+
 ## [0.3.3] — 2026-06
 
 ### Added

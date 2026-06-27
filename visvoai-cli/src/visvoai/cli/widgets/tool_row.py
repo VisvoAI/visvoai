@@ -223,8 +223,18 @@ class ToolErrorBody(Static):
 
     def __init__(self, output, error) -> None:
         super().__init__()
-        self.output = list(output or [])
-        self.error = [error] if isinstance(error, str) else list(error or [])
+        # A str must be split on NEWLINES, not list()'d into characters (that rendered
+        # an error message vertically, one char per line). Lists pass through.
+        self.output = self._as_lines(output)
+        self.error = self._as_lines(error)
+
+    @staticmethod
+    def _as_lines(x) -> list:
+        if not x:
+            return []
+        if isinstance(x, str):
+            return x.splitlines() or [x]
+        return list(x)
 
     def render(self) -> Text:
         tv = theme.palette(self)

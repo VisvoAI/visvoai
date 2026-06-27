@@ -251,7 +251,7 @@ class AgentTurnMixin:
                     if entry is not None:
                         node, name, args = entry
                         node.set_rail("failed")
-                        await node.set_failure(str(data.get("error") or "tool error"), "tool error")
+                        await node.set_failure("", str(data.get("error") or "tool error"))
                         log.scroll_end(animate=False)
 
                 elif kind == "on_chain_end":
@@ -430,7 +430,7 @@ class AgentTurnMixin:
         if name == "edit_file":
             if output.startswith("ERROR"):
                 node.set_rail("failed")
-                await node.set_failure(output, "edit not applied")
+                await node.set_failure("", output)
                 return
             changes = ([("del", ln) for ln in args.get("old_string", "").splitlines()]
                        + [("add", ln) for ln in args.get("new_string", "").splitlines()])
@@ -444,7 +444,7 @@ class AgentTurnMixin:
         if name == "write_file":
             if output.startswith("ERROR"):
                 node.set_rail("failed")
-                await node.set_failure(output, "write failed")
+                await node.set_failure("", output)
                 return
             lines = (args.get("content", "") or "").splitlines() or [""]
             node.set_rail(f"{len(lines)} lines")
@@ -467,7 +467,7 @@ class AgentTurnMixin:
         # read_file / list_files / unknown → plain output (or a reported error)
         if output.startswith("ERROR"):
             node.set_rail("failed")
-            await node.set_failure(output, "failed")
+            await node.set_failure("", output)
             return
         lines = output.splitlines() or [""]
         noun = {"list_files": "items", "list_tree": "entries"}.get(name, "lines")

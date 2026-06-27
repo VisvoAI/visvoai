@@ -149,6 +149,22 @@ async def test_node_set_failure_marks_row_and_lean_body():
 
 
 @pytest.mark.asyncio
+async def test_node_set_failure_str_error_not_charwise():
+    # A str arg must split on newlines, not explode into one char per line.
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        node = ToolNode("list_tree", "cli")
+        await app.query_one("#log").mount(node)
+        await pilot.pause()
+        body = await node.set_failure("", "ERROR: not a directory: cli")
+        await pilot.pause()
+        assert body.error == ["ERROR: not a directory: cli"]
+        out = str(body.render())
+        assert "ERROR: not a directory: cli" in out
+
+
+@pytest.mark.asyncio
 async def test_node_mark_auto_applied_tags_rail():
     app = VisvoApp()
     async with app.run_test() as pilot:
