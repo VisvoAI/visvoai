@@ -1,17 +1,28 @@
 """
 store.py — file-based conversation persistence (NO database, NO checkpointer).
 
-Layout (a folder per conversation, so auxiliary files have a clean home):
+Layout (folder per conversation; branches are first-class folders):
   <project>/.visvoai/config.toml                      ← in-repo anchor (project_id)
-  $VISVOAI_HOME/projects/<pid>/conversations/<cid>/   ← one dir per conversation
-        history.jsonl   ← append-only message log (one serialized message/line)
-        meta.json       ← mutable facts (title, created, updated, model, msg_count)
-        (future: cache/ for large-output overflow, attachments, …)
+  $VISVOAI_HOME/projects/<pid>/checkpoints.git/       ← shadow repo (see checkpoints.py)
+  $VISVOAI_HOME/projects/<pid>/conversations/<cid>/
+        meta.json          ← conversation facts: title, active_branch, msg_count, …
+        checkpoints.jsonl  ← REGISTRY (shared): {id → commit} — the shadow mapping only
+        branches/<name>/
+              thread.jsonl     ← this branch's messages (one serialized message/line)
+              receipts.jsonl   ← this branch's per-turn UI metadata
+              timeline.jsonl   ← this branch's turn/tool→checkpoint view rows
+              meta.json        ← branch facts: tip checkpoint id, forked_from, …
 
-The durable state of a coding session IS the message thread, so we serialize it
-(messages_to_dict) and replay on resume — never a mid-graph checkpoint. Each
-conversation's history is APPEND-ONLY: a turn appends only its new messages, so a
-save is O(new) and can never clobber prior history.
+Two-level split (cli-git-structure): the conversation owns the immutable code
+mapping (`checkpoints.jsonl`: checkpoint id → shadow commit), while each branch
+owns its own *view* — thread, receipts, and the ordered timeline that maps its
+turns/tool-batches to checkpoint ids. A branch reconstructs itself ONLY from its own
+folder; it resolves a checkpoint id against the shared append-only registry but never
+reads another branch's mutable state. Fork = deep-copy a branch folder (+ truncate);
+the heavy code stays shared as content-addressed, immutable shadow commits.
+
+The durable state of a coding session IS the message thread — serialized
+(messages_to_dict) and replayed on resume, never a mid-graph checkpoint.
 
 VISVOAI_HOME overrides the global root (defaults to ~/.visvoai) — used by tests.
 All side-effecting calls are lazy: nothing here runs at import or app construction.
@@ -20,12 +31,15 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
+
+DEFAULT_BRANCH = "main"
 
 
 def visvoai_home() -> Path:
@@ -71,6 +85,7 @@ def new_conversation_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
+# ── paths ─────────────────────────────────────────────────────────────────────
 def _conversations_root(project_id: str) -> Path:
     d = visvoai_home() / "projects" / project_id / "conversations"
     d.mkdir(parents=True, exist_ok=True)
@@ -78,8 +93,7 @@ def _conversations_root(project_id: str) -> Path:
 
 
 def _conv_dir(project_id: str, conv_id: str) -> Path:
-    """The conversation's own folder — NOT created (reads must not have side effects).
-    Writers call _ensure_conv_dir first."""
+    """The conversation's own folder — NOT created (reads must not have side effects)."""
     return _conversations_root(project_id) / conv_id
 
 
@@ -91,131 +105,34 @@ def _ensure_conv_dir(project_id: str, conv_id: str) -> Path:
 
 def conversation_dir(project_id: str, conv_id: str) -> Path:
     """The conversation's folder (created) — a home for auxiliary per-conversation
-    files like rendered diagram HTML, distinct from the history/meta writers."""
+    files like rendered diagram HTML."""
     return _ensure_conv_dir(project_id, conv_id)
-
-
-def _conv_path(project_id: str, conv_id: str) -> Path:
-    return _conv_dir(project_id, conv_id) / "history.jsonl"
 
 
 def _meta_path(project_id: str, conv_id: str) -> Path:
     return _conv_dir(project_id, conv_id) / "meta.json"
 
 
+def _registry_path(project_id: str, conv_id: str) -> Path:
+    return _conv_dir(project_id, conv_id) / "checkpoints.jsonl"
+
+
+def _safe_branch(name: str) -> str:
+    """A filesystem-safe branch slug (the on-disk branch folder name)."""
+    return "".join(c if (c.isalnum() or c in "-_.") else "-" for c in name) or "branch"
+
+
+def _branch_dir(project_id: str, conv_id: str, branch: str) -> Path:
+    return _conv_dir(project_id, conv_id) / "branches" / _safe_branch(branch)
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _receipts_path(project_id: str, conv_id: str) -> Path:
-    return _conv_dir(project_id, conv_id) / "receipts.jsonl"
-
-
-def append_receipt(project_id: str, conv_id: str, receipt: dict) -> None:
-    """Append a per-turn UI receipt (duration, model, thinking, tokens, cost). This
-    is UI metadata ONLY — NOT message history, so it never enters the model context;
-    it's replayed on resume + summed for the conversation cost."""
-    _ensure_conv_dir(project_id, conv_id)
-    with _receipts_path(project_id, conv_id).open("a", encoding="utf-8") as f:
-        f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
-
-
-def write_receipts(project_id: str, conv_id: str, receipts: List[dict]) -> None:
-    """Overwrite the active receipts log with exactly `receipts` (used on branch
-    switch, where the active branch's receipts are swapped wholesale). Atomic."""
-    p = _receipts_path(project_id, conv_id)
-    _ensure_conv_dir(project_id, conv_id)
-    if not receipts:
-        if p.exists():
-            p.unlink()
-        return
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for r in receipts:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    tmp.replace(p)
-
-
-def save_branch_receipts(project_id: str, conv_id: str, branch: str,
-                         receipts: List[dict]) -> None:
-    """Persist a branch's receipts alongside its thread (UI metadata; mirrors
-    save_branch_thread so footers/cost are correct per branch)."""
-    p = _branch_thread_path(project_id, conv_id, branch).with_suffix(".receipts.jsonl")
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for r in receipts:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    tmp.replace(p)
-
-
-def load_branch_receipts(project_id: str, conv_id: str, branch: str) -> List[dict]:
-    p = _branch_thread_path(project_id, conv_id, branch).with_suffix(".receipts.jsonl")
-    if not p.exists():
-        return []
-    try:
-        return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def truncate_receipts(project_id: str, conv_id: str, n: int) -> None:
-    """Keep only the first `n` per-turn receipts (rewind drops the receipts for turns
-    that no longer exist). Atomic rewrite; removes the file when n <= 0."""
-    p = _receipts_path(project_id, conv_id)
-    if not p.exists():
-        return
-    kept = read_receipts(project_id, conv_id)[:max(0, n)]
-    if not kept:
-        p.unlink()
-        return
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for r in kept:
-            f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    tmp.replace(p)
-
-
-def read_receipts(project_id: str, conv_id: str) -> List[dict]:
-    """Per-turn receipts in order (empty if none)."""
-    p = _receipts_path(project_id, conv_id)
-    if not p.exists():
-        return []
-    try:
-        return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
-def _checkpoints_path(project_id: str, conv_id: str) -> Path:
-    return _conv_dir(project_id, conv_id) / "checkpoints.jsonl"
-
-
-def append_checkpoint(project_id: str, conv_id: str, checkpoint: dict) -> None:
-    """Append one checkpoint record to the conversation's append-only checkpoint log.
-    A checkpoint is `{id, message_index, parent, commit, kind, branch, label,
-    created}` — the conversation↔code mapping (`commit` is the shadow-repo commit sha;
-    the code DAG itself lives in the shadow git repo). NEVER rewritten: rewinds/branches append new records, the active view is
-    derived by walking `parent` links from the active branch tip."""
-    _ensure_conv_dir(project_id, conv_id)
-    with _checkpoints_path(project_id, conv_id).open("a", encoding="utf-8") as f:
-        f.write(json.dumps(checkpoint, ensure_ascii=False) + "\n")
-
-
-def read_checkpoints(project_id: str, conv_id: str) -> List[dict]:
-    """All checkpoint records in append order (empty if none)."""
-    p = _checkpoints_path(project_id, conv_id)
-    if not p.exists():
-        return []
-    try:
-        return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    except (json.JSONDecodeError, OSError):
-        return []
-
-
+# ── conversation meta ───────────────────────────────────────────────────────
 def read_meta(project_id: str, conv_id: str) -> dict:
-    """The conversation's metadata sidecar (title, created, updated, model, …), or
-    {} if none yet. The JSONL log holds history; this holds the mutable facts."""
+    """Conversation facts (title, active_branch, msg_count, created, updated), or {}."""
     p = _meta_path(project_id, conv_id)
     if p.exists():
         try:
@@ -226,160 +143,315 @@ def read_meta(project_id: str, conv_id: str) -> dict:
 
 
 def write_meta(project_id: str, conv_id: str, **fields) -> dict:
-    """Merge `fields` into the conversation's metadata sidecar and atomically rewrite.
-    `created` is stamped once; `updated` on every write. Returns the merged meta."""
+    """Merge `fields` into the conversation meta and atomically rewrite. `created` is
+    stamped once; `updated` on every write. Returns the merged meta."""
     meta = read_meta(project_id, conv_id)
     meta["id"] = conv_id
     meta.setdefault("created", _now_iso())
+    meta.setdefault("active_branch", DEFAULT_BRANCH)
     meta.update({k: v for k, v in fields.items() if v is not None})
     meta["updated"] = _now_iso()
     _ensure_conv_dir(project_id, conv_id)
-    p = _meta_path(project_id, conv_id)
-    tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(meta, indent=2, ensure_ascii=False))
-    tmp.replace(p)
+    _atomic_json(_meta_path(project_id, conv_id), meta)
     return meta
 
 
-def append_messages(project_id: str, conv_id: str, messages: List[BaseMessage]) -> None:
-    """Append new messages to the conversation's JSONL log (one serialized message
-    per line). Append-only: prior turns are never rewritten, so a save can never
-    clobber existing history, and the cost is O(new messages), not O(thread)."""
+def active_branch(project_id: str, conv_id: str) -> str:
+    return read_meta(project_id, conv_id).get("active_branch", DEFAULT_BRANCH)
+
+
+# ── checkpoint registry (shared, append-only, immutable: id → shadow commit) ──
+def append_registry(project_id: str, conv_id: str, checkpoint_id: str, commit: str) -> None:
+    """Record a checkpoint id → shadow-repo commit mapping. Append-only and immutable:
+    an id always maps to the same commit, so any branch may resolve it forever (even
+    after the commit is abandoned — a per-checkpoint ref keeps it reachable)."""
+    _ensure_conv_dir(project_id, conv_id)
+    with _registry_path(project_id, conv_id).open("a", encoding="utf-8") as f:
+        f.write(json.dumps({"id": checkpoint_id, "commit": commit,
+                            "created": _now_iso()}, ensure_ascii=False) + "\n")
+
+
+def read_registry(project_id: str, conv_id: str) -> List[dict]:
+    return _read_jsonl(_registry_path(project_id, conv_id))
+
+
+def registry_commit(project_id: str, conv_id: str, checkpoint_id: str) -> Optional[str]:
+    """Resolve a checkpoint id to its shadow commit (None if unknown)."""
+    for rec in read_registry(project_id, conv_id):
+        if rec.get("id") == checkpoint_id:
+            return rec.get("commit")
+    return None
+
+
+# ── branch meta ──────────────────────────────────────────────────────────────
+def read_branch_meta(project_id: str, conv_id: str, branch: str) -> dict:
+    p = _branch_dir(project_id, conv_id, branch) / "meta.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def write_branch_meta(project_id: str, conv_id: str, branch: str, **fields) -> dict:
+    """Branch facts: `tip` (checkpoint id), `forked_from` ({branch, checkpoint_id} or
+    None — provenance ONLY, never used to reconstruct history), created, updated."""
+    meta = read_branch_meta(project_id, conv_id, branch)
+    meta["name"] = branch
+    meta.setdefault("created", _now_iso())
+    # forked_from may legitimately be set to None; merge it explicitly.
+    for k, v in fields.items():
+        meta[k] = v
+    meta["updated"] = _now_iso()
+    d = _branch_dir(project_id, conv_id, branch)
+    d.mkdir(parents=True, exist_ok=True)
+    _atomic_json(d / "meta.json", meta)
+    return meta
+
+
+def list_branches(project_id: str, conv_id: str) -> List[str]:
+    root = _conv_dir(project_id, conv_id) / "branches"
+    if not root.exists():
+        return []
+    return sorted(d.name for d in root.iterdir() if d.is_dir())
+
+
+def ensure_branch(project_id: str, conv_id: str, branch: str) -> None:
+    """Create an empty branch folder (thread + meta) if it doesn't exist yet."""
+    d = _branch_dir(project_id, conv_id, branch)
+    if d.exists():
+        return
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "thread.jsonl").touch()
+    write_branch_meta(project_id, conv_id, branch, tip=None, forked_from=None)
+
+
+def copy_branch(project_id: str, conv_id: str, src: str, dst: str) -> None:
+    """Deep-copy a branch folder (thread + receipts + timeline + meta) → a NEW branch.
+    The fork is fully self-contained: later changes to `src` never touch it."""
+    s = _branch_dir(project_id, conv_id, src)
+    d = _branch_dir(project_id, conv_id, dst)
+    shutil.copytree(s, d)
+
+
+# ── branch thread ────────────────────────────────────────────────────────────
+def _branch_thread_path(project_id: str, conv_id: str, branch: str) -> Path:
+    return _branch_dir(project_id, conv_id, branch) / "thread.jsonl"
+
+
+def append_branch_messages(project_id: str, conv_id: str, branch: str,
+                           messages: List[BaseMessage]) -> None:
+    """Append new messages to a branch's thread (one serialized message/line).
+    Append-only tail write — O(new), never clobbers prior turns."""
     if not messages:
         return
-    _ensure_conv_dir(project_id, conv_id)
-    path = _conv_path(project_id, conv_id)
-    with path.open("a", encoding="utf-8") as f:
-        for d in messages_to_dict(messages):
-            f.write(json.dumps(d, ensure_ascii=False) + "\n")
-
-
-def _safe_branch(name: str) -> str:
-    """A filesystem-safe branch slug (the on-disk thread file name)."""
-    return "".join(c if (c.isalnum() or c in "-_.") else "-" for c in name) or "branch"
-
-
-def _branch_thread_path(project_id: str, conv_id: str, branch: str) -> Path:
-    return _conv_dir(project_id, conv_id) / "branches" / f"{_safe_branch(branch)}.jsonl"
-
-
-def save_branch_thread(project_id: str, conv_id: str, branch: str,
-                       messages: List[BaseMessage]) -> None:
-    """Persist a branch's full thread (its own linearization). The ACTIVE branch also
-    mirrors to history.jsonl so resume/list keep working unchanged; non-active branches
-    live only here until switched to."""
     p = _branch_thread_path(project_id, conv_id, branch)
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
+    with p.open("a", encoding="utf-8") as f:
         for d in messages_to_dict(messages):
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
-    tmp.replace(p)
+
+
+def write_branch_thread(project_id: str, conv_id: str, branch: str,
+                        messages: List[BaseMessage]) -> None:
+    """Overwrite a branch's thread (used to truncate on rewind / seed a fork)."""
+    p = _branch_thread_path(project_id, conv_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_lines(p, (json.dumps(d, ensure_ascii=False) for d in messages_to_dict(messages)))
 
 
 def load_branch_thread(project_id: str, conv_id: str, branch: str) -> List[BaseMessage]:
-    """A branch's saved thread (empty list if none recorded yet)."""
     p = _branch_thread_path(project_id, conv_id, branch)
     if not p.exists():
         return []
     try:
-        return messages_from_dict(_read_lines(p))
+        return messages_from_dict(_read_jsonl(p))
     except (json.JSONDecodeError, OSError):
         return []
 
 
-def save_conversation(project_id: str, conv_id: str, messages: List[BaseMessage],
-                      title: Optional[str] = None) -> None:
-    """(Over)write the whole conversation as JSONL, atomically — used to seed or
-    rewrite a thread. The live turn path uses append_messages. `title` is accepted
-    for API compatibility but ignored (titles are derived from the first turn)."""
-    _ensure_conv_dir(project_id, conv_id)
-    path = _conv_path(project_id, conv_id)
-    tmp = path.with_name(path.name + ".tmp")
-    with tmp.open("w", encoding="utf-8") as f:
-        for d in messages_to_dict(messages):
-            f.write(json.dumps(d, ensure_ascii=False) + "\n")
-    tmp.replace(path)
+# ── branch receipts ──────────────────────────────────────────────────────────
+def _branch_receipts_path(project_id: str, conv_id: str, branch: str) -> Path:
+    return _branch_dir(project_id, conv_id, branch) / "receipts.jsonl"
 
 
-def save_conversation_to(path: Path, messages: List[BaseMessage]) -> None:
-    """Serialize a thread to an arbitrary path (one message dict per line) — used by
-    export, which writes outside the managed store layout."""
+def append_branch_receipt(project_id: str, conv_id: str, branch: str, receipt: dict) -> None:
+    p = _branch_receipts_path(project_id, conv_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+
+
+def read_branch_receipts(project_id: str, conv_id: str, branch: str) -> List[dict]:
+    return _read_jsonl(_branch_receipts_path(project_id, conv_id, branch))
+
+
+def truncate_branch_receipts(project_id: str, conv_id: str, branch: str, n: int) -> None:
+    """Keep only the first `n` receipts (rewind drops receipts for turns that no longer
+    exist on this branch)."""
+    p = _branch_receipts_path(project_id, conv_id, branch)
+    kept = read_branch_receipts(project_id, conv_id, branch)[:max(0, n)]
+    if not kept:
+        if p.exists():
+            p.unlink()
+        return
+    _atomic_lines(p, (json.dumps(r, ensure_ascii=False) for r in kept))
+
+
+# ── branch timeline (turn/tool-batch → checkpoint view) ───────────────────────
+def _branch_timeline_path(project_id: str, conv_id: str, branch: str) -> Path:
+    return _branch_dir(project_id, conv_id, branch) / "timeline.jsonl"
+
+
+def append_timeline(project_id: str, conv_id: str, branch: str, row: dict) -> None:
+    """Append one ordered view row: {checkpoint_id, message_index, kind, label}."""
+    p = _branch_timeline_path(project_id, conv_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def read_timeline(project_id: str, conv_id: str, branch: str) -> List[dict]:
+    """A branch's ordered timeline rows (oldest→newest). This IS the branch's
+    turn/tool→checkpoint mapping — no DAG walk needed."""
+    return _read_jsonl(_branch_timeline_path(project_id, conv_id, branch))
+
+
+def write_timeline(project_id: str, conv_id: str, branch: str, rows: List[dict]) -> None:
+    """Overwrite a branch's timeline (used to truncate on rewind)."""
+    p = _branch_timeline_path(project_id, conv_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        if p.exists():
+            p.unlink()
+        return
+    _atomic_lines(p, (json.dumps(r, ensure_ascii=False) for r in rows))
+
+
+# ── seeding / export helpers ─────────────────────────────────────────────────
+def seed_conversation(project_id: str, conv_id: str, messages: List[BaseMessage],
+                      receipts: List[dict], *, title: Optional[str] = None,
+                      model: Optional[str] = None) -> None:
+    """Create a fresh conversation with a single `main` branch (used by /fork to seed
+    the forked working directory's store). No checkpoints/timeline — the fork's first
+    turn lays its own baseline."""
+    ensure_branch(project_id, conv_id, DEFAULT_BRANCH)
+    write_branch_thread(project_id, conv_id, DEFAULT_BRANCH, messages)
+    if receipts:
+        _atomic_lines(_branch_receipts_path(project_id, conv_id, DEFAULT_BRANCH),
+                      (json.dumps(r, ensure_ascii=False) for r in receipts))
+    write_meta(project_id, conv_id, active_branch=DEFAULT_BRANCH,
+               title=title or title_for(messages), model=model, msg_count=len(messages))
+
+
+def write_thread_to(path: Path, messages: List[BaseMessage]) -> None:
+    """Serialize a thread to an arbitrary path — used by export (outside the store)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for d in messages_to_dict(messages):
-            f.write(json.dumps(d, ensure_ascii=False) + "\n")
+    _atomic_lines(path, (json.dumps(d, ensure_ascii=False) for d in messages_to_dict(messages)))
 
 
-def _read_lines(path: Path) -> List[dict]:
-    return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-
-
+# ── list / load (active-branch aware) ─────────────────────────────────────────
 def list_conversations(project_id: str) -> List[dict]:
-    """Newest-first list of {id, title, when, msgs} for the SessionsScreen. Scans the
-    per-conversation folders. Prefers the meta sidecar (title/updated); falls back to
-    parsing history only when meta is missing."""
+    """Newest-first {id, title, when, msgs} rows for the SessionsScreen. Prefers the
+    conversation meta (title/active_branch/msg_count/updated); falls back to the active
+    branch's thread when meta is incomplete."""
     root = _conversations_root(project_id)
     out: List[dict] = []
     for d in root.iterdir():
         if not d.is_dir():
             continue
-        hist = d / "history.jsonl"
-        mtime = hist.stat().st_mtime_ns if hist.exists() else d.stat().st_mtime_ns
-        out.append(_summary(project_id, d.name, hist, mtime))
+        out.append(_summary(project_id, d.name))
     out.sort(key=lambda s: s["_sort"], reverse=True)
     return out
 
 
 def load_conversation(project_id: str, conv_id: str) -> List[BaseMessage]:
-    hist = _conv_path(project_id, conv_id)
-    if hist.exists():
-        return messages_from_dict(_read_lines(hist))
-    raise FileNotFoundError(f"conversation {conv_id} not found")
+    """The active branch's thread. Raises if the conversation doesn't exist."""
+    if not _conv_dir(project_id, conv_id).exists():
+        raise FileNotFoundError(f"conversation {conv_id} not found")
+    return load_branch_thread(project_id, conv_id, active_branch(project_id, conv_id))
 
 
-def _summary(project_id: str, conv_id: str, hist_file: Path, mtime_ns: int) -> dict:
-    """One SessionsScreen row. Title/updated/msgs come from the meta sidecar when
-    present; otherwise they're derived from the history file (pre-meta)."""
+# ── conversation-level convenience (operate on the active/default branch) ─────
+# Most callers think in "the conversation's thread/receipts"; branches are an
+# implementation detail. These delegate to the active branch (default 'main').
+def save_conversation(project_id: str, conv_id: str, messages: List[BaseMessage],
+                      title: Optional[str] = None) -> None:
+    """(Over)write the active branch's thread (seeds 'main' for a new conversation)."""
+    b = active_branch(project_id, conv_id)
+    ensure_branch(project_id, conv_id, b)
+    write_branch_thread(project_id, conv_id, b, messages)
+
+
+def append_messages(project_id: str, conv_id: str, messages: List[BaseMessage]) -> None:
+    """Append to the active branch's thread."""
+    b = active_branch(project_id, conv_id)
+    ensure_branch(project_id, conv_id, b)
+    append_branch_messages(project_id, conv_id, b, messages)
+
+
+def append_receipt(project_id: str, conv_id: str, receipt: dict) -> None:
+    """Append a per-turn receipt to the active branch."""
+    append_branch_receipt(project_id, conv_id, active_branch(project_id, conv_id), receipt)
+
+
+def read_receipts(project_id: str, conv_id: str) -> List[dict]:
+    """The active branch's per-turn receipts."""
+    return read_branch_receipts(project_id, conv_id, active_branch(project_id, conv_id))
+
+
+def _summary(project_id: str, conv_id: str) -> dict:
     meta = read_meta(project_id, conv_id)
+    branch = meta.get("active_branch", DEFAULT_BRANCH)
+    thread_file = _branch_thread_path(project_id, conv_id, branch)
     title = meta.get("title")
     msgs = meta.get("msg_count")
-    updated = meta.get("updated")
-    if title is None or msgs is None:   # no/partial meta → fall back to the history
+    if title is None or msgs is None:
         try:
-            dicts = _read_lines(hist_file) if hist_file.exists() else []
+            dicts = _read_jsonl(thread_file)
         except (json.JSONDecodeError, OSError):
             dicts = []
         title = title or _title_from_dicts(dicts)
         msgs = msgs if msgs is not None else len(dicts)
-    when_dt = _parse_iso(updated) or datetime.fromtimestamp(mtime_ns / 1e9, timezone.utc)
-    return {
-        "id": conv_id,
-        "title": title,
-        "when": _relative(when_dt),
-        "msgs": msgs,
-        "_sort": when_dt.timestamp(),
-    }
+    mtime_ns = (thread_file.stat().st_mtime_ns if thread_file.exists()
+                else _conv_dir(project_id, conv_id).stat().st_mtime_ns)
+    when_dt = _parse_iso(meta.get("updated")) or datetime.fromtimestamp(mtime_ns / 1e9, timezone.utc)
+    return {"id": conv_id, "title": title, "when": _relative(when_dt),
+            "msgs": msgs, "_sort": when_dt.timestamp()}
 
 
-def _parse_iso(s: Optional[str]) -> Optional[datetime]:
-    if not s:
-        return None
+# ── shared low-level ──────────────────────────────────────────────────────────
+def _read_jsonl(path: Path) -> List[dict]:
+    if not path.exists():
+        return []
     try:
-        return datetime.fromisoformat(s)
-    except ValueError:
-        return None
+        return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _atomic_json(path: Path, obj) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _atomic_lines(path: Path, lines) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for ln in lines:
+            f.write(ln + "\n")
+    tmp.replace(path)
 
 
 def title_for(messages: List[BaseMessage]) -> str:
-    """Conversation title from live messages (first human turn) — used for the
-    terminal tab. Same rule as the on-disk title derivation."""
+    """Conversation title from live messages (first human turn)."""
     return _title_from_dicts(messages_to_dict(messages))
 
 
 def _title_from_dicts(dicts: List[dict]) -> str:
-    """Title = the first human turn, flattened (handles str or list-of-blocks content)."""
     for d in dicts:
         if d.get("type") == "human":
             c = d.get("data", {}).get("content")
@@ -393,6 +465,15 @@ def _flatten_blocks(content) -> str:
     if isinstance(content, list):
         return " ".join(p.get("text", "") for p in content if isinstance(p, dict))
     return str(content or "")
+
+
+def _parse_iso(s: Optional[str]) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
 
 
 def _relative(then: datetime) -> str:

@@ -11,7 +11,7 @@ from visvoai.cli.checkpoints import ShadowRepo
 pytestmark = pytest.mark.skipif(not ShadowRepo.available(), reason="git not installed")
 
 
-def _seed_conversation(tmp_path, monkeypatch):
+def _seed(tmp_path, monkeypatch):
     """A conversation with a baseline + one turn checkpoint; returns (proj, pid, cid)."""
     monkeypatch.setenv("VISVOAI_HOME", str(tmp_path / "home"))
     proj = tmp_path / "proj"
@@ -29,7 +29,7 @@ def _seed_conversation(tmp_path, monkeypatch):
     return proj, app._project_id, app._conv_id
 
 
-def _resumed_app(proj, pid, cid):
+def _resumed(proj, pid, cid):
     app = VisvoApp()
     app._cwd = str(proj)
     app._project_id = pid
@@ -39,42 +39,39 @@ def _resumed_app(proj, pid, cid):
 
 
 def test_resume_with_drift_records_baseline(tmp_path, monkeypatch):
-    proj, pid, cid = _seed_conversation(tmp_path, monkeypatch)
-    n_before = len(store.read_checkpoints(pid, cid))
-    (proj / "a.txt").write_text("hand-edited between sessions\n")   # external drift
+    proj, pid, cid = _seed(tmp_path, monkeypatch)
+    n_before = len(store.read_timeline(pid, cid, "main"))
+    (proj / "a.txt").write_text("hand-edited between sessions\n")
 
-    app = _resumed_app(proj, pid, cid)
+    app = _resumed(proj, pid, cid)
     app._resume_checkpoints()
 
-    cps = store.read_checkpoints(pid, cid)
-    assert len(cps) == n_before + 1
-    drift = cps[-1]
+    rows = store.read_timeline(pid, cid, "main")
+    assert len(rows) == n_before + 1
+    drift = rows[-1]
     assert drift["kind"] == "baseline"
-    assert drift["message_index"] == len(app._history)   # anchored at the thread end
-    assert app._cp_tip_id == drift["id"]                  # tip advanced to reality
+    assert drift["message_index"] == len(app._history)
+    assert app._cp_tip_id == drift["checkpoint_id"]
 
 
 def test_resume_without_drift_adopts_tip_no_new_checkpoint(tmp_path, monkeypatch):
-    proj, pid, cid = _seed_conversation(tmp_path, monkeypatch)
-    n_before = len(store.read_checkpoints(pid, cid))
+    proj, pid, cid = _seed(tmp_path, monkeypatch)
+    n_before = len(store.read_timeline(pid, cid, "main"))
 
-    app = _resumed_app(proj, pid, cid)            # tree untouched
+    app = _resumed(proj, pid, cid)             # tree untouched
     app._resume_checkpoints()
 
-    assert len(store.read_checkpoints(pid, cid)) == n_before   # nothing added
-    assert app._cp_tip_sha is not None                          # but tip adopted
+    assert len(store.read_timeline(pid, cid, "main")) == n_before
+    assert app._cp_tip_sha is not None
 
 
 def test_rewind_crosses_baseline_detects_resume_point(tmp_path, monkeypatch):
-    proj, pid, cid = _seed_conversation(tmp_path, monkeypatch)
+    proj, pid, cid = _seed(tmp_path, monkeypatch)
     (proj / "a.txt").write_text("drift\n")
-    app = _resumed_app(proj, pid, cid)
-    app._resume_checkpoints()                      # appends a baseline after the turn cp
+    app = _resumed(proj, pid, cid)
+    app._resume_checkpoints()                  # appends a baseline after the turn cp
 
-    records = store.read_checkpoints(pid, cid)
-    chain = app._active_chain(records)
-    turn1 = next(c for c in records if c["label"] == "q1")
-    # the resume baseline sits AFTER turn1 in the chain → rewinding to turn1 crosses it
-    assert app._rewind_crosses_baseline(chain, turn1) is True
-    # rewinding to the latest (the baseline itself) crosses nothing
-    assert app._rewind_crosses_baseline(chain, chain[-1]) is False
+    rows = store.read_timeline(pid, cid, "main")
+    turn1 = next(r for r in rows if r["label"] == "q1")
+    assert app._rewind_crosses_baseline(rows, turn1["checkpoint_id"]) is True
+    assert app._rewind_crosses_baseline(rows, rows[-1]["checkpoint_id"]) is False

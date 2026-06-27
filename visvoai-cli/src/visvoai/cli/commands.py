@@ -327,7 +327,6 @@ class CommandsMixin:
         # chain onto the cleared conversation's tip.
         self._checkpoints = None
         self._cp_branch = "main"
-        self._cp_branch_tips = {}
         self._cp_tip_id = None
         self._cp_tip_sha = None
         self._title_generated = False

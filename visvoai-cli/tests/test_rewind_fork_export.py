@@ -3,7 +3,6 @@ Exercises the testable cores (_do_fork / _do_export), skipping the interactive p
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -12,6 +11,11 @@ from visvoai.cli import VisvoApp, store
 from visvoai.cli.checkpoints import ShadowRepo
 
 pytestmark = pytest.mark.skipif(not ShadowRepo.available(), reason="git not installed")
+
+
+def _row(app, label):
+    rows = store.read_timeline(app._project_id, app._conv_id, "main")
+    return next(r for r in rows if r["label"] == label)
 
 
 def _conv(tmp_path, monkeypatch):
@@ -32,14 +36,12 @@ def _conv(tmp_path, monkeypatch):
 
 def test_fork_materializes_worktree_and_seeds_conversation(tmp_path, monkeypatch):
     proj, app = _conv(tmp_path, monkeypatch)
-    # add more so the fork target (turn1) is a strict subset
     app._history += [HumanMessage(content="q2"), AIMessage(content="a2")]
     (proj / "a.txt").write_text("v3\n")
     app._record_checkpoint(4, "turn", "q2")
     store.save_conversation(app._project_id, app._conv_id, app._history)
 
-    records = store.read_checkpoints(app._project_id, app._conv_id)
-    turn1 = next(c for c in records if c["label"] == "build a parser")
+    turn1 = _row(app, "build a parser")
     fork_dir = tmp_path / "fork"
     fork_cid = app._do_fork(turn1, str(fork_dir))
 

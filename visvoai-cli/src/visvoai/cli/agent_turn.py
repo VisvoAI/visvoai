@@ -341,7 +341,7 @@ class AgentTurnMixin:
         if self._project_id is None or self._conv_id is None:
             return
         try:
-            store.append_receipt(self._project_id, self._conv_id, {
+            store.append_branch_receipt(self._project_id, self._conv_id, self._cp_branch, {
                 "seconds": round(seconds, 1), "model": self._model, "model_name": model_name,
                 "thinking_level": self._thinking, "thinking_durations": thinking_durations,
                 "input_tokens": tin, "output_tokens": tout,
@@ -371,14 +371,17 @@ class AgentTurnMixin:
                 self._project_id = store.resolve_project_id(self._cwd)
             if self._conv_id is None:
                 self._conv_id = store.new_conversation_id()
-            # Append only the new tail (everything past what's already on disk).
+                store.ensure_branch(self._project_id, self._conv_id, self._cp_branch)
+            # Append only the new tail (everything past what's already on disk) to the
+            # ACTIVE branch's thread.
             new = self._history[self._persisted_count:]
-            store.append_messages(self._project_id, self._conv_id, new)
+            store.append_branch_messages(self._project_id, self._conv_id, self._cp_branch, new)
             self._persisted_count = len(self._history)
-            # Metadata sidecar: stamp model + count + a fallback title (the first
-            # prompt) only until the LLM title lands — never overwrite that.
+            # Conversation meta: model + count + active branch + a fallback title (the
+            # first prompt) only until the LLM title lands — never overwrite that.
             meta = store.read_meta(self._project_id, self._conv_id)
-            fields = {"model": self._model, "msg_count": len(self._history)}
+            fields = {"model": self._model, "msg_count": len(self._history),
+                      "active_branch": self._cp_branch}
             if not meta.get("title"):
                 fields["title"] = store.title_for(self._history)
             store.write_meta(self._project_id, self._conv_id, **fields)

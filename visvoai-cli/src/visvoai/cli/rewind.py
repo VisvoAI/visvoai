@@ -2,21 +2,23 @@
 
 Records a working-tree checkpoint per tool BATCH (before the batch runs, while the
 tree is quiescent — parallel tools share no mid-batch moment) and at turn end, each
-mapped to a message index so code and conversation rewind together. Built on the
-shadow repo (`checkpoints.ShadowRepo`); checkpoint records are the conversation↔code
-mapping (`store.append_checkpoint`), the code DAG itself is shadow-repo commits.
+mapped to a message index so code and conversation rewind together.
 
-This half is the recording path. Rewind / branch / fork / export flows are added in
-later phases of the same mixin. Mixed into VisvoApp; calls turn primitives via self.
+Two-level storage (see store.py):
+- the conversation owns the immutable REGISTRY (`checkpoints.jsonl`: checkpoint id →
+  shadow commit) — the code mapping only;
+- each branch owns its own TIMELINE (`branches/<name>/timeline.jsonl`: ordered rows
+  {checkpoint_id, message_index, kind, label}) — its turn/tool→checkpoint view.
 
-Design notes:
-- Checkpoint = {id, message_index, parent, commit, kind, branch, label, created}.
-  `commit` is the shadow-repo commit sha; `message_index` is the thread length to
-  truncate to when rewinding here.
-- kinds: "baseline" (conversation floor / resume drift), "pre_batch" (before a tool
-  batch — message_index excludes the requesting AIMessage so the model re-plans),
-  "turn" (end of a turn).
-- Checkpointing must NEVER break a turn: any CheckpointError/OSError is swallowed.
+A branch reconstructs itself ONLY from its own folder; it resolves a checkpoint id
+against the shared registry but never reads another branch's mutable state. Fork =
+deep-copy a branch folder (+ truncate); `forked_from` is provenance, never a
+reconstruction path. Checkpointing is best-effort: any CheckpointError/OSError is
+swallowed so it never breaks a turn.
+
+Flows: /rewind (Ctrl+B) restore-or-branch · /branch switch/fork · /fork worktree ·
+/export transcript|bundle · /log the chain. Mixed into VisvoApp; uses turn primitives
+via self.
 """
 from __future__ import annotations
 
@@ -48,8 +50,21 @@ def _relative_iso(s: str | None) -> str:
         return ""
 
 
+def _truncate_to(rows: list[dict], checkpoint_id: str) -> list[dict]:
+    """Timeline rows up to AND INCLUDING the row for `checkpoint_id` (the new tip)."""
+    keep: list[dict] = []
+    for r in rows:
+        keep.append(r)
+        if r["checkpoint_id"] == checkpoint_id:
+            break
+    return keep
+
+
 class RewindMixin:
-    """Checkpoint recording (+ rewind/branch/fork/export, added in later phases)."""
+    """Checkpoint recording + rewind / branch / switch / fork / export."""
+
+    def _branch_ref(self, branch: str) -> str:
+        return f"refs/visvoai/{self._conv_id}/{branch}"
 
     # ── repo lifecycle ────────────────────────────────────────────────────────
     def _ensure_checkpoints(self) -> ShadowRepo | None:
@@ -69,21 +84,20 @@ class RewindMixin:
             return None
         return self._checkpoints
 
-    def _load_checkpoint_tip(self, records: list[dict]) -> None:
-        """Resume: adopt the active branch + its tip from meta (fallback: last record),
-        so the next snapshot chains onto the existing DAG instead of re-baselining."""
-        meta = store.read_meta(self._project_id, self._conv_id)
-        self._cp_branch = meta.get("active_branch", "main")
-        self._cp_branch_tips = dict(meta.get("branch_tips", {}))
-        tip_id = self._cp_branch_tips.get(self._cp_branch)
-        rec = next((r for r in reversed(records) if r["id"] == tip_id), records[-1])
-        self._cp_tip_id = rec["id"]
-        self._cp_tip_sha = rec["commit"]
+    def _load_checkpoint_tip(self) -> None:
+        """Adopt the active branch + its tip (from branch meta → registry commit), so
+        the next snapshot chains onto the existing timeline."""
+        self._cp_branch = store.active_branch(self._project_id, self._conv_id)
+        bm = store.read_branch_meta(self._project_id, self._conv_id, self._cp_branch)
+        tip = bm.get("tip")
+        self._cp_tip_id = tip
+        self._cp_tip_sha = (store.registry_commit(self._project_id, self._conv_id, tip)
+                            if tip else None)
 
     # ── recording ─────────────────────────────────────────────────────────────
     def _record_checkpoint(self, message_index: int, kind: str, label: str) -> None:
-        """Snapshot the work tree and append a checkpoint record at `message_index`.
-        No-op (swallowed) if checkpointing is unavailable — never breaks a turn."""
+        """Snapshot the work tree, register `id → commit`, and append a timeline row to
+        the active branch. No-op (swallowed) if checkpointing is unavailable."""
         repo = self._ensure_checkpoints()
         if repo is None:
             return
@@ -91,64 +105,52 @@ class RewindMixin:
             sha, _made = repo.snapshot(self._cp_tip_sha, label or kind)
         except CheckpointError:
             return
-        rec = {
-            "id": uuid.uuid4().hex[:8],
-            "message_index": message_index,
-            "parent": self._cp_tip_id,
-            "commit": sha,
-            "kind": kind,
-            "branch": self._cp_branch,
-            "label": (label or "")[:80],
-            "created": _now_iso(),
-        }
+        cp_id = uuid.uuid4().hex[:8]
+        row = {"checkpoint_id": cp_id, "message_index": message_index,
+               "kind": kind, "label": (label or "")[:80], "created": _now_iso()}
         try:
-            store.append_checkpoint(self._project_id, self._conv_id, rec)
-            # A ref per checkpoint commit keeps EVERY snapshot permanently reachable —
-            # so a later rewind/branch can never strand a commit (gc-safe), and an
-            # abandoned timeline's code stays recoverable. Plus the moving branch tip.
-            repo.ref_set(f"refs/visvoai/{self._conv_id}/cp/{rec['id']}", sha)
-            repo.ref_set(f"refs/visvoai/{self._conv_id}/{self._cp_branch}", sha)
+            store.append_registry(self._project_id, self._conv_id, cp_id, sha)
+            store.append_timeline(self._project_id, self._conv_id, self._cp_branch, row)
+            store.write_branch_meta(self._project_id, self._conv_id, self._cp_branch, tip=cp_id)
+            # A ref per checkpoint commit keeps EVERY snapshot reachable (gc-safe) so a
+            # later rewind/branch can never strand a commit; plus the moving branch tip.
+            repo.ref_set(f"refs/visvoai/{self._conv_id}/cp/{cp_id}", sha)
+            repo.ref_set(self._branch_ref(self._cp_branch), sha)
         except (CheckpointError, OSError):
             return
-        self._cp_tip_id = rec["id"]
+        self._cp_tip_id = cp_id
         self._cp_tip_sha = sha
-        self._cp_branch_tips[self._cp_branch] = rec["id"]
-        try:
-            store.write_meta(self._project_id, self._conv_id,
-                             active_branch=self._cp_branch,
-                             branch_tips=self._cp_branch_tips)
-        except OSError:
-            pass
 
     def _maybe_baseline(self) -> None:
         """Once per conversation, before the first turn does any work: record a
         'baseline' of the pristine tree (the rewind floor). On a resumed conversation
-        that already has checkpoints, adopt its tip instead of re-baselining."""
-        if self._cp_tip_id is not None:   # chain already live this session
+        that already has a timeline, adopt its tip instead."""
+        if self._cp_tip_id is not None:
             return
         repo = self._ensure_checkpoints()
         if repo is None:
             return
-        existing = store.read_checkpoints(self._project_id, self._conv_id)
-        if existing:
-            self._load_checkpoint_tip(existing)
+        store.ensure_branch(self._project_id, self._conv_id, self._cp_branch)
+        # Establish conversation-level active_branch (the turn path also stamps it, but
+        # the baseline may be the first thing to touch a brand-new conversation).
+        store.write_meta(self._project_id, self._conv_id, active_branch=self._cp_branch)
+        if store.read_timeline(self._project_id, self._conv_id, self._cp_branch):
+            self._load_checkpoint_tip()
             return
         self._record_checkpoint(0, "baseline", "start")
 
     # ── resume drift (Plan D) ─────────────────────────────────────────────────
     def _resume_checkpoints(self) -> None:
-        """On resuming a conversation, adopt its checkpoint tip and — if the work tree
-        drifted since the last snapshot (hand edits, pull, branch switch, a build) —
-        record a 'baseline' of the current reality at the thread's end. That keeps the
-        timeline continuous and lets `_rewind_crosses_baseline` warn before a rewind
-        discards out-of-session changes."""
+        """On resume, adopt the active branch's tip and — if the work tree drifted since
+        the last snapshot — record a 'baseline' of current reality at the thread's end,
+        so `_rewind_crosses_baseline` can warn before a rewind discards external edits."""
         repo = self._ensure_checkpoints()
         if repo is None:
             return
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        if not records:   # pre-feature conversation → the first turn lays the baseline
-            return
-        self._load_checkpoint_tip(records)
+        self._cp_branch = store.active_branch(self._project_id, self._conv_id)
+        if not store.read_timeline(self._project_id, self._conv_id, self._cp_branch):
+            return   # no checkpoints yet → the first turn lays the baseline
+        self._load_checkpoint_tip()
         try:
             if self._cp_tip_sha and repo.is_dirty(self._cp_tip_sha):
                 self._record_checkpoint(len(self._history), "baseline",
@@ -157,86 +159,77 @@ class RewindMixin:
             pass
 
     # ── rewind (Plan C) ───────────────────────────────────────────────────────
-    def _active_chain(self, records: list[dict]) -> list[dict]:
-        """The active branch's checkpoints in chronological order (baseline … tip),
-        walked via parent links from the current tip (fallback: the last record)."""
-        by_id = {r["id"]: r for r in records}
-        node = by_id.get(self._cp_tip_id) or (records[-1] if records else None)
-        chain: list[dict] = []
-        seen: set[str] = set()
-        while node is not None and node["id"] not in seen:
-            chain.append(node)
-            seen.add(node["id"])
-            node = by_id.get(node.get("parent"))
-        chain.reverse()
-        return chain
+    def _timeline(self) -> list[dict]:
+        return store.read_timeline(self._project_id, self._conv_id, self._cp_branch)
+
+    def _picker_entries(self, rows: list[dict], *, with_files: bool) -> list[dict]:
+        """RewindScreen rows (newest-first). `with_files` adds a diff-count vs the
+        current tip (skipped for branch/fork pickers where it isn't meaningful)."""
+        repo = self._ensure_checkpoints() if with_files else None
+        tip_commit = self._cp_tip_sha
+        entries: list[dict] = []
+        for row in reversed(rows):
+            files = None
+            if repo and tip_commit:
+                commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+                if commit:
+                    try:
+                        files = len(repo.diff_names(commit, tip_commit))
+                    except CheckpointError:
+                        files = None
+            entries.append({"id": row["checkpoint_id"], "label": row["label"],
+                            "kind": row["kind"], "message_index": row["message_index"],
+                            "files": files, "when": _relative_iso(row.get("created"))})
+        return entries
 
     def action_open_rewind(self) -> None:
         self.run_worker(self._rewind_flow())
 
     async def _rewind_flow(self) -> None:
-        """`/rewind` (Ctrl+B) — pick an earlier checkpoint; on confirm, restore the
-        files to it and truncate the conversation to match."""
+        """`/rewind` (Ctrl+B) — pick an earlier checkpoint; restore to it, or branch."""
         if self._project_id is None or self._conv_id is None:
             self.notify("nothing to rewind yet", severity="warning")
             return
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        if not records:
-            self.notify("no checkpoints yet — run a turn first", severity="warning")
+        rows = self._timeline()
+        if len(rows) < 2:
+            self.notify("no earlier checkpoints yet — run a turn first", severity="warning")
             return
-        repo = self._ensure_checkpoints()
-        chain = self._active_chain(records)
-        tip_commit = self._cp_tip_sha
-        entries: list[dict] = []
-        for cp in reversed(chain[:-1]):   # everything before the current tip, newest-first
-            files = None
-            if repo and tip_commit:
-                try:
-                    files = len(repo.diff_names(cp["commit"], tip_commit))
-                except CheckpointError:
-                    files = None
-            entries.append({**cp, "files": files, "when": _relative_iso(cp.get("created"))})
-        if not entries:
-            self.notify("nothing earlier to rewind to", severity="warning")
-            return
+        entries = self._picker_entries(rows[:-1], with_files=True)   # exclude the current tip
         cid = await self.push_screen_wait(RewindScreen(entries))
         if not cid:
             return
-        cp = next((c for c in records if c["id"] == cid), None)
-        if cp is None:
+        row = next((r for r in rows if r["checkpoint_id"] == cid), None)
+        if row is None:
             return
-        warn = self._rewind_crosses_baseline(chain, cp)
-        prompt = f"Go back to “{cp['label'] or 'start'}”?"
-        if warn:
+        prompt = f"Go back to “{row['label'] or 'start'}”?"
+        if self._rewind_crosses_baseline(rows, cid):
             prompt += " ⚠ Rewinding past here also discards changes made outside this session."
         idx, _ = await self.ask_choice(
             prompt,
             ["Rewind here (discard newer)", "Branch from here (keep both)", "Cancel"])
         if idx == 0:
-            await self._apply_rewind(cp)
+            await self._apply_rewind(row)
         elif idx == 1:
             name = await self.ask_text("Name the new branch:",
                                        placeholder="e.g. alt-approach", multiline=False)
             if name and name.strip():
-                await self._branch_from(cp, name.strip())
+                await self._branch_from(row, name.strip())
 
-    def _rewind_crosses_baseline(self, chain: list[dict], target: dict) -> bool:
-        """True if any 'baseline' checkpoint (a resume point capturing external edits)
-        sits strictly AFTER the target in the active chain — rewinding past it discards
-        changes made outside the session, which warrants a louder warning (Plan D)."""
-        seen_target = False
-        for cp in chain:
-            if cp["id"] == target["id"]:
-                seen_target = True
+    def _rewind_crosses_baseline(self, rows: list[dict], target_id: str) -> bool:
+        """True if a 'baseline' row (a resume point capturing external edits) sits AFTER
+        the target in the timeline — rewinding past it discards out-of-session changes."""
+        seen = False
+        for r in rows:
+            if r["checkpoint_id"] == target_id:
+                seen = True
                 continue
-            if seen_target and cp.get("kind") == "baseline":
+            if seen and r.get("kind") == "baseline":
                 return True
         return False
 
     def _completed_turns(self, msgs: list) -> int:
         """How many receipts to keep after a truncation: one per COMPLETED turn. A
-        thread ending on a human turn or an unanswered tool batch has an open last
-        turn (no receipt yet)."""
+        thread ending on a human turn or an unanswered tool batch has an open last turn."""
         humans = sum(1 for m in msgs if isinstance(m, HumanMessage))
         if not msgs:
             return 0
@@ -245,38 +238,40 @@ class RewindMixin:
                       or (isinstance(last, AIMessage) and last.tool_calls))
         return max(0, humans - (1 if incomplete else 0))
 
-    async def _apply_rewind(self, cp: dict) -> None:
-        """Restore files to `cp`, truncate the thread + receipts to its message index,
-        move the active tip, replay the trimmed thread, and drop a marker."""
+    async def _apply_rewind(self, row: dict) -> None:
+        """Restore files to `row`'s checkpoint, truncate this branch's thread + receipts
+        + timeline to it, move the tip, replay, and drop a marker."""
         repo = self._ensure_checkpoints()
-        if repo is not None:
+        commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        if repo is not None and commit:
             try:
-                repo.restore(cp["commit"])
+                repo.restore(commit)
             except CheckpointError as e:
                 self.notify(f"could not restore files: {e}", severity="error")
                 return
-        idx = cp["message_index"]
+        idx = row["message_index"]
         self._history = self._history[:idx]
-        store.save_conversation(self._project_id, self._conv_id, self._history)
+        store.write_branch_thread(self._project_id, self._conv_id, self._cp_branch, self._history)
         self._persisted_count = len(self._history)
-        store.truncate_receipts(self._project_id, self._conv_id,
-                                self._completed_turns(self._history))
-        # Move the active tip back; the abandoned commits stay reachable via their
-        # per-checkpoint refs, so the discarded code is still recoverable.
-        self._cp_tip_id = cp["id"]
-        self._cp_tip_sha = cp["commit"]
-        self._cp_branch = cp.get("branch", "main")
-        self._cp_branch_tips[self._cp_branch] = cp["id"]
+        store.truncate_branch_receipts(self._project_id, self._conv_id, self._cp_branch,
+                                       self._completed_turns(self._history))
+        store.write_timeline(self._project_id, self._conv_id, self._cp_branch,
+                             _truncate_to(self._timeline(), row["checkpoint_id"]))
+        # Abandoned commits stay reachable via their per-checkpoint refs → recoverable.
+        self._cp_tip_id = row["checkpoint_id"]
+        self._cp_tip_sha = commit
         try:
+            store.write_branch_meta(self._project_id, self._conv_id, self._cp_branch,
+                                    tip=row["checkpoint_id"])
             store.write_meta(self._project_id, self._conv_id,
-                             active_branch=self._cp_branch, branch_tips=self._cp_branch_tips)
-            if repo is not None:
-                repo.ref_set(f"refs/visvoai/{self._conv_id}/{self._cp_branch}", cp["commit"])
+                             active_branch=self._cp_branch, msg_count=len(self._history))
+            if repo is not None and commit:
+                repo.ref_set(self._branch_ref(self._cp_branch), commit)
         except (CheckpointError, OSError):
             pass
         await self._replay_history(self._history)
         await self._drop_marker(
-            f"rewound to “{cp['label'] or 'start'}” — files and conversation restored")
+            f"rewound to “{row['label'] or 'start'}” — files and conversation restored")
 
     async def _drop_marker(self, text: str) -> None:
         log = self.query_one("#log", VerticalScroll)
@@ -284,20 +279,15 @@ class RewindMixin:
         log.scroll_end(animate=False)
 
     # ── branch / switch (Plan E) ──────────────────────────────────────────────
-    def _branch_entries(self, records: list[dict]) -> list[dict]:
-        """One row per known branch: name, its tip's label, when, and whether it's
-        active. Tips come from meta (branch_tips), labels from the checkpoint records."""
-        by_id = {r["id"]: r for r in records}
+    def _branch_entries(self) -> list[dict]:
+        """One row per branch: name, its tip's label, when, and whether it's active."""
         entries: list[dict] = []
-        for name, tip_id in self._cp_branch_tips.items():
-            tip = by_id.get(tip_id)
-            entries.append({
-                "name": name,
-                "current": name == self._cp_branch,
-                "label": (tip or {}).get("label", ""),
-                "when": _relative_iso((tip or {}).get("created")),
-            })
-        # Active branch first, then the rest alphabetically — stable + predictable.
+        for name in store.list_branches(self._project_id, self._conv_id):
+            rows = store.read_timeline(self._project_id, self._conv_id, name)
+            tip = rows[-1] if rows else {}
+            entries.append({"name": name, "current": name == self._cp_branch,
+                            "label": tip.get("label", ""),
+                            "when": _relative_iso(tip.get("created"))})
         entries.sort(key=lambda e: (not e["current"], e["name"]))
         return entries
 
@@ -309,124 +299,116 @@ class RewindMixin:
         if self._project_id is None or self._conv_id is None:
             self.notify("no conversation yet", severity="warning")
             return
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        if not records:
+        if not self._timeline():
             self.notify("no checkpoints yet — run a turn first", severity="warning")
             return
-        if self._cp_tip_id is None:
-            self._load_checkpoint_tip(records)
-        self._cp_branch_tips.setdefault(self._cp_branch, self._cp_tip_id)
-        choice = await self.push_screen_wait(BranchScreen(self._branch_entries(records)))
+        choice = await self.push_screen_wait(BranchScreen(self._branch_entries()))
         if not choice:
             return
         if choice == NEW_BRANCH:
-            await self._new_branch_flow(records)
+            await self._new_branch_flow()
         elif choice != self._cp_branch:
             await self._switch_branch(choice)
 
-    async def _new_branch_flow(self, records: list[dict]) -> None:
+    async def _new_branch_flow(self) -> None:
         """Pick a checkpoint, name it, fork."""
-        chain = self._active_chain(records)
-        entries = [{**cp, "files": None, "when": _relative_iso(cp.get("created"))}
-                   for cp in reversed(chain)]
-        cid = await self.push_screen_wait(RewindScreen(entries))
+        rows = self._timeline()
+        cid = await self.push_screen_wait(RewindScreen(self._picker_entries(rows, with_files=False)))
         if not cid:
             return
-        cp = next((c for c in records if c["id"] == cid), None)
-        if cp is None:
+        row = next((r for r in rows if r["checkpoint_id"] == cid), None)
+        if row is None:
             return
         name = await self.ask_text("Name the new branch:",
                                    placeholder="e.g. alt-approach", multiline=False)
         if name and name.strip():
-            await self._branch_from(cp, name.strip())
+            await self._branch_from(row, name.strip())
 
-    async def _branch_from(self, cp: dict, name: str) -> None:
-        """Fork a new branch starting at `cp`: preserve the current branch's thread,
-        restore the code to `cp`, and make the new branch active with the thread
-        truncated to `cp`. Both timelines are kept (non-destructive rewind)."""
+    async def _branch_from(self, row: dict, name: str) -> None:
+        """Fork a new branch at `row`'s checkpoint: deep-copy the current branch folder,
+        truncate the COPY to the checkpoint, restore code, switch. The source branch is
+        untouched (both timelines kept); `forked_from` is provenance only."""
         name = store._safe_branch(name)
-        if name in self._cp_branch_tips:
+        if name in store.list_branches(self._project_id, self._conv_id):
             self.notify(f"branch '{name}' already exists", severity="warning")
             return
         repo = self._ensure_checkpoints()
-        # Preserve the branch we're leaving (thread + receipts).
-        store.save_branch_thread(self._project_id, self._conv_id, self._cp_branch, self._history)
-        store.save_branch_receipts(self._project_id, self._conv_id, self._cp_branch,
-                                   store.read_receipts(self._project_id, self._conv_id))
-        if repo is not None:
+        commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        if repo is not None and commit:
             try:
-                repo.restore(cp["commit"])
+                repo.restore(commit)
             except CheckpointError as e:
                 self.notify(f"could not restore files: {e}", severity="error")
                 return
-        new_thread = self._history[:cp["message_index"]]
-        self._history = new_thread
+        src = self._cp_branch
+        try:
+            store.copy_branch(self._project_id, self._conv_id, src, name)
+        except OSError as e:
+            self.notify(f"could not create branch: {e}", severity="error")
+            return
+        idx = row["message_index"]
+        new_thread = self._history[:idx]
+        store.write_branch_thread(self._project_id, self._conv_id, name, new_thread)
+        store.truncate_branch_receipts(self._project_id, self._conv_id, name,
+                                       self._completed_turns(new_thread))
+        store.write_timeline(self._project_id, self._conv_id, name,
+                             _truncate_to(store.read_timeline(self._project_id, self._conv_id, name),
+                                          row["checkpoint_id"]))
+        store.write_branch_meta(self._project_id, self._conv_id, name,
+                                tip=row["checkpoint_id"],
+                                forked_from={"branch": src, "checkpoint_id": row["checkpoint_id"]})
         self._cp_branch = name
-        self._cp_tip_id = cp["id"]
-        self._cp_tip_sha = cp["commit"]
-        self._cp_branch_tips[name] = cp["id"]
-        store.save_conversation(self._project_id, self._conv_id, new_thread)
-        store.save_branch_thread(self._project_id, self._conv_id, name, new_thread)
+        self._cp_tip_id = row["checkpoint_id"]
+        self._cp_tip_sha = commit
+        self._history = new_thread
         self._persisted_count = len(new_thread)
-        store.truncate_receipts(self._project_id, self._conv_id, self._completed_turns(new_thread))
-        store.save_branch_receipts(self._project_id, self._conv_id, name,
-                                   store.read_receipts(self._project_id, self._conv_id))
         try:
             store.write_meta(self._project_id, self._conv_id,
-                             active_branch=name, branch_tips=self._cp_branch_tips)
-            if repo is not None:
-                repo.ref_set(f"refs/visvoai/{self._conv_id}/{name}", cp["commit"])
+                             active_branch=name, msg_count=len(new_thread))
+            if repo is not None and commit:
+                repo.ref_set(self._branch_ref(name), commit)
         except (CheckpointError, OSError):
             pass
         await self._replay_history(new_thread)
-        await self._drop_marker(f"branched to “{name}” from “{cp['label'] or 'start'}” "
+        await self._drop_marker(f"branched to “{name}” from “{row['label'] or 'start'}” "
                                 f"— both timelines kept")
 
     async def _switch_branch(self, name: str) -> None:
-        """Switch the active timeline to `name`: persist the current branch, load the
-        target's thread + receipts, and restore the code to its tip."""
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        tip_id = self._cp_branch_tips.get(name)
-        tip = next((r for r in records if r["id"] == tip_id), None)
-        if tip is None:
+        """Switch the active timeline to `name`: load its thread (already self-contained
+        on disk) and restore the code to its tip. No copying — the live turn path writes
+        directly into each branch's folder, so nothing needs saving here."""
+        bm = store.read_branch_meta(self._project_id, self._conv_id, name)
+        tip = bm.get("tip")
+        commit = store.registry_commit(self._project_id, self._conv_id, tip) if tip else None
+        if commit is None:
             self.notify(f"branch '{name}' has no checkpoint", severity="warning")
             return
         repo = self._ensure_checkpoints()
-        # Preserve the branch we're leaving.
-        store.save_branch_thread(self._project_id, self._conv_id, self._cp_branch, self._history)
-        store.save_branch_receipts(self._project_id, self._conv_id, self._cp_branch,
-                                   store.read_receipts(self._project_id, self._conv_id))
-        # Adopt the target.
-        msgs = store.load_branch_thread(self._project_id, self._conv_id, name)
-        self._history = list(msgs)
-        store.save_conversation(self._project_id, self._conv_id, msgs)
-        self._persisted_count = len(msgs)
-        store.write_receipts(self._project_id, self._conv_id,
-                             store.load_branch_receipts(self._project_id, self._conv_id, name))
         self._cp_branch = name
-        self._cp_tip_id = tip["id"]
-        self._cp_tip_sha = tip["commit"]
+        self._history = store.load_branch_thread(self._project_id, self._conv_id, name)
+        self._persisted_count = len(self._history)
+        self._cp_tip_id = tip
+        self._cp_tip_sha = commit
         try:
             store.write_meta(self._project_id, self._conv_id,
-                             active_branch=name, branch_tips=self._cp_branch_tips)
+                             active_branch=name, msg_count=len(self._history))
         except OSError:
             pass
         if repo is not None:
             try:
-                repo.restore(tip["commit"])
+                repo.restore(commit)
             except CheckpointError:
                 pass
-        await self._replay_history(msgs)
+        await self._replay_history(self._history)
         await self._drop_marker(f"switched to branch “{name}”")
 
-    # ── fork (Plan F) ─────────────────────────────────────────────────────────
+    # ── fork to a worktree (Plan F) ───────────────────────────────────────────
     def action_open_fork(self) -> None:
         self.run_worker(self._fork_flow())
 
     async def _fork_flow(self) -> None:
         """`/fork` — materialize a checkpoint's code in a NEW directory (git worktree)
-        and seed a conversation there, so you can run a second timeline in parallel
-        without disturbing this one."""
+        and seed a conversation there, for a parallel timeline in its own dir."""
         if self._project_id is None or self._conv_id is None:
             self.notify("no conversation yet", severity="warning")
             return
@@ -434,57 +416,53 @@ class RewindMixin:
         if repo is None:
             self.notify("fork needs git (checkpoints unavailable)", severity="warning")
             return
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        if not records:
+        rows = self._timeline()
+        if not rows:
             self.notify("no checkpoints yet — run a turn first", severity="warning")
             return
-        if self._cp_tip_id is None:
-            self._load_checkpoint_tip(records)
-        chain = self._active_chain(records)
-        entries = [{**cp, "files": None, "when": _relative_iso(cp.get("created"))}
-                   for cp in reversed(chain)]
-        cid = await self.push_screen_wait(RewindScreen(entries))
+        cid = await self.push_screen_wait(RewindScreen(self._picker_entries(rows, with_files=False)))
         if not cid:
             return
-        cp = next((c for c in records if c["id"] == cid), None)
-        if cp is None:
+        row = next((r for r in rows if r["checkpoint_id"] == cid), None)
+        if row is None:
             return
         default = str(Path(self._cwd).resolve().parent / f"{Path(self._cwd).name}-fork")
         path = await self.ask_text("Fork into which directory? (must not exist yet)",
                                    placeholder=default, multiline=False)
         path = os.path.abspath(os.path.expanduser((path or "").strip() or default))
-        fork_cid = self._do_fork(cp, path)
-        short = path.replace(os.path.expanduser("~"), "~")
+        fork_cid = self._do_fork(row, path)
         if fork_cid is None:
-            return   # _do_fork already surfaced the failure
+            return
+        short = path.replace(os.path.expanduser("~"), "~")
         await self._drop_marker(
-            f"forked to {short} at “{cp['label'] or 'start'}” — "
+            f"forked to {short} at “{row['label'] or 'start'}” — "
             f"run `cd {short} && visvoai --resume {fork_cid}`")
 
-    def _do_fork(self, cp: dict, path: str) -> str | None:
-        """Create a detached worktree at `path` for `cp`'s commit and seed an
-        independent conversation (truncated thread + receipts + meta) inside it.
-        Returns the new conversation id, or None on failure (already surfaced)."""
+    def _do_fork(self, row: dict, path: str) -> str | None:
+        """Create a detached worktree at `path` for `row`'s commit and seed an
+        independent conversation (truncated thread + receipts) inside it. Returns the
+        new conversation id, or None on failure (already surfaced)."""
         repo = self._ensure_checkpoints()
         if repo is None:
             return None
+        commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        if not commit:
+            self.notify("checkpoint has no commit", severity="error")
+            return None
         try:
-            repo.add_worktree(path, cp["commit"])
+            repo.add_worktree(path, commit)
         except CheckpointError as e:
             self.notify(f"could not create worktree: {e}", severity="error")
             return None
         try:
             fork_pid = store.resolve_project_id(path)
             fork_cid = store.new_conversation_id()
-            thread = self._history[:cp["message_index"]]
-            store.save_conversation(fork_pid, fork_cid, thread)
-            store.write_receipts(fork_pid, fork_cid,
-                                 store.read_receipts(self._project_id, self._conv_id)
-                                 [:self._completed_turns(thread)])
-            src_meta = store.read_meta(self._project_id, self._conv_id)
-            store.write_meta(fork_pid, fork_cid,
-                             title=(src_meta.get("title") or store.title_for(thread)),
-                             model=self._model, msg_count=len(thread))
+            thread = self._history[:row["message_index"]]
+            receipts = store.read_branch_receipts(self._project_id, self._conv_id, self._cp_branch)
+            store.seed_conversation(
+                fork_pid, fork_cid, thread, receipts[:self._completed_turns(thread)],
+                title=store.read_meta(self._project_id, self._conv_id).get("title"),
+                model=self._model)
         except OSError as e:
             self.notify(f"forked files but could not seed conversation: {e}",
                         severity="warning")
@@ -513,8 +491,8 @@ class RewindMixin:
         self.run_worker(self._export_flow())
 
     async def _export_flow(self) -> None:
-        """`/export` — write this conversation as a shareable artifact: a markdown
-        transcript, or a full bundle (transcript + thread + a git bundle of the code)."""
+        """`/export` — write a shareable artifact: a markdown transcript, or a full
+        bundle (transcript + thread + a git bundle of the branch's code)."""
         if self._project_id is None or self._conv_id is None or not self._history:
             self.notify("nothing to export yet", severity="warning")
             return
@@ -541,23 +519,21 @@ class RewindMixin:
             await self._drop_marker(f"exported → {path.replace(os.path.expanduser('~'), '~')}")
 
     def _do_export(self, kind: str, out_path: str) -> str | None:
-        """Write the export. `transcript` → a single .md file. `bundle` → a directory
-        with transcript.md, thread.jsonl, manifest.json, and code.bundle (a git bundle
-        of the active branch's checkpoints). Returns the path written, or None."""
+        """`transcript` → a .md file. `bundle` → a dir with transcript.md, thread.jsonl,
+        manifest.json, and code.bundle (a git bundle of the active branch's history)."""
         try:
             if kind == "transcript":
                 Path(out_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(out_path).write_text(self._render_transcript(), encoding="utf-8")
                 return out_path
-            # bundle: a self-contained directory
             d = Path(out_path)
             d.mkdir(parents=True, exist_ok=True)
             (d / "transcript.md").write_text(self._render_transcript(), encoding="utf-8")
-            store.save_conversation_to(d / "thread.jsonl", self._history)
+            store.write_thread_to(d / "thread.jsonl", self._history)
             has_code = False
             repo = self._ensure_checkpoints()
             if repo is not None:
-                ref = f"refs/visvoai/{self._conv_id}/{self._cp_branch}"
+                ref = self._branch_ref(self._cp_branch)
                 if repo.ref_get(ref):
                     try:
                         repo.bundle(str(d / "code.bundle"), [ref])
@@ -576,29 +552,25 @@ class RewindMixin:
 
     # ── log (Plan E) ──────────────────────────────────────────────────────────
     async def _log_flow(self) -> None:
-        """`/log` — print the active branch's checkpoint chain (newest first) into the
-        conversation, the current point marked."""
+        """`/log` — print the active branch's timeline (newest first), tip marked."""
         from visvoai.cli.widgets import Welcome
         if self._project_id is None or self._conv_id is None:
             self.notify("no conversation yet", severity="warning")
             return
-        records = store.read_checkpoints(self._project_id, self._conv_id)
-        if not records:
+        rows = self._timeline()
+        if not rows:
             self.notify("no checkpoints yet — run a turn first", severity="warning")
             return
-        if self._cp_tip_id is None:
-            self._load_checkpoint_tip(records)
-        chain = self._active_chain(records)
         primary, muted = self._tv("primary"), self._tv("muted")
         tags = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start"}
-        rows = []
-        for cp in reversed(chain):
-            mark = "●" if cp["id"] == self._cp_tip_id else "│"
-            tag = tags.get(cp["kind"], cp["kind"])
-            rows.append(f"  [{primary}]{mark}[/] {cp['label'] or '(start)'}   "
-                        f"[dim {muted}]{tag} · {_relative_iso(cp.get('created'))}[/]")
+        out = []
+        for r in reversed(rows):
+            mark = "●" if r["checkpoint_id"] == self._cp_tip_id else "│"
+            tag = tags.get(r["kind"], r["kind"])
+            out.append(f"  [{primary}]{mark}[/] {r['label'] or '(start)'}   "
+                       f"[dim {muted}]{tag} · {_relative_iso(r.get('created'))}[/]")
         markup = (f"[b {primary}]branch {self._cp_branch}[/]  "
-                  f"[dim {muted}]({len(chain)} checkpoints)[/]\n\n" + "\n".join(rows))
+                  f"[dim {muted}]({len(rows)} checkpoints)[/]\n\n" + "\n".join(out))
         log = self.query_one("#log", VerticalScroll)
         await log.mount(Welcome(lambda: markup))
         log.scroll_end(animate=False)

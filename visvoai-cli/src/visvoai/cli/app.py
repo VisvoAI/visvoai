@@ -170,8 +170,7 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         self._checkpoints = None              # ShadowRepo | None (built lazily)
         self._cp_failed = False               # git missing / init failed → stop retrying
         self._cp_branch = "main"              # active conversation branch
-        self._cp_branch_tips: dict[str, str] = {}   # branch → tip checkpoint id
-        self._cp_tip_id: str | None = None    # active branch tip (checkpoint record id)
+        self._cp_tip_id: str | None = None    # active branch tip (checkpoint id)
         self._cp_tip_sha: str | None = None   # active branch tip (shadow commit sha)
         self._cp_turn_label = ""              # current turn's prompt snippet (checkpoint label)
         self._ctx_pct: int | None = None  # context % — hidden until a real turn reports usage

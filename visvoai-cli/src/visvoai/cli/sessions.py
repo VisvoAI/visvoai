@@ -103,7 +103,8 @@ class SessionsMixin:
         log = self.query_one("#log", VerticalScroll)
         await log.remove_children()
         self._turns = 0
-        receipts = store.read_receipts(self._project_id, self._conv_id) if self._conv_id else []
+        receipts = (store.read_branch_receipts(self._project_id, self._conv_id, self._cp_branch)
+                    if self._conv_id else [])
         turn_idx = -1                 # advances on each HumanMessage
         think_i = 0                   # index into the current turn's thinking_durations
         pending: dict = {}            # tool_call_id → (name, args), paired with its ToolMessage

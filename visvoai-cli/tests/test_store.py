@@ -102,14 +102,14 @@ def test_list_prefers_meta_title(tmp_path, monkeypatch):
 
 
 def test_conversation_is_a_folder(tmp_path, monkeypatch):
-    """Each conversation is its own folder holding history.jsonl + meta.json."""
+    """Each conversation is its own folder: meta.json + a main branch thread."""
     monkeypatch.setenv("VISVOAI_HOME", str(tmp_path / "home"))
     pid, cid = "p", "c1"
     store.append_messages(pid, cid, [HumanMessage(content="hi"), AIMessage(content="yo")])
     store.write_meta(pid, cid, title="Hi", msg_count=2)
     d = store._conv_dir(pid, cid)
     assert d.is_dir()
-    assert (d / "history.jsonl").exists()
+    assert (d / "branches" / "main" / "thread.jsonl").exists()
     assert (d / "meta.json").exists()
 
 
@@ -123,8 +123,8 @@ def test_receipts_append_and_read(tmp_path, monkeypatch):
     rs = store.read_receipts(pid, cid)
     assert [r["cost"] for r in rs] == [0.001, 0.002]
     assert sum(r["cost"] for r in rs) == 0.003
-    # receipts live beside history, separate file
-    assert (store._conv_dir(pid, cid) / "receipts.jsonl").exists()
+    # receipts live in the active branch folder
+    assert (store._conv_dir(pid, cid) / "branches" / "main" / "receipts.jsonl").exists()
 
 
 @pytest.mark.asyncio
