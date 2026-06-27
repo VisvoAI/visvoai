@@ -55,6 +55,18 @@ def _write_project_id(cfg: Path) -> str:
     return pid
 
 
+def project_root(cwd: str) -> Path:
+    """The project's root — the dir holding `.visvoai/config.toml` (walk up, like git
+    finds `.git`), or `cwd` itself if none exists yet. The shadow checkpoint repo uses
+    this as its work tree so snapshots are stable no matter which subdir the CLI was
+    launched from. Pair with `resolve_project_id` (which creates the anchor) first."""
+    start = Path(cwd).resolve()
+    for d in [start, *start.parents]:
+        if (d / ".visvoai" / "config.toml").exists():
+            return d
+    return start
+
+
 def new_conversation_id() -> str:
     return uuid.uuid4().hex[:8]
 
@@ -111,6 +123,32 @@ def append_receipt(project_id: str, conv_id: str, receipt: dict) -> None:
 def read_receipts(project_id: str, conv_id: str) -> List[dict]:
     """Per-turn receipts in order (empty if none)."""
     p = _receipts_path(project_id, conv_id)
+    if not p.exists():
+        return []
+    try:
+        return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _checkpoints_path(project_id: str, conv_id: str) -> Path:
+    return _conv_dir(project_id, conv_id) / "checkpoints.jsonl"
+
+
+def append_checkpoint(project_id: str, conv_id: str, checkpoint: dict) -> None:
+    """Append one checkpoint record to the conversation's append-only checkpoint log.
+    A checkpoint is `{id, message_index, parent, tree_sha, kind, branch, label,
+    created}` — the conversation↔code mapping (the code DAG itself lives in the shadow
+    git repo). NEVER rewritten: rewinds/branches append new records, the active view is
+    derived by walking `parent` links from the active branch tip."""
+    _ensure_conv_dir(project_id, conv_id)
+    with _checkpoints_path(project_id, conv_id).open("a", encoding="utf-8") as f:
+        f.write(json.dumps(checkpoint, ensure_ascii=False) + "\n")
+
+
+def read_checkpoints(project_id: str, conv_id: str) -> List[dict]:
+    """All checkpoint records in append order (empty if none)."""
+    p = _checkpoints_path(project_id, conv_id)
     if not p.exists():
         return []
     try:
