@@ -4,6 +4,16 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.2.3] — 2026-06
+
+### Fixed
+- Reasoning models on OpenAI-compatible providers (Together/OpenRouter/…) no longer
+  hit the OpenAI **Responses API**. langchain-openai auto-switches to `/responses`
+  when a top-level `reasoning` dict is present; those providers reject it
+  (`400 Invalid Responses API request`) or return block-list content that breaks the
+  next turn. `OPENROUTER_REASONING` now sends `reasoning` via `extra_body`, and
+  `OpenAICompatProvider.build` pins `use_responses_api=False` for non-OpenAI providers.
+
 ## [0.2.2] — 2026-06
 
 ### Fixed

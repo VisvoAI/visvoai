@@ -40,7 +40,9 @@ def test_mechanism_routes_claude_by_version():
     assert _mechanism(md("claude-3-5-sonnet-20241022")) is M.ANTHROPIC_BUDGET
     assert thinking_kwargs(M.OPENAI_EFFORT, L.HIGH) == {"reasoning_effort": "high"}
     assert thinking_kwargs(M.OPENAI_COMPAT_REASONING, L.HIGH) == {"reasoning_effort": "high"}
-    assert thinking_kwargs(M.OPENROUTER_REASONING, L.HIGH) == {"reasoning": {"effort": "high"}}
+    # OpenRouter reasoning rides extra_body — a top-level `reasoning` would flip
+    # langchain to the OpenAI Responses API, which compat providers reject.
+    assert thinking_kwargs(M.OPENROUTER_REASONING, L.HIGH) == {"extra_body": {"reasoning": {"effort": "high"}}}
 
 
 def test_off_semantics():

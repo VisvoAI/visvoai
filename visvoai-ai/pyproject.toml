@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-ai"
-version = "0.2.2"
+version = "0.2.3"
 description = "VisvoAI — Unified multi-provider LLM access (Gemini, Anthropic, OpenAI, Together)"
 readme = "README.md"
 license = { text = "MIT" }

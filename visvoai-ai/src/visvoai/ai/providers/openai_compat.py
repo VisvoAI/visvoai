@@ -71,6 +71,14 @@ class OpenAICompatProvider(Provider):
                 f"it in visvoai.ai.providers.config; third-party callers should just "
                 f"pass base_url=.)"
             )
+        if self.provider_name.lower() != "openai":
+            # These are Chat Completions providers; the Responses API is OpenAI-
+            # proprietary. langchain auto-switches to /responses the moment a
+            # `reasoning` dict (or other responses-only arg) is in the payload —
+            # which these providers either reject ("Invalid Responses API request")
+            # or accept and return block-list content that corrupts the next turn.
+            # Pin Chat Completions; reasoning rides extra_body (see thinking.py).
+            extra.setdefault("use_responses_api", False)
         return ReasoningChatOpenAI(
             model=slug,
             api_key=resolve_api_key(self.provider_name, api_key),

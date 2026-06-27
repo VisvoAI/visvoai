@@ -93,6 +93,10 @@ def thinking_kwargs(mechanism: ThinkingMechanism, level: ThinkingLevel) -> Dict[
         return {} if L is ThinkingLevel.OFF else {"reasoning_effort": L.value}
 
     if m is ThinkingMechanism.OPENROUTER_REASONING:
-        return {} if L is ThinkingLevel.OFF else {"reasoning": {"effort": L.value}}
+        # extra_body so `reasoning` rides the Chat Completions request body (OpenRouter's
+        # documented param). A TOP-LEVEL `reasoning` kwarg would flip langchain to the
+        # OpenAI Responses API — which OpenRouter/Together don't support (400) and which
+        # returns block-list content that breaks the next turn.
+        return {} if L is ThinkingLevel.OFF else {"extra_body": {"reasoning": {"effort": L.value}}}
 
     return {}
