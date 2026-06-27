@@ -302,6 +302,16 @@ def save_conversation(project_id: str, conv_id: str, messages: List[BaseMessage]
     tmp.replace(path)
 
 
+def save_conversation_to(path: Path, messages: List[BaseMessage]) -> None:
+    """Serialize a thread to an arbitrary path (one message dict per line) — used by
+    export, which writes outside the managed store layout."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        for d in messages_to_dict(messages):
+            f.write(json.dumps(d, ensure_ascii=False) + "\n")
+
+
 def _read_lines(path: Path) -> List[dict]:
     return [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
 

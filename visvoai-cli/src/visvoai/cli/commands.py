@@ -35,6 +35,8 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("resume", "Resume a past conversation"),
     ("rewind", "Rewind files + conversation to an earlier point"),
     ("branch", "Switch timelines or fork a new branch"),
+    ("fork", "Fork a checkpoint into a new directory (worktree)"),
+    ("export", "Export this conversation (transcript or bundle)"),
     ("log", "Show this branch's checkpoints"),
     ("compact", "Compact the context window"),
     ("mode", "Cycle approval mode (normal / auto-edit / accept-all)"),
@@ -289,6 +291,10 @@ class CommandsMixin:
             self.action_open_rewind()   # spawns its own worker
         elif name == "branch":
             self.action_open_branches()  # spawns its own worker
+        elif name == "fork":
+            self.action_open_fork()      # spawns its own worker
+        elif name == "export":
+            self.action_open_export()    # spawns its own worker
         elif name == "log":
             self.run_worker(self._log_flow())
         elif name == "compact":

@@ -20,13 +20,15 @@ Design notes:
 """
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from textual.containers import VerticalScroll
 
-from visvoai.cli import store
+from visvoai.cli import agent, store
 from visvoai.cli.checkpoints import CheckpointError, ShadowRepo
 from visvoai.cli.screens import BranchScreen, RewindScreen
 from visvoai.cli.screens.branch_view import NEW_BRANCH
@@ -416,6 +418,161 @@ class RewindMixin:
                 pass
         await self._replay_history(msgs)
         await self._drop_marker(f"switched to branch “{name}”")
+
+    # ── fork (Plan F) ─────────────────────────────────────────────────────────
+    def action_open_fork(self) -> None:
+        self.run_worker(self._fork_flow())
+
+    async def _fork_flow(self) -> None:
+        """`/fork` — materialize a checkpoint's code in a NEW directory (git worktree)
+        and seed a conversation there, so you can run a second timeline in parallel
+        without disturbing this one."""
+        if self._project_id is None or self._conv_id is None:
+            self.notify("no conversation yet", severity="warning")
+            return
+        repo = self._ensure_checkpoints()
+        if repo is None:
+            self.notify("fork needs git (checkpoints unavailable)", severity="warning")
+            return
+        records = store.read_checkpoints(self._project_id, self._conv_id)
+        if not records:
+            self.notify("no checkpoints yet — run a turn first", severity="warning")
+            return
+        if self._cp_tip_id is None:
+            self._load_checkpoint_tip(records)
+        chain = self._active_chain(records)
+        entries = [{**cp, "files": None, "when": _relative_iso(cp.get("created"))}
+                   for cp in reversed(chain)]
+        cid = await self.push_screen_wait(RewindScreen(entries))
+        if not cid:
+            return
+        cp = next((c for c in records if c["id"] == cid), None)
+        if cp is None:
+            return
+        default = str(Path(self._cwd).resolve().parent / f"{Path(self._cwd).name}-fork")
+        path = await self.ask_text("Fork into which directory? (must not exist yet)",
+                                   placeholder=default, multiline=False)
+        path = os.path.abspath(os.path.expanduser((path or "").strip() or default))
+        fork_cid = self._do_fork(cp, path)
+        short = path.replace(os.path.expanduser("~"), "~")
+        if fork_cid is None:
+            return   # _do_fork already surfaced the failure
+        await self._drop_marker(
+            f"forked to {short} at “{cp['label'] or 'start'}” — "
+            f"run `cd {short} && visvoai --resume {fork_cid}`")
+
+    def _do_fork(self, cp: dict, path: str) -> str | None:
+        """Create a detached worktree at `path` for `cp`'s commit and seed an
+        independent conversation (truncated thread + receipts + meta) inside it.
+        Returns the new conversation id, or None on failure (already surfaced)."""
+        repo = self._ensure_checkpoints()
+        if repo is None:
+            return None
+        try:
+            repo.add_worktree(path, cp["commit"])
+        except CheckpointError as e:
+            self.notify(f"could not create worktree: {e}", severity="error")
+            return None
+        try:
+            fork_pid = store.resolve_project_id(path)
+            fork_cid = store.new_conversation_id()
+            thread = self._history[:cp["message_index"]]
+            store.save_conversation(fork_pid, fork_cid, thread)
+            store.write_receipts(fork_pid, fork_cid,
+                                 store.read_receipts(self._project_id, self._conv_id)
+                                 [:self._completed_turns(thread)])
+            src_meta = store.read_meta(self._project_id, self._conv_id)
+            store.write_meta(fork_pid, fork_cid,
+                             title=(src_meta.get("title") or store.title_for(thread)),
+                             model=self._model, msg_count=len(thread))
+        except OSError as e:
+            self.notify(f"forked files but could not seed conversation: {e}",
+                        severity="warning")
+            return None
+        return fork_cid
+
+    # ── export (Plan G) ───────────────────────────────────────────────────────
+    def _render_transcript(self) -> str:
+        """The active thread as a readable markdown transcript (a 'gist')."""
+        meta = store.read_meta(self._project_id, self._conv_id)
+        title = meta.get("title") or store.title_for(self._history) or "conversation"
+        lines = [f"# {title}", ""]
+        for m in self._history:
+            kind = m.__class__.__name__
+            if kind == "HumanMessage":
+                lines += ["## You", "", agent.chunk_text(m).strip(), ""]
+            elif kind == "AIMessage":
+                text = agent.chunk_text(m).strip()
+                if text:
+                    lines += ["## Assistant", "", text, ""]
+                for tc in (getattr(m, "tool_calls", None) or []):
+                    lines += [f"> 🔧 `{tc.get('name', 'tool')}({agent.fmt_args(tc.get('args') or {})})`", ""]
+        return "\n".join(lines).rstrip() + "\n"
+
+    def action_open_export(self) -> None:
+        self.run_worker(self._export_flow())
+
+    async def _export_flow(self) -> None:
+        """`/export` — write this conversation as a shareable artifact: a markdown
+        transcript, or a full bundle (transcript + thread + a git bundle of the code)."""
+        if self._project_id is None or self._conv_id is None or not self._history:
+            self.notify("nothing to export yet", severity="warning")
+            return
+        idx, _ = await self.ask_choice(
+            "Export this conversation as:",
+            ["Transcript (.md)", "Full bundle (transcript + code)"])
+        if idx is None:
+            return
+        meta = store.read_meta(self._project_id, self._conv_id)
+        slug = store._safe_branch(meta.get("title") or store.title_for(self._history) or "conversation")[:40]
+        if idx == 0:
+            default = str(Path(self._cwd) / f"{slug}.md")
+            out = os.path.abspath(os.path.expanduser(
+                (await self.ask_text("Write transcript to:", placeholder=default,
+                                     multiline=False) or "").strip() or default))
+            path = self._do_export("transcript", out)
+        else:
+            default = str(Path(self._cwd) / f"{slug}.visvoexport")
+            out = os.path.abspath(os.path.expanduser(
+                (await self.ask_text("Write bundle into directory:", placeholder=default,
+                                     multiline=False) or "").strip() or default))
+            path = self._do_export("bundle", out)
+        if path:
+            await self._drop_marker(f"exported → {path.replace(os.path.expanduser('~'), '~')}")
+
+    def _do_export(self, kind: str, out_path: str) -> str | None:
+        """Write the export. `transcript` → a single .md file. `bundle` → a directory
+        with transcript.md, thread.jsonl, manifest.json, and code.bundle (a git bundle
+        of the active branch's checkpoints). Returns the path written, or None."""
+        try:
+            if kind == "transcript":
+                Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(out_path).write_text(self._render_transcript(), encoding="utf-8")
+                return out_path
+            # bundle: a self-contained directory
+            d = Path(out_path)
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "transcript.md").write_text(self._render_transcript(), encoding="utf-8")
+            store.save_conversation_to(d / "thread.jsonl", self._history)
+            has_code = False
+            repo = self._ensure_checkpoints()
+            if repo is not None:
+                ref = f"refs/visvoai/{self._conv_id}/{self._cp_branch}"
+                if repo.ref_get(ref):
+                    try:
+                        repo.bundle(str(d / "code.bundle"), [ref])
+                        has_code = True
+                    except CheckpointError:
+                        has_code = False
+            import json
+            (d / "manifest.json").write_text(json.dumps({
+                "branch": self._cp_branch, "messages": len(self._history),
+                "code_bundle": has_code, "tip": self._cp_tip_sha,
+            }, indent=2), encoding="utf-8")
+            return out_path
+        except OSError as e:
+            self.notify(f"export failed: {e}", severity="error")
+            return None
 
     # ── log (Plan E) ──────────────────────────────────────────────────────────
     async def _log_flow(self) -> None:
