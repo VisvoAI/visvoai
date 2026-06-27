@@ -34,6 +34,8 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("login", "Add a provider API key"),
     ("resume", "Resume a past conversation"),
     ("rewind", "Rewind files + conversation to an earlier point"),
+    ("branch", "Switch timelines or fork a new branch"),
+    ("log", "Show this branch's checkpoints"),
     ("compact", "Compact the context window"),
     ("mode", "Cycle approval mode (normal / auto-edit / accept-all)"),
     ("commit", "Review & commit changes"),
@@ -285,6 +287,10 @@ class CommandsMixin:
             self.run_worker(self._open_sessions())
         elif name == "rewind":
             self.action_open_rewind()   # spawns its own worker
+        elif name == "branch":
+            self.action_open_branches()  # spawns its own worker
+        elif name == "log":
+            self.run_worker(self._log_flow())
         elif name == "compact":
             self.run_worker(self._compact_flow())
         elif name == "mode":

@@ -120,6 +120,45 @@ def append_receipt(project_id: str, conv_id: str, receipt: dict) -> None:
         f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
 
 
+def write_receipts(project_id: str, conv_id: str, receipts: List[dict]) -> None:
+    """Overwrite the active receipts log with exactly `receipts` (used on branch
+    switch, where the active branch's receipts are swapped wholesale). Atomic."""
+    p = _receipts_path(project_id, conv_id)
+    _ensure_conv_dir(project_id, conv_id)
+    if not receipts:
+        if p.exists():
+            p.unlink()
+        return
+    tmp = p.with_name(p.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for r in receipts:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    tmp.replace(p)
+
+
+def save_branch_receipts(project_id: str, conv_id: str, branch: str,
+                         receipts: List[dict]) -> None:
+    """Persist a branch's receipts alongside its thread (UI metadata; mirrors
+    save_branch_thread so footers/cost are correct per branch)."""
+    p = _branch_thread_path(project_id, conv_id, branch).with_suffix(".receipts.jsonl")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for r in receipts:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    tmp.replace(p)
+
+
+def load_branch_receipts(project_id: str, conv_id: str, branch: str) -> List[dict]:
+    p = _branch_thread_path(project_id, conv_id, branch).with_suffix(".receipts.jsonl")
+    if not p.exists():
+        return []
+    try:
+        return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
 def truncate_receipts(project_id: str, conv_id: str, n: int) -> None:
     """Keep only the first `n` per-turn receipts (rewind drops the receipts for turns
     that no longer exist). Atomic rewrite; removes the file when n <= 0."""
@@ -213,6 +252,40 @@ def append_messages(project_id: str, conv_id: str, messages: List[BaseMessage]) 
     with path.open("a", encoding="utf-8") as f:
         for d in messages_to_dict(messages):
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
+
+
+def _safe_branch(name: str) -> str:
+    """A filesystem-safe branch slug (the on-disk thread file name)."""
+    return "".join(c if (c.isalnum() or c in "-_.") else "-" for c in name) or "branch"
+
+
+def _branch_thread_path(project_id: str, conv_id: str, branch: str) -> Path:
+    return _conv_dir(project_id, conv_id) / "branches" / f"{_safe_branch(branch)}.jsonl"
+
+
+def save_branch_thread(project_id: str, conv_id: str, branch: str,
+                       messages: List[BaseMessage]) -> None:
+    """Persist a branch's full thread (its own linearization). The ACTIVE branch also
+    mirrors to history.jsonl so resume/list keep working unchanged; non-active branches
+    live only here until switched to."""
+    p = _branch_thread_path(project_id, conv_id, branch)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for d in messages_to_dict(messages):
+            f.write(json.dumps(d, ensure_ascii=False) + "\n")
+    tmp.replace(p)
+
+
+def load_branch_thread(project_id: str, conv_id: str, branch: str) -> List[BaseMessage]:
+    """A branch's saved thread (empty list if none recorded yet)."""
+    p = _branch_thread_path(project_id, conv_id, branch)
+    if not p.exists():
+        return []
+    try:
+        return messages_from_dict(_read_lines(p))
+    except (json.JSONDecodeError, OSError):
+        return []
 
 
 def save_conversation(project_id: str, conv_id: str, messages: List[BaseMessage],
