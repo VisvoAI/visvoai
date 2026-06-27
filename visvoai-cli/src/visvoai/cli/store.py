@@ -120,6 +120,23 @@ def append_receipt(project_id: str, conv_id: str, receipt: dict) -> None:
         f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
 
 
+def truncate_receipts(project_id: str, conv_id: str, n: int) -> None:
+    """Keep only the first `n` per-turn receipts (rewind drops the receipts for turns
+    that no longer exist). Atomic rewrite; removes the file when n <= 0."""
+    p = _receipts_path(project_id, conv_id)
+    if not p.exists():
+        return
+    kept = read_receipts(project_id, conv_id)[:max(0, n)]
+    if not kept:
+        p.unlink()
+        return
+    tmp = p.with_name(p.name + ".tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        for r in kept:
+            f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    tmp.replace(p)
+
+
 def read_receipts(project_id: str, conv_id: str) -> List[dict]:
     """Per-turn receipts in order (empty if none)."""
     p = _receipts_path(project_id, conv_id)

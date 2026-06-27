@@ -147,6 +147,11 @@ class ShadowRepo:
     def ref_delete(self, name: str) -> None:
         self._run("update-ref", "-d", name, check=False)
 
+    def diff_names(self, a: str, b: str) -> List[str]:
+        """Paths that differ between commit `a` and commit `b` (either direction)."""
+        out = self._run("diff", "--name-only", a, b, check=False)
+        return [p for p in out.splitlines() if p]
+
     def refs(self, prefix: str) -> Dict[str, str]:
         """{full_ref_name: sha} for every ref under `prefix` (e.g. 'refs/visvoai/<cid>/')."""
         out = self._run("for-each-ref", "--format=%(refname) %(objectname)", prefix, check=False)

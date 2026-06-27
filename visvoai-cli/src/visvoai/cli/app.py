@@ -121,6 +121,7 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         Binding("ctrl+k,super+k", "request_clear", "Clear", show=False),
         Binding("ctrl+r,super+r", "open_sessions", "Sessions", show=False),
         Binding("ctrl+g,super+g", "open_git", "Git", show=False),
+        Binding("ctrl+b,super+b", "open_rewind", "Rewind", show=False),
     ]
 
     def __init__(self, term_bg: str | None = None, model: str | None = None,

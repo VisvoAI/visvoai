@@ -33,6 +33,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("model", "Switch the active model"),
     ("login", "Add a provider API key"),
     ("resume", "Resume a past conversation"),
+    ("rewind", "Rewind files + conversation to an earlier point"),
     ("compact", "Compact the context window"),
     ("mode", "Cycle approval mode (normal / auto-edit / accept-all)"),
     ("commit", "Review & commit changes"),
@@ -282,6 +283,8 @@ class CommandsMixin:
             self.run_worker(self._login_flow())
         elif name == "resume":
             self.run_worker(self._open_sessions())
+        elif name == "rewind":
+            self.action_open_rewind()   # spawns its own worker
         elif name == "compact":
             self.run_worker(self._compact_flow())
         elif name == "mode":
