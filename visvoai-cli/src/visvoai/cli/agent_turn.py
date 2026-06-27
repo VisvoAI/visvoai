@@ -145,6 +145,10 @@ class AgentTurnMixin:
 
         self._history.append(HumanMessage(content=user_text))
         self._persist_turn()   # crash-durable: the question lands on disk before the model runs
+        # cli-git-structure: label this turn's checkpoints + lay the baseline (pristine
+        # tree) on the first turn of a fresh conversation, before any tool runs.
+        self._cp_turn_label = user_text[:60]
+        self._maybe_baseline()
         # Sanitize before sending to the model: a prior crashed/errored turn may have
         # left a dangling tool_call in the thread (durable log isn't trimmed) — strip it
         # so the provider never sees an unanswered tool_call.
@@ -228,6 +232,13 @@ class AgentTurnMixin:
                     # mid-turn can't lose it. _persist_turn writes only the new tail.
                     out = data.get("output")
                     if isinstance(out, BaseMessage):
+                        # cli-git-structure: the model just decided to call tools — the
+                        # tree is quiescent (this batch hasn't run). Snapshot BEFORE
+                        # appending the requesting AIMessage, so its message_index
+                        # excludes it and a rewind here makes the model re-plan.
+                        if isinstance(out, AIMessage) and out.tool_calls:
+                            self._record_checkpoint(len(self._history), "pre_batch",
+                                                    self._cp_turn_label)
                         self._history.append(out)
                         self._persist_turn()
 
@@ -290,6 +301,10 @@ class AgentTurnMixin:
         if final_messages is not None and len(final_messages) >= len(self._history):
             self._history = list(final_messages)
         self._persist_turn()
+        # cli-git-structure: capture the post-turn tree. Dedup makes a no-file-change
+        # turn free (same commit as the prior checkpoint); the message_index spans the
+        # whole turn so "undo this turn" lands at the previous turn-end checkpoint.
+        self._record_checkpoint(len(self._history), "turn", self._cp_turn_label)
 
         # Replace any answer block carrying a ```mermaid fence with its split
         # segments (text + a prominent diagram card) so no raw fence reads as code.

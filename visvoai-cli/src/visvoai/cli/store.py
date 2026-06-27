@@ -137,9 +137,9 @@ def _checkpoints_path(project_id: str, conv_id: str) -> Path:
 
 def append_checkpoint(project_id: str, conv_id: str, checkpoint: dict) -> None:
     """Append one checkpoint record to the conversation's append-only checkpoint log.
-    A checkpoint is `{id, message_index, parent, tree_sha, kind, branch, label,
-    created}` — the conversation↔code mapping (the code DAG itself lives in the shadow
-    git repo). NEVER rewritten: rewinds/branches append new records, the active view is
+    A checkpoint is `{id, message_index, parent, commit, kind, branch, label,
+    created}` — the conversation↔code mapping (`commit` is the shadow-repo commit sha;
+    the code DAG itself lives in the shadow git repo). NEVER rewritten: rewinds/branches append new records, the active view is
     derived by walking `parent` links from the active branch tip."""
     _ensure_conv_dir(project_id, conv_id)
     with _checkpoints_path(project_id, conv_id).open("a", encoding="utf-8") as f:

@@ -36,6 +36,7 @@ from visvoai.cli.agent_turn import AgentTurnMixin
 from visvoai.cli.commands import CommandsMixin
 from visvoai.cli.demo import DemoMixin
 from visvoai.cli.render import RenderMixin
+from visvoai.cli.rewind import RewindMixin
 from visvoai.cli.sessions import SessionsMixin
 from visvoai.cli.widgets.file_menu import FileMenu
 from visvoai.cli.widgets.prompt import PromptArea
@@ -54,7 +55,7 @@ _LOGO_CLI = [
     "░▀▀▀░▀▀▀░▀▀▀",
 ]
 
-class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMixin, App):
+class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMixin, RenderMixin, App):
     TITLE = "visvoai"
     ENABLE_COMMAND_PALETTE = False
 
@@ -162,6 +163,16 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMi
         # ToolNode runs concurrent tool_calls in parallel; this serializes their
         # approval prompts so two Selections can't mount/contend at once.
         self._hitl_lock = asyncio.Lock()
+        # Git-structured history (cli-git-structure): a shadow repo snapshots the work
+        # tree per tool-batch + turn-end, linked to the thread by message index so code
+        # and conversation rewind together. All lazy + best-effort — never breaks a turn.
+        self._checkpoints = None              # ShadowRepo | None (built lazily)
+        self._cp_failed = False               # git missing / init failed → stop retrying
+        self._cp_branch = "main"              # active conversation branch
+        self._cp_branch_tips: dict[str, str] = {}   # branch → tip checkpoint id
+        self._cp_tip_id: str | None = None    # active branch tip (checkpoint record id)
+        self._cp_tip_sha: str | None = None   # active branch tip (shadow commit sha)
+        self._cp_turn_label = ""              # current turn's prompt snippet (checkpoint label)
         self._ctx_pct: int | None = None  # context % — hidden until a real turn reports usage
         self._ctx_tokens: int | None = None  # raw tokens in context (footer label)
         self._pace = 1.0    # demo speed multiplier (tests set this low to run fast)
