@@ -20,6 +20,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
+from visvoai.ai.identity import DEFAULT_CODEC
 from visvoai.ai.model_registry import MODELS as _BAKED, ModelDefinition
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,18 @@ _Key = Tuple[str, str]  # (provider, api_id) — the merge/identity key
 
 def _key(md: ModelDefinition) -> _Key:
     return (md.provider, md.api_id)
+
+
+def _id_encodable(md: ModelDefinition) -> bool:
+    """True if this model's deployment id round-trips through the codec. Some
+    upstream slugs (e.g. cloudflare's '@cf/…', which starts with the codec's '@'
+    effort marker) can't be encoded — admitting them is a landmine: they list but
+    crash on get_deployment. Drop them at build time instead."""
+    try:
+        DEFAULT_CODEC.parse(DEFAULT_CODEC.build(md.provider, md.api_id))
+        return True
+    except Exception:
+        return False
 
 
 class CatalogSource(ABC):
@@ -102,5 +115,11 @@ def build_catalog(
         if dropped:
             logger.info("catalog: %d model(s) dropped by gate", dropped)
         merged = kept
+    # Drop models whose id can't be encoded by the codec — they'd list but crash on
+    # get_deployment (a landmine in the picker). Filter once here, across all sources.
+    encodable = [md for md in merged if _id_encodable(md)]
+    if len(encodable) != len(merged):
+        logger.info("catalog: dropped %d model(s) with non-encodable ids", len(merged) - len(encodable))
+    merged = encodable
     validate(merged)
     return merged

@@ -8,8 +8,12 @@ from visvoai.cli.tools._common import cap_lines
 SHELL_LINE_CAP = 1000    # max output lines from run_shell
 
 
+SHELL_TIMEOUT_DEFAULT = 30   # seconds
+SHELL_TIMEOUT_MAX = 600      # hard ceiling — synchronous, blocks the turn while running
+
+
 @tool
-def run_shell(command: str) -> str:
+def run_shell(command: str, timeout_seconds: int = SHELL_TIMEOUT_DEFAULT) -> str:
     """Run a shell command and return its combined stdout + stderr output.
 
     Full shell syntax works (pipes, &&/||, redirects). When you expect NOISY output
@@ -19,17 +23,20 @@ def run_shell(command: str) -> str:
     could be anywhere), run it plain — output is capped automatically, so a grep
     that hides the real error is worse than the cap.
 
-    Timeout: 30 seconds (synchronous — not for long-running servers/watchers).
+    timeout_seconds: how long to wait before killing the command (default 30, max
+    600). Raise it for known-slow commands (installs, builds, full test suites);
+    keep it low for quick checks. Synchronous — not for long-running servers/watchers.
     Working directory: the cwd this CLI was launched from. Output is followed by the
     exit code.
     """
+    timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
     try:
         result = subprocess.run(
             command,
             shell=True,
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as e:
         # A timeout is a TOOL error, not a turn-crashing exception: return it as data
@@ -39,7 +46,9 @@ def run_shell(command: str) -> str:
             ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
             SHELL_LINE_CAP)
         head = f"{partial}\n" if partial else ""
-        return f"{head}ERROR: command timed out after 30s and was killed.\n[exit: -1]".strip()
+        return (f"{head}ERROR: command timed out after {timeout}s and was killed. "
+                f"Pass a larger timeout_seconds (max {SHELL_TIMEOUT_MAX}) if it needs longer."
+                f"\n[exit: -1]").strip()
     except Exception as e:  # any spawn/decoding failure is the tool's, not the turn's
         return f"ERROR: {e}\n[exit: -1]".strip()
     output = result.stdout

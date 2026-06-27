@@ -4,6 +4,13 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.2.2] — 2026-06
+
+### Fixed
+- `build_catalog` drops models whose id can't round-trip through the identity codec
+  (e.g. cloudflare's `@cf/…` slugs, which collide with the `@effort` marker). They
+  previously listed but crashed `get_deployment` — a landmine in any picker.
+
 ## [0.2.1] — 2026-06
 
 ### Fixed

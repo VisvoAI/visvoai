@@ -24,6 +24,7 @@ from langchain_core.tools import BaseTool, tool
 from visvoai.cli.tools import (   # read-only tools reused as-is; caps shared
     list_files, list_tree, read_file, web_search, web_fetch, cap_lines, SHELL_LINE_CAP,
 )
+from visvoai.cli.tools.shell import SHELL_TIMEOUT_DEFAULT, SHELL_TIMEOUT_MAX
 
 ApproveFn = Callable[[str, dict], Awaitable[bool]]
 
@@ -86,19 +87,23 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         return f"Wrote {len(content)} chars to {abs_path}"
 
     @tool
-    async def run_shell(command: str) -> str:
-        """Run a shell command (30s timeout) and return combined output + exit code.
+    async def run_shell(command: str, timeout_seconds: int = SHELL_TIMEOUT_DEFAULT) -> str:
+        """Run a shell command and return combined output + exit code.
 
         Full shell syntax works (pipes, &&, redirects). Filter NOISY output inline
         when you only need part of it (`… 2>&1 | grep -E "FAIL|Error"`, `… | tail
         -40`) — but don't over-filter: if the whole result matters or a failure's
-        cause could be anywhere, run it plain (output is capped automatically)."""
+        cause could be anywhere, run it plain (output is capped automatically).
+
+        timeout_seconds: seconds before the command is killed (default 30, max 600).
+        Raise it for slow commands (installs, builds, full test suites)."""
         if not await approve("run_shell", {"command": command}):
             return _DENIED
+        timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
         try:
             result = await asyncio.to_thread(  # don't block the UI loop on the subprocess
                 subprocess.run, command,
-                shell=True, capture_output=True, text=True, timeout=30,
+                shell=True, capture_output=True, text=True, timeout=timeout,
             )
         except subprocess.TimeoutExpired as e:
             # A timeout is a TOOL error returned as data (with the failure marker the
@@ -107,7 +112,9 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
                 ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
                 SHELL_LINE_CAP)
             head = f"{partial}\n" if partial else ""
-            return f"{head}ERROR: command timed out after 30s and was killed.\n[exit: -1]".strip()
+            return (f"{head}ERROR: command timed out after {timeout}s and was killed. "
+                    f"Pass a larger timeout_seconds (max {SHELL_TIMEOUT_MAX}) if it needs longer."
+                    f"\n[exit: -1]").strip()
         except Exception as e:
             return f"ERROR: {e}\n[exit: -1]".strip()
         output = result.stdout

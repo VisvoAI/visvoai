@@ -159,6 +159,9 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RenderMi
         self._hitl_mode = HITLMode.NORMAL
         self._approved_all: set[str] = set()
         self._policy = load_policy(self._cwd)
+        # ToolNode runs concurrent tool_calls in parallel; this serializes their
+        # approval prompts so two Selections can't mount/contend at once.
+        self._hitl_lock = asyncio.Lock()
         self._ctx_pct: int | None = None  # context % — hidden until a real turn reports usage
         self._ctx_tokens: int | None = None  # raw tokens in context (footer label)
         self._pace = 1.0    # demo speed multiplier (tests set this low to run fast)

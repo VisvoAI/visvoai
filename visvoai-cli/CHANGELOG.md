@@ -3,6 +3,29 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.3.3] — 2026-06
+
+### Added
+- `run_shell` takes an agent-settable `timeout_seconds` (default 30, clamped to 600)
+  — the agent can request longer for installs/builds/full test suites instead of
+  dying at a fixed 30s.
+
+### Changed
+- **Crash-durable persistence.** The human message and each completed AI/Tool message
+  are flushed to the conversation store AS they stream (idempotent tail-append), so a
+  hard crash mid-turn no longer loses the turn. The durable log is append-only; a
+  dangling tool_call from a crashed/errored turn is stripped at point-of-use by
+  `_sanitize_thread` when building model state (also covers resumed threads).
+- Concurrent tool approvals are serialized (`_hitl_lock`) — `ToolNode` runs tool_calls
+  in parallel, so multiple HITL prompts no longer mount/contend at once; a sibling's
+  "allow all this session" skips the redundant prompt.
+- A "preparing tool call…" status shows while the model streams tool-call arguments
+  (no more silent spinner gap before a tool starts).
+
+### Fixed
+- Picks up `visvoai-ai` 0.2.2 — catalog ids that can't be encoded (cloudflare `@cf/…`)
+  no longer appear in the model picker as crashing entries.
+
 ## [0.3.2] — 2026-06
 
 ### Fixed

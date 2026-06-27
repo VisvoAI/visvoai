@@ -26,20 +26,33 @@ from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from visvoai.cli.widgets.prompt import PromptArea
 
 
-def _valid_thread_suffix(msgs: list[BaseMessage]) -> list[BaseMessage]:
-    """Trim a partial (errored-turn) message list to a replayable suffix: drop any
-    trailing AIMessage whose tool_calls weren't all answered by ToolMessages.
-    A dangling tool_call would make the saved thread crash the provider next turn."""
-    msgs = list(msgs)
-    while msgs:
-        last = msgs[-1]
-        answered = {m.tool_call_id for m in msgs if isinstance(m, ToolMessage)}
-        if (isinstance(last, AIMessage) and last.tool_calls
-                and not all(tc.get("id") in answered for tc in last.tool_calls)):
-            msgs.pop()
+def _sanitize_thread(msgs: list[BaseMessage]) -> list[BaseMessage]:
+    """Return a provider-replayable copy of `msgs`: every AIMessage tool_call must be
+    answered by a ToolMessage and every ToolMessage must have a producing tool_call.
+
+    The durable store is an append-only log that a crashed/errored turn can leave with
+    a dangling tool_call (its result never arrived). We never rewrite that log; instead
+    we clean the thread here, at the point it's sent to the model. An AIMessage with
+    unanswered tool_calls keeps its text (if any) but loses the tool_calls; an orphan
+    ToolMessage is dropped."""
+    answered = {m.tool_call_id for m in msgs if isinstance(m, ToolMessage)}
+    out: list[BaseMessage] = []
+    valid_ids: set = set()
+    for m in msgs:
+        if isinstance(m, AIMessage) and m.tool_calls:
+            if all(tc.get("id") in answered for tc in m.tool_calls):
+                out.append(m)
+                valid_ids.update(tc.get("id") for tc in m.tool_calls)
+            elif isinstance(m.content, str) and m.content.strip():
+                out.append(AIMessage(content=m.content))   # keep the text, drop dangling calls
+            # else: empty AIMessage with only unanswered tool_calls → drop entirely
+        elif isinstance(m, ToolMessage):
+            if m.tool_call_id in valid_ids:
+                out.append(m)
+            # else: orphan tool result (its AIMessage was dropped) → drop
         else:
-            break
-    return msgs
+            out.append(m)
+    return out
 
 
 _AUTH_HINTS = ("401", "403", "unauthorized", "api key", "api_key",
@@ -131,16 +144,17 @@ class AgentTurnMixin:
             return
 
         self._history.append(HumanMessage(content=user_text))
-        state = {"messages": list(self._history)}
-        pre_turn_len = len(self._history)   # a turn only ever ADDS to the thread
+        self._persist_turn()   # crash-durable: the question lands on disk before the model runs
+        # Sanitize before sending to the model: a prior crashed/errored turn may have
+        # left a dangling tool_call in the thread (durable log isn't trimmed) — strip it
+        # so the provider never sees an unanswered tool_call.
+        state = {"messages": _sanitize_thread(self._history)}
 
         current: Assistant | None = None         # active reply block (None between runs)
         answer_blocks: list[Assistant] = []      # every reply block this turn (mermaid scan)
         thinking: Thinking | None = None         # active reasoning block (None when not thinking)
         nodes: dict[str, tuple] = {}             # run_id → (node, tool_name, input_args)
         final_messages = None                    # captured from the graph's on_chain_end
-        streamed_msgs: list[BaseMessage] = []     # AI/Tool msgs as they complete — the
-        #                                           errored-turn fallback (see persist below)
         turn_in = turn_out = 0                    # summed token usage across the turn (cost)
         last_input = 0                           # latest call's input ≈ current context size
         thinking_durations: list[float] = []     # each reasoning block's wall-clock seconds
@@ -167,6 +181,11 @@ class AgentTurnMixin:
                         turn_in += u["input"]; turn_out += u["output"]
                         if u["input"]:
                             last_input = u["input"]   # newest call's input ≈ context size
+                    # Tool-call argument deltas carry no text/thinking — without a
+                    # status update the spinner sits silently while the model writes
+                    # the call. Surface it as "preparing tool call…" so there's no gap.
+                    if getattr(chunk, "tool_call_chunks", None) and current is None:
+                        self._set_status("preparing tool call…")
                     for ck, text in agent.classify_chunk(chunk):
                         await self._clear_working()   # first real output → drop spinner
                         if ck == "thinking":
@@ -204,11 +223,13 @@ class AgentTurnMixin:
                     self._set_status(f"running {name}…")
 
                 elif kind == "on_chat_model_end":
-                    # Capture the completed AIMessage (content + any tool_calls) so an
-                    # errored turn can still persist what the model produced.
+                    # Crash-durable: append the completed AIMessage (content + any
+                    # tool_calls) to the thread and flush to disk NOW, so a hard crash
+                    # mid-turn can't lose it. _persist_turn writes only the new tail.
                     out = data.get("output")
                     if isinstance(out, BaseMessage):
-                        streamed_msgs.append(out)
+                        self._history.append(out)
+                        self._persist_turn()
 
                 elif kind == "on_tool_end":
                     entry = nodes.pop(event.get("run_id"), None)
@@ -219,7 +240,8 @@ class AgentTurnMixin:
                         log.scroll_end(animate=False)
                     out = data.get("output")
                     if isinstance(out, ToolMessage):   # pairs with the AIMessage tool_call
-                        streamed_msgs.append(out)
+                        self._history.append(out)
+                        self._persist_turn()
 
                 elif kind == "on_tool_error":
                     # Defensive: a tool that raises (rather than returning an ERROR
@@ -259,17 +281,14 @@ class AgentTurnMixin:
             self._set_status(None)
             await self._clear_working()
 
-        # Adopt the graph's final state only when it's at least as complete as what
-        # we already have — a shorter capture is a partial/corrupt result and must
-        # never clobber the accumulated thread (that silently destroyed a long
-        # conversation before). Persist regardless, so a turn never loses history.
-        if final_messages is not None and len(final_messages) >= pre_turn_len:
-            self._history = list(final_messages)  # carry full thread (incl. tool msgs) forward
-        elif streamed_msgs:
-            # Errored/interrupted turn — the root on_chain_end never fired, so rebuild
-            # the thread from the human turn + the messages that DID complete (trimmed
-            # to a replayable suffix). Previously this turn's work was lost entirely.
-            self._history = list(self._history[:pre_turn_len]) + _valid_thread_suffix(streamed_msgs)
+        # Each message was already persisted incrementally as it completed (above),
+        # so an errored/interrupted/crashed turn keeps its work. On success, reconcile
+        # self._history with the graph's authoritative final thread (canonical objects)
+        # when it's at least as complete; the persist flushes any remaining delta. A
+        # dangling tool_call left by an errored turn is never trimmed from storage —
+        # it's stripped at point-of-use (_sanitize_thread, when building model state).
+        if final_messages is not None and len(final_messages) >= len(self._history):
+            self._history = list(final_messages)
         self._persist_turn()
 
         # Replace any answer block carrying a ```mermaid fence with its split
@@ -376,21 +395,30 @@ class AgentTurnMixin:
         """Permission gate for a mutating tool. Returns True to proceed. The HITL
         mode (auto-edit/accept-all), a per-tool 'allow all this session', and the
         config policy each bypass the prompt. Shown inline as the Selection HITL
-        while the tool is paused mid-execution (Phase-0 mechanism)."""
+        while the tool is paused mid-execution (Phase-0 mechanism).
+
+        ToolNode runs concurrent tool_calls in parallel, so the interactive prompt is
+        serialized under _hitl_lock — two approvals can't mount overlapping Selections.
+        The fast-path bypasses are checked outside the lock (no need to queue)."""
         if self._hitl_mode.auto_approves(tool_name) or tool_name in self._approved_all:
             return True
         if self._policy.auto_allow(tool_name, args):
             return True
-        verb = self._GATE_VERB.get(tool_name, tool_name)
-        target = args.get("path") or args.get("command") or ""
-        idx, _ = await self.ask_choice(
-            f"Do you want to {verb} {target}?",
-            ["Yes", "Yes (allow all this session)", "No"],
-            recommended=0, connected=True)
-        if idx == 1:
-            self._approved_all.add(tool_name)
-            return True
-        return idx == 0
+        async with self._hitl_lock:
+            # Re-check inside the lock: a sibling approval that ran while we waited may
+            # have flipped the mode or added this tool to 'allow all this session'.
+            if self._hitl_mode.auto_approves(tool_name) or tool_name in self._approved_all:
+                return True
+            verb = self._GATE_VERB.get(tool_name, tool_name)
+            target = args.get("path") or args.get("command") or ""
+            idx, _ = await self.ask_choice(
+                f"Do you want to {verb} {target}?",
+                ["Yes", "Yes (allow all this session)", "No"],
+                recommended=0, connected=True)
+            if idx == 1:
+                self._approved_all.add(tool_name)
+                return True
+            return idx == 0
 
     async def _render_tool_result(self, node, name: str, args, output: str) -> None:
         """Render a finished tool call into the right Style-B body, by tool type:
