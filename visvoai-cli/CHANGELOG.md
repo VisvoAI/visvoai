@@ -3,6 +3,28 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.4.0] — 2026-06
+
+### Added
+- **Git-structured history.** A shadow git repo (separate GIT_DIR over the project
+  root; the user's own `.git` is never touched) snapshots the whole work tree per tool
+  batch and at turn end, each linked to a message index so code and conversation move
+  together. Honours `.gitignore` + default excludes; content-addressed dedup makes
+  no-change turns free.
+  - `/rewind` (Ctrl+B) — restore files **and** conversation to an earlier checkpoint
+    (TRUE restore: revert + un-delete + remove-new), or **branch from here** to keep both.
+  - `/branch` — switch timelines or fork a new one; each branch has its own thread,
+    receipts, and code tip.
+  - `/fork` — materialize a checkpoint in a new directory (git worktree) + a seeded
+    conversation, to run a second timeline in parallel.
+  - `/export` — a markdown transcript, or a self-contained bundle (transcript + thread
+    + a restorable git bundle of the code).
+  - `/log` — the active branch's checkpoint chain.
+  - On resume, a drifted work tree records a baseline of current reality; rewinding past
+    it warns that out-of-session changes will be discarded.
+  - All best-effort: missing git or any checkpoint error is swallowed — it never breaks
+    a turn.
+
 ## [0.3.4] — 2026-06
 
 ### Fixed

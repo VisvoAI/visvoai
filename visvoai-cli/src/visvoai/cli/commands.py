@@ -323,6 +323,13 @@ class CommandsMixin:
         self._conv_id = None
         self._project_id = None
         self._persisted_count = 0
+        # Reset the checkpoint chain too — a fresh conversation must re-baseline, not
+        # chain onto the cleared conversation's tip.
+        self._checkpoints = None
+        self._cp_branch = "main"
+        self._cp_branch_tips = {}
+        self._cp_tip_id = None
+        self._cp_tip_sha = None
         self._title_generated = False
         self._conv_cost = 0.0
         self._set_context(None)          # hide the gauge (+ drops the ≥85% nudge)
