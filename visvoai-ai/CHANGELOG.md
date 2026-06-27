@@ -4,6 +4,15 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.2.1] — 2026-06
+
+### Fixed
+- `resolve_api_key` now cleans keys (strips whitespace + a layer of wrapping quotes)
+  at the single resolution chokepoint — covering explicit args, `env_var`, and the
+  static map. A key with a trailing space/newline or wrapped in quotes (common from
+  shells, `.env`, or config) was sent verbatim and silently rejected as `401 User not
+  found`; it's now normalized before the request.
+
 ## [0.2.0] — 2026-06
 
 ### Added

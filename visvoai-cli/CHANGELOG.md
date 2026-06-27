@@ -3,6 +3,21 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.3.2] — 2026-06
+
+### Fixed
+- **Shell timeouts are tool errors, not turn crashes.** `run_shell` (and the gated
+  variant) now catch `subprocess.TimeoutExpired`/spawn errors and return them as
+  `ERROR: …\n[exit: -1]` data — the agent recovers and the turn survives, instead of
+  the timeout propagating up and killing the turn.
+- **Turn failures render as a proper `ErrorBlock`**, not a system note —
+  classified auth / network / model with a human message (`_classify_turn_error`).
+- **Errored/interrupted turns no longer lose their work.** When the root
+  `on_chain_end` never fires, the thread is rebuilt from the human turn + the
+  messages that completed (`_valid_thread_suffix` trims any dangling tool_call so the
+  saved thread stays replayable). Previously only the human message persisted.
+- Picks up the `visvoai-ai` key-cleaning fix (trailing space/quotes → silent 401).
+
 ## [0.3.1] — 2026-06
 
 ### Fixed

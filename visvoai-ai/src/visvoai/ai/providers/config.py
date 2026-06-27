@@ -43,19 +43,35 @@ def resolve_base_url(provider: str, base_url: Optional[str] = None) -> Optional[
     return _PROVIDER_BASE_URL.get(provider.lower())
 
 
+def _clean_key(raw: Optional[str]) -> str:
+    """Strip whitespace and a single layer of surrounding matching quotes from a key.
+
+    Keys reach us from shells, .env files, and config — any of which can leave a
+    trailing newline/space or wrap the value in quotes. Sending that verbatim is the
+    classic silent 401 ('User not found'), so every key is cleaned at this one
+    chokepoint before it goes to a provider."""
+    if not raw:
+        return ""
+    k = raw.strip()
+    if len(k) >= 2 and k[0] == k[-1] and k[0] in ("'", '"'):
+        k = k[1:-1].strip()
+    return k
+
+
 def resolve_api_key(provider: str, api_key: Optional[str] = None,
                     env_var: Optional[str] = None) -> str:
-    """Return the API key for provider.
+    """Return the API key for provider, cleaned (whitespace + wrapping quotes stripped).
 
     Priority: explicit api_key arg → explicit env_var (carried from a catalog source,
     e.g. models.dev) → the static _ENV_KEY_MAP env var → KeyError. `env_var` lets a
     catalog-sourced provider that isn't in the static map name its own key variable.
     """
-    if api_key:
-        return api_key
+    cleaned = _clean_key(api_key)
+    if cleaned:
+        return cleaned
     for var in (env_var, _ENV_KEY_MAP.get(provider.lower())):
         if var:
-            key = os.environ.get(var, "")
+            key = _clean_key(os.environ.get(var))
             if key:
                 return key
     expected = env_var or _ENV_KEY_MAP.get(provider.lower()) or provider.upper() + "_API_KEY"

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-cli"
-version = "0.3.1"
+version = "0.3.2"
 description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,7 +25,7 @@ dependencies = [
     # picker exposes the full models.dev catalog, so any provider must be runnable
     # out of the box (a Gemini-only install would crash on selecting a Claude/OpenAI
     # model). Leanness lives in visvoai-ai's per-provider extras, not in the app.
-    "visvoai-ai[all]>=0.2.0",
+    "visvoai-ai[all]>=0.2.1",
     "click>=8.1",
     "rich>=13.0",
     # The terminal UI (REPL) is built on Textual; .env auto-load via python-dotenv.

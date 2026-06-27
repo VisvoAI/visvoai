@@ -23,13 +23,25 @@ def run_shell(command: str) -> str:
     Working directory: the cwd this CLI was launched from. Output is followed by the
     exit code.
     """
-    result = subprocess.run(
-        command,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired as e:
+        # A timeout is a TOOL error, not a turn-crashing exception: return it as data
+        # (with the failure marker the UI parses) so the agent can adapt and the turn
+        # survives. Include any partial output captured before the kill.
+        partial = cap_lines(
+            ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
+            SHELL_LINE_CAP)
+        head = f"{partial}\n" if partial else ""
+        return f"{head}ERROR: command timed out after 30s and was killed.\n[exit: -1]".strip()
+    except Exception as e:  # any spawn/decoding failure is the tool's, not the turn's
+        return f"ERROR: {e}\n[exit: -1]".strip()
     output = result.stdout
     if result.stderr:
         output += f"\n[stderr]\n{result.stderr}"

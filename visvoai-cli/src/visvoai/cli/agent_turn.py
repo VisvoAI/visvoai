@@ -18,10 +18,49 @@ import time
 
 from visvoai.cli import agent, store
 from visvoai.cli.widgets import (
-    Assistant, CleanDiff, Plan, SystemNote, Thinking, ToolOutput, TurnFooter,
-    WorkingIndicator,
+    Assistant, CleanDiff, ErrorBlock, Plan, SystemNote, Thinking, ToolOutput,
+    TurnFooter, WorkingIndicator,
 )
+from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+
 from visvoai.cli.widgets.prompt import PromptArea
+
+
+def _valid_thread_suffix(msgs: list[BaseMessage]) -> list[BaseMessage]:
+    """Trim a partial (errored-turn) message list to a replayable suffix: drop any
+    trailing AIMessage whose tool_calls weren't all answered by ToolMessages.
+    A dangling tool_call would make the saved thread crash the provider next turn."""
+    msgs = list(msgs)
+    while msgs:
+        last = msgs[-1]
+        answered = {m.tool_call_id for m in msgs if isinstance(m, ToolMessage)}
+        if (isinstance(last, AIMessage) and last.tool_calls
+                and not all(tc.get("id") in answered for tc in last.tool_calls)):
+            msgs.pop()
+        else:
+            break
+    return msgs
+
+
+_AUTH_HINTS = ("401", "403", "unauthorized", "api key", "api_key",
+               "user not found", "authentication", "invalid_api_key")
+_NET_HINTS = ("connection", "timeout", "timed out", "network", "getaddrinfo",
+              "temporarily unavailable", "502", "503", "504")
+
+
+def _classify_turn_error(e: Exception) -> tuple[str, str, str]:
+    """Map a raw turn exception to (ErrorBlock kind, human message, dim detail).
+    Keeps the raw text as the detail line; never a traceback."""
+    raw = " ".join(str(e).split())
+    low = raw.lower()
+    detail = raw if len(raw) <= 240 else raw[:237] + "…"
+    if any(h in low for h in _AUTH_HINTS):
+        return ("model",
+                "The provider rejected the API key. Check it with /login "
+                "(watch for trailing spaces or quotes).", detail)
+    if any(h in low for h in _NET_HINTS):
+        return ("network", "Couldn't reach the model provider.", detail)
+    return ("model", "The model call failed.", detail)
 
 
 class AgentTurnMixin:
@@ -100,6 +139,8 @@ class AgentTurnMixin:
         thinking: Thinking | None = None         # active reasoning block (None when not thinking)
         nodes: dict[str, tuple] = {}             # run_id → (node, tool_name, input_args)
         final_messages = None                    # captured from the graph's on_chain_end
+        streamed_msgs: list[BaseMessage] = []     # AI/Tool msgs as they complete — the
+        #                                           errored-turn fallback (see persist below)
         turn_in = turn_out = 0                    # summed token usage across the turn (cost)
         last_input = 0                           # latest call's input ≈ current context size
         thinking_durations: list[float] = []     # each reasoning block's wall-clock seconds
@@ -162,6 +203,13 @@ class AgentTurnMixin:
                     nodes[event.get("run_id")] = (node, name, args)
                     self._set_status(f"running {name}…")
 
+                elif kind == "on_chat_model_end":
+                    # Capture the completed AIMessage (content + any tool_calls) so an
+                    # errored turn can still persist what the model produced.
+                    out = data.get("output")
+                    if isinstance(out, BaseMessage):
+                        streamed_msgs.append(out)
+
                 elif kind == "on_tool_end":
                     entry = nodes.pop(event.get("run_id"), None)
                     if entry is not None:
@@ -169,6 +217,9 @@ class AgentTurnMixin:
                         await self._render_tool_result(
                             node, name, args, agent.tool_output_text(data.get("output")))
                         log.scroll_end(animate=False)
+                    out = data.get("output")
+                    if isinstance(out, ToolMessage):   # pairs with the AIMessage tool_call
+                        streamed_msgs.append(out)
 
                 elif kind == "on_tool_error":
                     # Defensive: a tool that raises (rather than returning an ERROR
@@ -202,7 +253,8 @@ class AgentTurnMixin:
         except Exception as e:  # model/network/key failure — surface it, never crash the turn
             if thinking is not None:
                 thinking.stop()
-            await self._mount_block(log, SystemNote(f"error: {e}", kind="error"), "note")
+            kind, message, detail = _classify_turn_error(e)
+            await self._mount_block(log, ErrorBlock(kind, message, detail), "error")
         finally:
             self._set_status(None)
             await self._clear_working()
@@ -213,6 +265,11 @@ class AgentTurnMixin:
         # conversation before). Persist regardless, so a turn never loses history.
         if final_messages is not None and len(final_messages) >= pre_turn_len:
             self._history = list(final_messages)  # carry full thread (incl. tool msgs) forward
+        elif streamed_msgs:
+            # Errored/interrupted turn — the root on_chain_end never fired, so rebuild
+            # the thread from the human turn + the messages that DID complete (trimmed
+            # to a replayable suffix). Previously this turn's work was lost entirely.
+            self._history = list(self._history[:pre_turn_len]) + _valid_thread_suffix(streamed_msgs)
         self._persist_turn()
 
         # Replace any answer block carrying a ```mermaid fence with its split

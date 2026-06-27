@@ -18,4 +18,5 @@ model's context, and returns `ERROR: …` as data (never raises) so the agent re
 
 # Gotchas
 - `run_shell` caps the body BEFORE appending `[exit:N]` so the marker survives truncation (the UI parses it for success/failure).
+- `run_shell` catches `subprocess.TimeoutExpired`/any spawn error and returns it as `ERROR: …\n[exit: -1]` (data, never a raise) — a timeout is a TOOL error the agent recovers from, not a turn-crashing exception. (Same in `gated_tools.run_shell`.)
 - `list_tree` is bounded on depth, per-dir fan-out, AND total — each truncation is marked so the agent can drill into a subpath.

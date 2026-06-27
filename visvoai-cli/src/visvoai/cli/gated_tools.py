@@ -95,10 +95,21 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         cause could be anywhere, run it plain (output is capped automatically)."""
         if not await approve("run_shell", {"command": command}):
             return _DENIED
-        result = await asyncio.to_thread(  # don't block the UI loop on the subprocess
-            subprocess.run, command,
-            shell=True, capture_output=True, text=True, timeout=30,
-        )
+        try:
+            result = await asyncio.to_thread(  # don't block the UI loop on the subprocess
+                subprocess.run, command,
+                shell=True, capture_output=True, text=True, timeout=30,
+            )
+        except subprocess.TimeoutExpired as e:
+            # A timeout is a TOOL error returned as data (with the failure marker the
+            # UI parses), never a turn-crashing exception — the agent recovers.
+            partial = cap_lines(
+                ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
+                SHELL_LINE_CAP)
+            head = f"{partial}\n" if partial else ""
+            return f"{head}ERROR: command timed out after 30s and was killed.\n[exit: -1]".strip()
+        except Exception as e:
+            return f"ERROR: {e}\n[exit: -1]".strip()
         output = result.stdout
         if result.stderr:
             output += f"\n[stderr]\n{result.stderr}"
