@@ -147,6 +147,12 @@ class ShadowRepo:
     def ref_delete(self, name: str) -> None:
         self._run("update-ref", "-d", name, check=False)
 
+    def is_dirty(self, sha: str) -> bool:
+        """True if the live work tree differs from commit `sha` (staging everything
+        first so untracked/new files count). Used to detect between-session drift."""
+        self._run("add", "-A")
+        return self._run("write-tree") != self.tree_of(sha)
+
     def diff_names(self, a: str, b: str) -> List[str]:
         """Paths that differ between commit `a` and commit `b` (either direction)."""
         out = self._run("diff", "--name-only", a, b, check=False)

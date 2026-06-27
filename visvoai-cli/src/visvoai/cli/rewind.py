@@ -132,6 +132,27 @@ class RewindMixin:
             return
         self._record_checkpoint(0, "baseline", "start")
 
+    # ── resume drift (Plan D) ─────────────────────────────────────────────────
+    def _resume_checkpoints(self) -> None:
+        """On resuming a conversation, adopt its checkpoint tip and — if the work tree
+        drifted since the last snapshot (hand edits, pull, branch switch, a build) —
+        record a 'baseline' of the current reality at the thread's end. That keeps the
+        timeline continuous and lets `_rewind_crosses_baseline` warn before a rewind
+        discards out-of-session changes."""
+        repo = self._ensure_checkpoints()
+        if repo is None:
+            return
+        records = store.read_checkpoints(self._project_id, self._conv_id)
+        if not records:   # pre-feature conversation → the first turn lays the baseline
+            return
+        self._load_checkpoint_tip(records)
+        try:
+            if self._cp_tip_sha and repo.is_dirty(self._cp_tip_sha):
+                self._record_checkpoint(len(self._history), "baseline",
+                                        "resumed (external changes)")
+        except CheckpointError:
+            pass
+
     # ── rewind (Plan C) ───────────────────────────────────────────────────────
     def _active_chain(self, records: list[dict]) -> list[dict]:
         """The active branch's checkpoints in chronological order (baseline … tip),

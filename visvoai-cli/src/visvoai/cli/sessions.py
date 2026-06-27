@@ -59,6 +59,7 @@ class SessionsMixin:
         self._title_generated = True            # existing thread already has its title
         self._conv_id = conv_id
         await self._replay_history(messages)
+        self._resume_checkpoints()   # adopt the checkpoint tip; baseline any external drift
         meta = store.read_meta(self._project_id, conv_id)
         self.set_tab_title(meta.get("title") or store.title_for(messages))
         self.notify(f"resumed: {conv_id}")
@@ -85,6 +86,7 @@ class SessionsMixin:
         self._title_generated = True            # existing thread already has its title
         self._conv_id = sid
         await self._replay_history(messages)
+        self._resume_checkpoints()   # adopt the checkpoint tip; baseline any external drift
         self.set_tab_title(store.read_meta(self._project_id, sid).get("title")
                            or store.title_for(messages))
         title = next((s["title"] for s in sessions if s["id"] == sid), sid)
