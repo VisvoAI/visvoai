@@ -242,6 +242,57 @@ async def generate_title(opening: str) -> Optional[str]:
         return None
 
 
+_COMPACT_PROMPT = (
+    "You are compacting a coding assistant's conversation to save context. Summarize the "
+    "transcript below into a dense hand-off note the assistant can continue from. Capture: "
+    "the user's goal(s) and constraints; key decisions and why; files/functions touched and "
+    "how; commands run and their outcomes; open threads and next steps. Preserve concrete "
+    "names, paths, and values — omit chit-chat. Use terse bullet points. Output ONLY the note."
+)
+
+
+async def summarize_history(deployment_id: str, transcript: str) -> Optional[str]:
+    """One-shot LLM summary of an earlier conversation slice into a dense continuation
+    note (for /compact). Uses the active model. Returns None when its provider has no
+    key or the call fails/yields nothing — the caller then leaves the thread untouched.
+    Never raises."""
+    dep = get_deployment(deployment_id)
+    if dep is None or not provider_has_key(dep.provider):
+        return None
+    try:
+        from visvoai.ai import build_chat_model
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        model = build_chat_model(deployment_id, level="off")
+        resp = await model.ainvoke(
+            [SystemMessage(content=_COMPACT_PROMPT), HumanMessage(content=transcript[:60_000])]
+        )
+        text = resp.content if isinstance(resp.content, str) else chunk_text(resp)
+        return text.strip() or None
+    except Exception:
+        return None
+
+
+def render_thread(messages) -> str:
+    """A plain-text rendering of a message list for summarization: role-tagged turns,
+    tool calls, and (capped) tool results. Not for display — for feeding a summarizer."""
+    lines: list[str] = []
+    for m in messages:
+        kind = m.__class__.__name__
+        if kind == "HumanMessage":
+            lines.append(f"USER: {chunk_text(m).strip()}")
+        elif kind == "AIMessage":
+            t = chunk_text(m).strip()
+            if t:
+                lines.append(f"ASSISTANT: {t}")
+            for tc in (getattr(m, "tool_calls", None) or []):
+                lines.append(f"  ⮕ {tc.get('name', 'tool')}({fmt_args(tc.get('args') or {})})")
+        elif kind == "ToolMessage":
+            out = tool_output_text(m)
+            lines.append(f"  TOOL RESULT: {out[:1000]}")
+    return "\n".join(lines)
+
+
 def classify_chunk(chunk: Any):
     """Yield (kind, text) for a stream chunk — kind in {'text', 'thinking'}.
 

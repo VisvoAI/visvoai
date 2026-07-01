@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.4.3] — 2026-07
+
+### Changed
+- **`/compact` is now real.** It was a mock (a fake "18 messages folded", hardcoded
+  14%). It now LLM-summarizes the older prefix into a dense continuation note, keeps the
+  last 2 turns verbatim (never splitting a turn), rewrites the active-branch thread to
+  `[summary] + tail`, realigns per-turn receipts, and sets the context gauge from the
+  actual compacted size (the next turn replaces the estimate with real usage). File
+  history is untouched (compaction is a conversation op); the rewind timeline resets to
+  a single post-compaction floor, and older file commits stay reachable via their refs.
+  No-op with a clear reason when there's too little to fold or the summary is empty.
+
 ## [0.4.2] — 2026-07
 
 ### Changed

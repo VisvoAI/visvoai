@@ -139,6 +139,31 @@ class RewindMixin:
         self._cp_tip_id = cp_id
         self._cp_tip_sha = sha
 
+    def _reset_checkpoints_after_compact(self, new_len: int) -> None:
+        """After /compact rewrote the thread, collapse this branch's rewind timeline to a
+        single post-compaction floor at `new_len`. Files are unchanged (compaction is a
+        conversation op), so the floor points at the CURRENT tree commit. Older
+        conversation-rewind points go away (the messages they referenced are now folded)
+        — but their file commits stay reachable via their per-checkpoint refs, so nothing
+        on disk is lost. No-op when checkpointing is unavailable."""
+        repo = self._ensure_checkpoints()
+        if repo is None:
+            return
+        try:
+            sha = self._cp_tip_sha or repo.snapshot(None, "compacted")[0]
+            cp_id = uuid.uuid4().hex[:8]
+            store.append_registry(self._project_id, self._conv_id, cp_id, sha)
+            store.write_timeline(self._project_id, self._conv_id, self._cp_branch, [
+                {"checkpoint_id": cp_id, "message_index": new_len,
+                 "kind": "compact", "label": "compacted", "created": _now_iso()}])
+            store.write_branch_meta(self._project_id, self._conv_id, self._cp_branch, tip=cp_id)
+            repo.ref_set(f"refs/visvoai/{self._conv_id}/cp/{cp_id}", sha)
+            repo.ref_set(self._branch_ref(self._cp_branch), sha)
+            self._cp_tip_id = cp_id
+            self._cp_tip_sha = sha
+        except (CheckpointError, OSError):
+            return
+
     def _maybe_baseline(self) -> None:
         """Once per conversation, before the first turn does any work: record a
         'baseline' of the pristine tree (the rewind floor). On a resumed conversation

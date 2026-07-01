@@ -12,7 +12,7 @@ import re
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
-from visvoai.cli import agent, gitio, state, theme
+from visvoai.cli import agent, gitio, state, store, theme
 from visvoai.cli.widgets import (
     CompactionMarker, Welcome, WelcomeBanner,
 )
@@ -55,6 +55,19 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
      ["rewind", "branch", "fork", "log", "export"]),
     ("Project", ["resume", "commit", "theme", "quit"]),
 ]
+
+def _compaction_cut(messages: list, keep_turns: int) -> int | None:
+    """Index to split at for /compact: everything before it is summarized, everything
+    from it on is kept verbatim. The split falls on the HumanMessage that opens the
+    `keep_turns`-th-from-last turn, so a turn (Human + its AI/Tool replies) is never
+    split. Returns None when there aren't more than `keep_turns` turns to fold."""
+    human_idxs = [i for i, m in enumerate(messages)
+                  if m.__class__.__name__ == "HumanMessage"]
+    if len(human_idxs) <= keep_turns:
+        return None
+    cut = human_idxs[-keep_turns]
+    return cut if cut > 0 else None
+
 
 def _closest_command(fragment: str) -> str | None:
     """The nearest real command name to a mistyped `fragment` (e.g. 'undo' → 'rewind'
@@ -175,21 +188,64 @@ class CommandsMixin:
             self._refresh_model_status()
         self.notify(f"{provider} key saved ({scope}) — models now available.")
 
+    # Keep at least this many recent turns verbatim when compacting.
+    COMPACT_KEEP_TURNS = 2
+
     async def _compact_flow(self) -> None:
-        """`/compact` — fold older turns into a summary. Drops a prominent marker
-        (states messages folded + window before → after) and resets the gauge."""
+        """`/compact` — really fold the older turns into an LLM summary. Keeps the recent
+        turns verbatim, replaces the older prefix with one summary message, rewrites the
+        active-branch thread, resets the rewind floor, and updates the gauge from the
+        actual compacted size. No-op with a reason when there's too little to fold or the
+        summary can't be produced (thread left untouched)."""
         state.record_used("compact")
-        before, after = self._ctx_pct, 14
         log = self.query_one("#log", VerticalScroll)
-        before_txt = f"{before}%" if before is not None else "—"
-        await log.mount(CompactionMarker(
-            f"18 messages folded into a summary  ·  {before_txt} → {after}% context"
-        ))
-        # Keep the token label coherent with the synthetic post-compact % (compact is
-        # still a mock fold; derive tokens from the active model's window).
+
+        cut = _compaction_cut(self._history, self.COMPACT_KEEP_TURNS)
+        if cut is None:
+            self.notify(f"Not enough to compact yet — keeps the last "
+                        f"{self.COMPACT_KEEP_TURNS} turns verbatim.", severity="warning")
+            return
+
+        from langchain_core.messages import SystemMessage
+        prefix, tail = self._history[:cut], self._history[cut:]
+        before_pct = self._ctx_pct
+
+        self._set_status("compacting…")
+        try:
+            summary = await agent.summarize_history(self._model, agent.render_thread(prefix))
+        finally:
+            self._set_status(None)
+        if not summary:
+            self.notify("Couldn't compact — the summary model returned nothing "
+                        "(check the model's key). Thread left unchanged.", severity="warning")
+            return
+
+        folded = len(prefix)
+        new_thread = [SystemMessage(content=f"[Summary of earlier conversation]\n{summary}")] + tail
+        self._history = new_thread
+
+        # Persist the rewritten thread + realign per-turn receipts to the kept turns.
+        if self._project_id and self._conv_id:
+            store.write_branch_thread(self._project_id, self._conv_id, self._cp_branch, new_thread)
+            self._persisted_count = len(new_thread)
+            kept_turns = sum(1 for m in tail if m.__class__.__name__ == "HumanMessage")
+            store.keep_last_branch_receipts(self._project_id, self._conv_id, self._cp_branch, kept_turns)
+            store.write_meta(self._project_id, self._conv_id, msg_count=len(new_thread))
+            self._reset_checkpoints_after_compact(len(new_thread))
+
+        # Real gauge: estimate tokens from the compacted thread (~4 chars/token). The
+        # next real turn replaces this estimate with the provider's reported usage.
+        chars = sum(len(agent.chunk_text(m)) for m in new_thread)
+        tokens = max(1, chars // 4)
         dv = agent.deployment_view(self._model)
-        tokens = round(after / 100 * dv.context_window) if dv and dv.context_window else None
-        self._set_context(after, tokens)
+        after_pct = round(tokens / dv.context_window * 100) if dv and dv.context_window else None
+        self._set_context(after_pct, tokens)
+
+        before_txt = f"{before_pct}%" if before_pct is not None else "—"
+        after_txt = f"~{after_pct}%" if after_pct is not None else "—"
+        await log.mount(CompactionMarker(
+            f"{folded} message{'s' if folded != 1 else ''} folded into a summary  ·  "
+            f"{before_txt} → {after_txt} context"))
         log.scroll_end(animate=False)
 
     async def on_text_area_changed(self, event) -> None:

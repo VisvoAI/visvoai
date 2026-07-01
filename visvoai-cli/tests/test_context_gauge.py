@@ -2,9 +2,14 @@
 from __future__ import annotations
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
-from visvoai.cli import VisvoApp
+from visvoai.cli import VisvoApp, agent, store
 from visvoai.cli.widgets import CompactionMarker, StatusBar
+
+
+async def _async(v):
+    return v
 
 
 def _right(app) -> str:
@@ -64,10 +69,23 @@ async def test_gauge_hidden_when_none():
 
 
 @pytest.mark.asyncio
-async def test_compact_resets_gauge_and_marks():
+async def test_compact_folds_history_marks_and_sets_real_gauge(tmp_path, monkeypatch):
+    """Real /compact: with enough history + a summary, it folds, marks, and sets a
+    real (measured, non-None) gauge — not a hardcoded value."""
+    monkeypatch.setenv("VISVOAI_HOME", str(tmp_path / "home"))
+    proj = tmp_path / "proj"; proj.mkdir()
+    monkeypatch.setattr(agent, "summarize_history", lambda *a, **k: _async("SUMMARY"))
     app = VisvoApp()
     async with app.run_test() as pilot:
         await pilot.pause()
+        app._cwd = str(proj)
+        app._project_id = store.resolve_project_id(str(proj))
+        app._conv_id = store.new_conversation_id()
+        store.ensure_branch(app._project_id, app._conv_id, "main")
+        for i in range(1, 5):
+            app._history += [HumanMessage(content=f"q{i}"), AIMessage(content=f"a{i}")]
+        store.write_branch_thread(app._project_id, app._conv_id, "main", app._history)
+
         app.run_command("compact")
         for _ in range(20):
             await pilot.pause()
@@ -75,9 +93,22 @@ async def test_compact_resets_gauge_and_marks():
                 break
         marker = app.query(CompactionMarker).first()
         assert "context compacted" in str(marker.render())
-        assert "— → 14%" in str(marker.render())   # before unknown (no turn yet) → after
-        assert app._ctx_pct == 14
-        assert "14%" in _right(app)
+        assert "folded into a summary" in str(marker.render())
+        assert app._ctx_pct is not None                # real, measured — not a mock 14
+
+
+@pytest.mark.asyncio
+async def test_compact_is_a_noop_without_enough_history():
+    """Too little to fold → no marker, gauge untouched (honest no-op, not a fake reset)."""
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app._history = [HumanMessage(content="q1"), AIMessage(content="a1")]
+        app.run_command("compact")
+        for _ in range(10):
+            await pilot.pause()
+        assert not app.query(CompactionMarker)
+        assert app._ctx_pct is None
 
 
 @pytest.mark.asyncio

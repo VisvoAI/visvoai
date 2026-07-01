@@ -345,6 +345,18 @@ def truncate_branch_receipts(project_id: str, conv_id: str, branch: str, n: int)
     _atomic_lines(p, (json.dumps(r, ensure_ascii=False) for r in kept))
 
 
+def keep_last_branch_receipts(project_id: str, conv_id: str, branch: str, n: int) -> None:
+    """Keep only the LAST `n` receipts (compaction folds older turns → their receipts go
+    too, so replay pairs the kept turns with the right footers)."""
+    p = _branch_receipts_path(project_id, conv_id, branch)
+    kept = read_branch_receipts(project_id, conv_id, branch)[-n:] if n > 0 else []
+    if not kept:
+        if p.exists():
+            p.unlink()
+        return
+    _atomic_lines(p, (json.dumps(r, ensure_ascii=False) for r in kept))
+
+
 # ── branch timeline (turn/tool-batch → checkpoint view) ───────────────────────
 def _branch_timeline_path(project_id: str, conv_id: str, branch: str) -> Path:
     return _branch_dir(project_id, conv_id, branch) / "timeline.jsonl"
