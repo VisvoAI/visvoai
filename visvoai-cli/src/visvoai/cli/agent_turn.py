@@ -62,6 +62,18 @@ _NET_HINTS = ("connection", "timeout", "timed out", "network", "getaddrinfo",
               "temporarily unavailable", "502", "503", "504")
 
 
+def _nudge_text(changed: int, had_error: bool, used: set[str]) -> str | None:
+    """The post-turn nudge to show (or None). Self-silencing: the changed-files nudge
+    stops once the user knows both /rewind and /commit; the failure nudge stops once
+    they know /rewind."""
+    if changed and not ({"rewind", "commit"} <= used):
+        plural = "s" if changed != 1 else ""
+        return f"{changed} file{plural} changed  ·  /rewind to undo  ·  /commit to keep"
+    if had_error and "rewind" not in used:
+        return "that didn't fully work — /rewind goes back to before this turn"
+    return None
+
+
 def _classify_turn_error(e: Exception) -> tuple[str, str, str]:
     """Map a raw turn exception to (ErrorBlock kind, human message, dim detail).
     Keeps the raw text as the detail line; never a traceback."""
@@ -151,6 +163,10 @@ class AgentTurnMixin:
         # tree) on the first turn of a fresh conversation, before any tool runs.
         self._cp_turn_label = user_text[:60]
         self._maybe_baseline()
+        # Post-turn nudges (#2): compare the tree tip before vs after the turn to tell
+        # if files changed, and note whether any tool failed.
+        self._turn_had_error = False
+        pre_tip = self._cp_tip_sha
         # Sanitize before sending to the model: a prior crashed/errored turn may have
         # left a dangling tool_call in the thread (durable log isn't trimmed) — strip it
         # so the provider never sees an unanswered tool_call.
@@ -266,7 +282,7 @@ class AgentTurnMixin:
                     entry = nodes.pop(event.get("run_id"), None)
                     if entry is not None:
                         node, name, args = entry
-                        node.set_rail("failed")
+                        node.set_rail("failed"); self._turn_had_error = True
                         await node.set_failure("", str(data.get("error") or "tool error"))
                         log.scroll_end(animate=False)
 
@@ -338,6 +354,7 @@ class AgentTurnMixin:
 
         self._persist_receipt(elapsed, model_name, cost, turn_in, turn_out,
                               last_input, thinking_durations)
+        await self._maybe_turn_nudges(pre_tip, log)
 
     def _persist_receipt(self, seconds, model_name, cost, tin, tout, context_tokens,
                          thinking_durations):
@@ -354,6 +371,33 @@ class AgentTurnMixin:
             })
         except Exception as e:  # persistence must never break the turn
             self.notify(f"could not save receipt: {e}")
+
+    async def _maybe_turn_nudges(self, pre_tip: str | None, log) -> None:
+        """After a turn: a contextual nudge (#2) when files changed or a tool failed,
+        and a one-time coachmark (#3) the first time a checkpoint is ever taken. Both
+        self-silence — the changed-files nudge stops once the user knows /rewind AND
+        /commit; the failure nudge stops once they know /rewind. Best-effort/quiet."""
+        used = ui_state.used_features()
+        repo = getattr(self, "_checkpoints", None)
+        changed = 0
+        if repo and pre_tip and self._cp_tip_sha and pre_tip != self._cp_tip_sha:
+            try:
+                changed = len(repo.diff_names(pre_tip, self._cp_tip_sha))
+            except Exception:
+                changed = 0
+        hint = _nudge_text(changed, getattr(self, "_turn_had_error", False), used)
+        if hint:
+            await self._mount_hint(log, hint)
+        # One-time: the first time this user ever gets a checkpoint, explain it once.
+        if repo and self._cp_tip_id and ui_state.mark_shown("coach_checkpoint"):
+            await self._mount_hint(log, "↩ your work is auto-saved each turn — /rewind "
+                                        "(Ctrl+B) restores files + chat to any point, "
+                                        "/branch keeps both")
+
+    async def _mount_hint(self, log, text: str) -> None:
+        """A quiet, muted one-liner appended below the turn (not part of history)."""
+        await log.mount(SystemNote(text, kind="info"))
+        log.scroll_end(animate=False)
 
     async def _clear_working(self) -> None:
         """Remove the transient working spinner once real output begins (idempotent)."""
@@ -438,6 +482,13 @@ class AgentTurnMixin:
                 f"Do you want to {verb} {target}?",
                 ["Yes", "Yes (allow all this session)", "No"],
                 recommended=0, connected=True)
+            # One-time coachmark (#3): the first time the gate ever asks, teach the
+            # shortcuts so repeat prompts don't feel like friction.
+            if ui_state.mark_shown("coach_approval"):
+                await self._mount_hint(
+                    self.query_one("#log", VerticalScroll),
+                    "tip: 'allow all this session' stops repeat asks for this tool · "
+                    "shift+tab → auto-edit lets file writes through automatically")
             if idx == 1:
                 self._approved_all.add(tool_name)
                 return True
@@ -452,7 +503,7 @@ class AgentTurnMixin:
 
         if name == "edit_file":
             if output.startswith("ERROR"):
-                node.set_rail("failed")
+                node.set_rail("failed"); self._turn_had_error = True
                 await node.set_failure("", output)
                 return
             changes = ([("del", ln) for ln in args.get("old_string", "").splitlines()]
@@ -466,7 +517,7 @@ class AgentTurnMixin:
 
         if name == "write_file":
             if output.startswith("ERROR"):
-                node.set_rail("failed")
+                node.set_rail("failed"); self._turn_had_error = True
                 await node.set_failure("", output)
                 return
             lines = (args.get("content", "") or "").splitlines() or [""]
