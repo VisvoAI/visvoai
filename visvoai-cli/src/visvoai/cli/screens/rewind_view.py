@@ -103,16 +103,21 @@ class RewindScreen(BlendScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rewind-box"):
-            yield Static("Rewind", id="rewind-title")
-            yield Static("Restore your files and conversation to an earlier point. "
-                         "Changes made after it are discarded.", id="rewind-sub")
+            yield Static("Rewind — go back to an earlier point", id="rewind-title")
+            yield Static(
+                "Each row is a checkpoint your work was auto-saved at. Pick one — then "
+                "choose to rewind in place (discard newer) or branch off (keep both). "
+                "“files” = how many changed since now.", id="rewind-sub")
             with VerticalScroll(id="rewind-list"):
                 if self.entries:
                     for i, e in enumerate(self.entries):
                         yield CheckpointRow(i, e)
                 else:
-                    yield Static("no earlier checkpoints yet", id="rewind-empty")
-            yield Static("↑/↓ navigate   enter rewind   esc cancel", id="rewind-hint")
+                    yield Static(
+                        "No earlier checkpoints yet. One is saved automatically at the "
+                        "end of every turn — come back after you've made some changes.",
+                        id="rewind-empty")
+            yield Static("↑/↓ navigate   enter select   esc cancel", id="rewind-hint")
 
     def on_mount(self) -> None:
         super().on_mount()

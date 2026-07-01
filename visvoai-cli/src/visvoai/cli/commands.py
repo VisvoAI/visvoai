@@ -29,21 +29,42 @@ _MENTION_RE = re.compile(r"(?:^|\s)@(\S*)$")
 # its DemoMixin code is kept for tests but unreachable from the menu or by typing
 # /demo (the menu only dispatches names present here), so it never ships to users.
 SLASH_COMMANDS: list[tuple[str, str]] = [
-    ("help", "Show keys and commands"),
-    ("model", "Switch the active model"),
-    ("login", "Add a provider API key"),
-    ("resume", "Resume a past conversation"),
-    ("rewind", "Rewind files + conversation to an earlier point"),
-    ("branch", "Switch timelines or fork a new branch"),
-    ("fork", "Fork a checkpoint into a new directory (worktree)"),
-    ("export", "Export this conversation (transcript or bundle)"),
-    ("log", "Show this branch's checkpoints"),
-    ("compact", "Compact the context window"),
-    ("mode", "Cycle approval mode (normal / auto-edit / accept-all)"),
-    ("commit", "Review & commit changes"),
-    ("theme", "Choose a brand palette (Ctrl+T toggles light/dark)"),
-    ("clear", "Clear the conversation"),
-    ("quit", "Quit visvoai"),
+    ("help", "How it works — keys, commands & time-travel explained"),
+    ("model", "Switch the AI model (and thinking depth)"),
+    ("login", "Add a provider API key to unlock more models"),
+    ("resume", "Reopen a past conversation in this project"),
+    ("rewind", "Undo: restore your files & chat to an earlier point"),
+    ("branch", "Switch between saved timelines of this chat"),
+    ("fork", "Open a checkpoint in a new folder to explore in parallel"),
+    ("export", "Save this chat as a shareable transcript or bundle"),
+    ("log", "List this timeline's checkpoints (undo points)"),
+    ("compact", "Summarize older turns to free up context"),
+    ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
+    ("commit", "Review changes & make a git commit"),
+    ("theme", "Pick a color palette (Ctrl+T toggles light/dark)"),
+    ("clear", "Start a fresh conversation"),
+    ("quit", "Exit visvoai"),
+]
+
+# Grouping for /help (purely presentational — the menu above stays flat for search).
+_HELP_GROUPS: list[tuple[str, list[str]]] = [
+    ("Chat", ["model", "login", "mode", "compact", "clear"]),
+    ("Time travel — your work is checkpointed every turn",
+     ["rewind", "branch", "fork", "log", "export"]),
+    ("Project", ["resume", "commit", "theme", "quit"]),
+]
+
+# (key, what it does) — the always-on shortcuts, surfaced in /help.
+_HELP_KEYS: list[tuple[str, str]] = [
+    ("Ctrl+B", "Rewind — open the undo / branch picker"),
+    ("Ctrl+R", "Resume a past conversation"),
+    ("Ctrl+G", "Review changes & commit (git)"),
+    ("Shift+Tab", "Cycle approval mode (normal / auto-edit / accept-all)"),
+    ("Ctrl+T", "Toggle light / dark"),
+    ("Ctrl+K", "Clear (twice) — start fresh"),
+    ("Ctrl+Q", "Quit (twice)"),
+    ("PgUp / PgDn", "Scroll the conversation"),
+    ("Esc", "Stop the current turn"),
 ]
 
 
@@ -339,7 +360,10 @@ class CommandsMixin:
         await self._unpin_plan()
         log = self.query_one("#log", VerticalScroll)
         await log.remove_children()
-        await log.mount(WelcomeBanner(self._welcome_left, self._welcome_right))
+        # /clear always shows the 'empty / fresh start' copy — the user already
+        # knows visvoai (they reached /clear), so the heavy onboarding would be
+        # patronising and the 'history' copy is wrong (we just emptied it).
+        await log.mount(WelcomeBanner(self._welcome_left, self._welcome_empty))
 
     async def action_request_clear(self) -> None:
         if self._clearing:
@@ -365,9 +389,37 @@ class CommandsMixin:
             self._set_status(None)
 
     def _help_markup(self) -> str:
-        primary = self._tv("primary")
-        lines = "\n".join(f"  [b {primary}]/{n}[/]   [dim]{d}[/]" for n, d in SLASH_COMMANDS)
-        return f"[b {primary}]commands[/]\n\n{lines}"
+        primary, secondary, muted = self._tv("primary"), self._tv("secondary"), self._tv("muted")
+        desc = dict(SLASH_COMMANDS)
+        out = [f"[b {primary}]visvoai — help[/]",
+               f"[{muted}]Type to chat. I read & edit files and run commands; you approve "
+               f"anything that touches your code.[/]", ""]
+
+        for heading, names in _HELP_GROUPS:
+            out.append(f"[b {secondary}]{heading}[/]")
+            for n in names:
+                out.append(f"  [b {primary}]/{n}[/]  [dim {muted}]{desc.get(n, '')}[/]")
+            out.append("")
+
+        out.append(f"[b {secondary}]Keyboard[/]")
+        for key, what in _HELP_KEYS:
+            out.append(f"  [b {primary}]{key:<11}[/] [dim {muted}]{what}[/]")
+        out.append("")
+
+        out.append(f"[b {secondary}]Time travel — how it works[/]")
+        out += [
+            f"  [{muted}]Every turn auto-saves a [b]checkpoint[/b]: a snapshot of your files "
+            f"plus the chat at that point — in a private store, your own git is untouched.[/]",
+            f"  [b {primary}]/rewind[/] [dim {muted}]undoes — restores your files AND chat to a "
+            f"checkpoint (changes after it are discarded).[/]",
+            f"  [b {primary}]/branch[/] [dim {muted}]forks a checkpoint into a second timeline "
+            f"and keeps BOTH — switch between them anytime, nothing is lost.[/]",
+            f"  [b {primary}]/fork[/]   [dim {muted}]opens a checkpoint in a NEW folder so you can "
+            f"try a different approach in parallel.[/]",
+            f"  [b {primary}]/export[/] [dim {muted}]saves the chat (and optionally the code) as a "
+            f"shareable file.[/]",
+        ]
+        return "\n".join(out)
 
     async def _show_help(self) -> None:
         log = self.query_one("#log", VerticalScroll)

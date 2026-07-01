@@ -19,7 +19,8 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
-from visvoai.cli import agent, theme
+from visvoai.cli import agent, cli_changelog, store, theme
+from visvoai.cli import state as state_mod
 from visvoai.cli.mock import git_info
 from visvoai.cli.widgets import (
     Form,
@@ -30,6 +31,7 @@ from visvoai.cli.widgets import (
     ToolGroup,
     ToolNode,
     UserMsg,
+    Welcome,
     WelcomeBanner,
 )
 from visvoai.cli.agent_turn import AgentTurnMixin
@@ -234,6 +236,10 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             self.notify(msg)
         if self._startup_resume is not None:
             self.run_worker(self._startup_resume_flow())
+        # Surface "what's new in this version" below the welcome banner on launch
+        # (skipped on /clear — the panel was already shown & marked-seen at first
+        # launch, and /clear intentionally gives a blank slate).
+        self._maybe_mount_changelog_panel()
 
     # Context fill at/above this %, warn the user to compact or switch models.
     CTX_WARN_PCT = 85
@@ -360,6 +366,34 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         return t
 
     def _welcome_right(self) -> str:
+        """Right column of the welcome banner. Varies by launch state: a brand-new
+        project gets the heavy onboarding copy; a returning-but-empty project gets
+        a lighter nudge; an existing conversation (or --resume) keeps the
+        standard 'what is this' copy."""
+        state = self._launch_state()
+        if state == "onboarding":
+            return self._welcome_onboarding()
+        if state == "empty":
+            return self._welcome_empty()
+        return self._welcome_standard()
+
+    # Launch state determines which welcome copy shows. Pure read of project state
+    # — does not write the project anchor (resolve_project_id does that lazily on
+    # the first turn; we want a fresh visitor to see the onboarding, not be told
+    # "welcome back" before they've done anything).
+    def _launch_state(self) -> str:
+        # --resume always lands on existing history → standard copy.
+        if self._startup_resume is not None:
+            return "standard"
+        pid = store.find_project_id(self._cwd)
+        if pid is None:
+            return "onboarding"        # no .visvoai/config.toml anywhere → first time
+        if store.has_conversations(pid):
+            return "standard"          # history exists
+        return "empty"                 # project exists but no conversations yet
+
+    def _welcome_standard(self) -> str:
+        """The original copy: assumes the user knows what visvoai is."""
         secondary, fg = self._tv("secondary"), self._tv("foreground")
         return (
             f"[{fg}]I read & edit files, run commands, and stream changes — "
@@ -369,6 +403,91 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             f"  [{secondary}]›[/] find and fix the failing test\n\n"
             f"[dim]type[/] [b {secondary}]/[/][dim] for commands (try /help)[/]"
         )
+
+    def _welcome_onboarding(self) -> str:
+        """First-time welcome: the user has never launched visvoai in this directory
+        (no .visvoai/config.toml anywhere up the tree). Heavier guidance — what
+        this is, what to try, and the auto-checkpoint / time-travel hook so the
+        unique capability is visible from the very first screen."""
+        secondary, primary, fg, muted = (self._tv("secondary"), self._tv("primary"),
+                                        self._tv("foreground"), self._tv("muted"))
+        return (
+            f"[{fg}]Welcome — let's start.[/]\n"
+            f"[{muted}]I read & edit files and run commands; you approve anything "
+            f"that touches your code.[/]\n\n"
+            f"[dim]try:[/]\n"
+            f"  [{secondary}]›[/] fix the failing test in tests/\n"
+            f"  [{secondary}]›[/] add an anthropic provider to my config\n"
+            f"  [{secondary}]›[/] refactor auth.py to use dataclasses\n\n"
+            f"[dim]type[/] [b {secondary}]/[/][dim] for commands (try "
+            f"[b {secondary}]/help[/])[/]\n"
+            f"[dim]type[/] [b {secondary}]@file[/][dim] to attach a file[/]\n\n"
+            f"[{muted}]every turn auto-saves a checkpoint — "
+            f"[b {primary}]/rewind[/] to undo, "
+            f"[b {primary}]/branch[/] to fork.[/]"
+        )
+
+    def _welcome_empty(self) -> str:
+        """Returning user, but no conversations yet (either a project was created
+        then abandoned, or `/clear` was just pressed). Lighter than onboarding —
+        they already know what visvoai is; they just need a nudge to start."""
+        secondary, primary, fg, muted = (self._tv("secondary"), self._tv("primary"),
+                                        self._tv("foreground"), self._tv("muted"))
+        return (
+            f"[{fg}]Welcome back — no conversations here yet.[/]\n"
+            f"[{muted}]Type to start a chat, or "
+            f"[b {primary}]/resume[/] to reopen an old one.[/]\n\n"
+            f"[dim]try:[/]\n"
+            f"  [{secondary}]›[/] summarize this repo's structure\n"
+            f"  [{secondary}]›[/] add tests for the auth module\n\n"
+            f"[dim]type[/] [b {secondary}]/[/][dim] for commands · "
+            f"[b {primary}]/help[/] [dim]for the full list[/]"
+        )
+
+    # ── changelog "what's new" panel ──────────────────────────────────────────
+    def _maybe_mount_changelog_panel(self) -> None:
+        """Mount a single-line 'what's new' card below the welcome banner when
+        there are CHANGELOG entries newer than the user's `last_seen_version`.
+        Skipped when no project anchor exists (the first-ever launch in a brand
+        new directory — the banner's onboarding copy is already enough) and
+        skipped when there's nothing new (no point flashing it on every launch)."""
+        pid = store.find_project_id(self._cwd)
+        if pid is None:
+            return
+        state = state_mod.get_state(pid)
+        last_seen = state.get("last_seen_version")
+        entries = cli_changelog.new_since(last_seen)
+        if not entries:
+            return
+        log = self.query_one("#log", VerticalScroll)
+        log.mount(Welcome(lambda: self._changelog_markup(entries, last_seen)))
+        log.scroll_end(animate=False)
+        # Mark this version as seen so the panel doesn't re-appear next launch
+        # (until the next version bump adds a newer entry).
+        try:
+            state_mod.update_state(pid, last_seen_version=cli_changelog.current_version())
+        except OSError:
+            pass   # best-effort — a failed write just means we re-show next launch
+
+    def _changelog_markup(self, entries: list[dict], last_seen: str | None) -> str:
+        """The 'what's new' panel markup: one muted line per new entry, plus a
+        heading. Kept compact — the user is at the welcome screen, not reading
+        a release note."""
+        primary, secondary, muted = (self._tv("primary"), self._tv("secondary"),
+                                     self._tv("muted"))
+        if last_seen is None:
+            heading = f"[b {primary}]what's new in visvoai {cli_changelog.current_version()}[/]"
+        else:
+            heading = (f"[b {primary}]what's new since {last_seen}[/] "
+                       f"[{muted}]({len(entries)} entr{'y' if len(entries) == 1 else 'ies'})[/]")
+        lines = [heading, ""]
+        for e in entries:
+            summary = cli_changelog.one_line_summary(e)
+            lines.append(
+                f"  [{secondary}]v{e['version']}[/] [{muted}]· {e['date']}[/]  "
+                f"[{muted}]—[/] {summary}"
+            )
+        return "\n".join(lines)
 
     # ── slash commands ───────────────────────────────────────────────────────
     # ── clear confirm (Ctrl+K twice within 2s) ───────────────────────────────

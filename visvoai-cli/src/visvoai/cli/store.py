@@ -62,6 +62,34 @@ def resolve_project_id(cwd: str) -> str:
     return _write_project_id(start / ".visvoai" / "config.toml")
 
 
+def find_project_id(cwd: str) -> str | None:
+    """Read-only project_id lookup. Returns None when no `.visvoai/config.toml`
+    exists in cwd or any parent (no side effects — doesn't write one). Used by
+    the welcome banner to distinguish 'first time in this dir' from 'returning
+    user' without forcing a project anchor."""
+    import tomllib
+
+    start = Path(cwd).resolve()
+    for d in [start, *start.parents]:
+        cfg = d / ".visvoai" / "config.toml"
+        if cfg.exists():
+            try:
+                return tomllib.loads(cfg.read_text()).get("project_id")
+            except (OSError, tomllib.TOMLDecodeError):
+                return None
+    return None
+
+
+def has_conversations(project_id: str) -> bool:
+    """True iff at least one conversation folder exists under this project.
+    Read-only — does not create the conversations directory. Used by the
+    welcome banner to decide between onboarding and history copy."""
+    root = visvoai_home() / "projects" / project_id / "conversations"
+    if not root.exists():
+        return False
+    return any(d.is_dir() for d in root.iterdir())
+
+
 def _write_project_id(cfg: Path) -> str:
     cfg.parent.mkdir(parents=True, exist_ok=True)
     pid = uuid.uuid4().hex[:12]

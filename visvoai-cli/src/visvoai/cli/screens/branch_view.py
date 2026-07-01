@@ -98,9 +98,12 @@ class BranchScreen(BlendScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="branch-box"):
-            yield Static("Branches", id="branch-title")
-            yield Static("Switch timelines, or fork a new one from any checkpoint "
-                         "(both are kept).", id="branch-sub")
+            yield Static("Branches — your saved timelines", id="branch-title")
+            yield Static(
+                "Each branch is an independent timeline with its own chat + files. "
+                "Selecting one switches to it (restoring its files); ● marks the current "
+                "one. Or start a new branch from any checkpoint — nothing is ever lost.",
+                id="branch-sub")
             with VerticalScroll(id="branch-list"):
                 for i, e in enumerate(self.entries):
                     yield BranchRow(i, e)

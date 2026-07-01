@@ -188,11 +188,11 @@ class RewindMixin:
     async def _rewind_flow(self) -> None:
         """`/rewind` (Ctrl+B) — pick an earlier checkpoint; restore to it, or branch."""
         if self._project_id is None or self._conv_id is None:
-            self.notify("nothing to rewind yet", severity="warning")
+            self.notify("Nothing to rewind yet — checkpoints are saved as you work.", severity="warning")
             return
         rows = self._timeline()
         if len(rows) < 2:
-            self.notify("no earlier checkpoints yet — run a turn first", severity="warning")
+            self.notify("No earlier checkpoints yet — one is saved at the end of each turn.", severity="warning")
             return
         entries = self._picker_entries(rows[:-1], with_files=True)   # exclude the current tip
         cid = await self.push_screen_wait(RewindScreen(entries))
@@ -300,7 +300,7 @@ class RewindMixin:
             self.notify("no conversation yet", severity="warning")
             return
         if not self._timeline():
-            self.notify("no checkpoints yet — run a turn first", severity="warning")
+            self.notify("No checkpoints yet — they're saved automatically as you work.", severity="warning")
             return
         choice = await self.push_screen_wait(BranchScreen(self._branch_entries()))
         if not choice:
@@ -418,7 +418,7 @@ class RewindMixin:
             return
         rows = self._timeline()
         if not rows:
-            self.notify("no checkpoints yet — run a turn first", severity="warning")
+            self.notify("No checkpoints yet — they're saved automatically as you work.", severity="warning")
             return
         cid = await self.push_screen_wait(RewindScreen(self._picker_entries(rows, with_files=False)))
         if not cid:
@@ -494,7 +494,7 @@ class RewindMixin:
         """`/export` — write a shareable artifact: a markdown transcript, or a full
         bundle (transcript + thread + a git bundle of the branch's code)."""
         if self._project_id is None or self._conv_id is None or not self._history:
-            self.notify("nothing to export yet", severity="warning")
+            self.notify("Nothing to export yet — start a conversation first.", severity="warning")
             return
         idx, _ = await self.ask_choice(
             "Export this conversation as:",
@@ -559,7 +559,7 @@ class RewindMixin:
             return
         rows = self._timeline()
         if not rows:
-            self.notify("no checkpoints yet — run a turn first", severity="warning")
+            self.notify("No checkpoints yet — they're saved automatically as you work.", severity="warning")
             return
         primary, muted = self._tv("primary"), self._tv("muted")
         tags = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start"}
