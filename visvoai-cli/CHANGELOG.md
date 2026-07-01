@@ -5,6 +5,15 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
 ## [0.4.3] — 2026-07
 
+### Changed
+- **`/rewind` is now question-oriented.** The picker was a flat list of checkpoints
+  tagged "turn end / before tools / start" — confusing, and it offered no way to rewind
+  to a *question* (only to tool boundaries). It now lists YOUR QUESTIONS (newest first),
+  each with a one-line summary of what that turn did underneath; selecting one restores
+  files + chat to the moment just before you asked it (then rewind-in-place or branch).
+  Every question is a target, including the most recent (so you can undo the last turn).
+  The `/branch`-new and `/fork` pickers use the same clear turn view.
+
 ### Fixed
 - **Branch-switch/fork no longer silently overwrites uncommitted hand-edits.** Switching
   branches (or forking from an earlier checkpoint) restores that branch's files — but if

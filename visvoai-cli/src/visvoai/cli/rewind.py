@@ -50,6 +50,40 @@ def _relative_iso(s: str | None) -> str:
         return ""
 
 
+_ACT_VERB = {"read_file": "read", "list_files": "listed", "list_tree": "explored",
+             "edit_file": "edited", "write_file": "wrote", "run_shell": "ran",
+             "web_search": "searched", "web_fetch": "fetched"}
+
+
+def _turn_activity(msgs: list) -> str:
+    """A one-line summary of what a turn did, from its messages: the tool calls (as
+    'edited api.py · ran pytest'), or a snippet of the answer if it was a plain reply.
+    Shown under each question in the rewind picker so the turn is recognizable."""
+    acts: list[str] = []
+    for m in msgs:
+        for tc in (getattr(m, "tool_calls", None) or []):
+            verb = _ACT_VERB.get(tc.get("name", ""), tc.get("name", "tool"))
+            args = tc.get("args") or {}
+            target = args.get("path") or args.get("command") or args.get("query") or ""
+            target = str(target).split("/")[-1][:24]
+            acts.append(f"{verb} {target}".strip())
+    if acts:
+        seen, uniq = set(), []
+        for a in acts:                       # dedupe, keep order
+            if a not in seen:
+                seen.add(a); uniq.append(a)
+        shown = " · ".join(uniq[:4])
+        return shown + (f" · +{len(uniq) - 4} more" if len(uniq) > 4 else "")
+    # no tools → a plain answer; show a short snippet of the assistant's reply
+    from visvoai.cli import agent as _a
+    for m in msgs:
+        if isinstance(m, AIMessage):
+            t = " ".join(_a.chunk_text(m).split())
+            if t:
+                return "replied: " + (t[:60] + "…" if len(t) > 60 else t)
+    return "no changes"
+
+
 def _truncate_to(rows: list[dict], checkpoint_id: str) -> list[dict]:
     """Timeline rows up to AND INCLUDING the row for `checkpoint_id` (the new tip)."""
     keep: list[dict] = []
@@ -220,13 +254,35 @@ class RewindMixin:
     def _timeline(self) -> list[dict]:
         return store.read_timeline(self._project_id, self._conv_id, self._cp_branch)
 
-    def _picker_entries(self, rows: list[dict], *, with_files: bool) -> list[dict]:
-        """RewindScreen rows (newest-first). `with_files` adds a diff-count vs the
-        current tip (skipped for branch/fork pickers where it isn't meaningful)."""
+    def _turn_rewind_entries(self, rows: list[dict], *, with_files: bool = True) -> list[dict]:
+        """Turn-oriented rewind targets (newest question first) — the user thinks in
+        questions, not checkpoint kinds. One entry per user question: rewinding to it
+        restores files + chat to the moment JUST BEFORE that question (so you can re-ask).
+        Each entry carries the question text and a summary of what that turn did.
+
+        The target is the checkpoint at message_index == the question's position — i.e.
+        the previous turn's end (or the baseline before turn 1). Intra-turn 'before
+        tools' checkpoints are intentionally hidden here (they were the confusing part)."""
+        by_index: dict[int, dict] = {}
+        for r in rows:                       # last writer wins → a turn-boundary row beats
+            by_index[r["message_index"]] = r  # a same-index edit/compact row
+        sorted_idx = sorted(by_index)
+
+        def target_for(h: int) -> dict | None:
+            if h in by_index:
+                return by_index[h]
+            prior = [i for i in sorted_idx if i <= h]
+            return by_index[prior[-1]] if prior else None
+
         repo = self._ensure_checkpoints() if with_files else None
         tip_commit = self._cp_tip_sha
+        humans = [i for i, m in enumerate(self._history) if isinstance(m, HumanMessage)]
         entries: list[dict] = []
-        for row in reversed(rows):
+        for n, h in enumerate(humans, start=1):
+            row = target_for(h)
+            if row is None:
+                continue
+            end = humans[n] if n < len(humans) else len(self._history)
             files = None
             if repo and tip_commit:
                 commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
@@ -235,9 +291,15 @@ class RewindMixin:
                         files = len(repo.diff_names(commit, tip_commit))
                     except CheckpointError:
                         files = None
-            entries.append({"id": row["checkpoint_id"], "label": row["label"],
-                            "kind": row["kind"], "message_index": row["message_index"],
-                            "files": files, "when": _relative_iso(row.get("created"))})
+            entries.append({
+                "id": row["checkpoint_id"],
+                "n": n,
+                "question": agent.chunk_text(self._history[h]).strip() or "(no text)",
+                "activity": _turn_activity(self._history[h + 1:end]),
+                "files": files,
+                "when": _relative_iso(row.get("created")),
+            })
+        entries.reverse()   # newest question first
         return entries
 
     def action_open_rewind(self) -> None:
@@ -249,19 +311,23 @@ class RewindMixin:
             self.notify("Nothing to rewind yet — checkpoints are saved as you work.", severity="warning")
             return
         rows = self._timeline()
-        if len(rows) < 2:
-            self.notify("No earlier checkpoints yet — one is saved at the end of each turn.", severity="warning")
+        entries = self._turn_rewind_entries(rows)
+        if not entries:
+            self.notify("No earlier questions to rewind to yet — checkpoints are saved "
+                        "as you work.", severity="warning")
             return
-        entries = self._picker_entries(rows[:-1], with_files=True)   # exclude the current tip
         cid = await self.push_screen_wait(RewindScreen(entries))
         if not cid:
             return
         row = next((r for r in rows if r["checkpoint_id"] == cid), None)
-        if row is None:
+        entry = next((e for e in entries if e["id"] == cid), None)
+        if row is None or entry is None:
             return
-        prompt = f"Go back to “{row['label'] or 'start'}”?"
+        q = entry["question"]
+        q = q[:47] + "…" if len(q) > 48 else q
+        prompt = f"Go back to just before “{q}”? Your files and the chat after it are discarded."
         if self._rewind_crosses_baseline(rows, cid):
-            prompt += " ⚠ Rewinding past here also discards changes made outside this session."
+            prompt += " ⚠ This also discards changes made outside this session."
         idx, _ = await self.ask_choice(
             prompt,
             ["Rewind here (discard newer)", "Branch from here (keep both)", "Cancel"])
@@ -372,7 +438,7 @@ class RewindMixin:
     async def _new_branch_flow(self) -> None:
         """Pick a checkpoint, name it, fork."""
         rows = self._timeline()
-        cid = await self.push_screen_wait(RewindScreen(self._picker_entries(rows, with_files=False)))
+        cid = await self.push_screen_wait(RewindScreen(self._turn_rewind_entries(rows, with_files=False)))
         if not cid:
             return
         row = next((r for r in rows if r["checkpoint_id"] == cid), None)
@@ -483,7 +549,7 @@ class RewindMixin:
         if not rows:
             self.notify("No checkpoints yet — they're saved automatically as you work.", severity="warning")
             return
-        cid = await self.push_screen_wait(RewindScreen(self._picker_entries(rows, with_files=False)))
+        cid = await self.push_screen_wait(RewindScreen(self._turn_rewind_entries(rows, with_files=False)))
         if not cid:
             return
         row = next((r for r in rows if r["checkpoint_id"] == cid), None)

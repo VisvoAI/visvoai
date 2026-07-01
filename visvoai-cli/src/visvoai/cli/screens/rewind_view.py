@@ -1,40 +1,35 @@
-"""RewindScreen — pick a checkpoint to rewind the conversation + code back to.
+"""RewindScreen — pick one of YOUR QUESTIONS to rewind the conversation + code back to.
 
-Lists the active branch's checkpoints newest-first (the current point is excluded —
-rewinding to it is a no-op). Each row shows the turn label, what kind of point it is
-(turn end / before tools / start), how many files differ from now, and when. ↑/↓
-navigate, enter selects, esc cancels. `dismiss()` returns the chosen checkpoint id (or
-None). Modeled on SessionsScreen.
+Each row is a turn: the question you asked (top line) with a summary of what that turn
+did under it (the tool calls / reply). Selecting a question restores your files and chat
+to the moment just before you asked it. ↑/↓ navigate, enter selects, esc cancels.
+`dismiss()` returns the chosen checkpoint id (or None). Modeled on SessionsScreen.
 """
 from __future__ import annotations
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
 
-_KIND_TAG = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start",
-             "edit": "manual edits", "compact": "compacted"}
 
-
-class CheckpointRow(Horizontal):
-    """One checkpoint: label (left) + `kind · N files · when` (right)."""
+class TurnRow(Vertical):
+    """One question, two lines: `❯ <question>` then a dim `<activity>` with a right-
+    aligned `<files> · <when>` — so the turn is recognizable at a glance."""
 
     can_focus = False
 
     DEFAULT_CSS = """
-    CheckpointRow { height: 1; padding: 0 1; }
-    CheckpointRow:hover { background: $hover; }
-    CheckpointRow.active { background: $hover; }
-    CheckpointRow > .cr-label { width: 1fr; text-overflow: ellipsis; }
-    CheckpointRow > .cr-kind { width: 16; content-align: right middle; }
-    CheckpointRow > .cr-files { width: 12; content-align: right middle; }
-    CheckpointRow > .cr-when { width: 12; content-align: right middle; }
+    TurnRow { height: auto; padding: 0 1; }
+    TurnRow:hover { background: $hover; }
+    TurnRow.active { background: $hover; }
+    TurnRow > .tr-q { height: 1; text-overflow: ellipsis; }
+    TurnRow > .tr-detail { height: 1; padding: 0 0 0 3; }
     """
 
     class Chosen(Message):
@@ -49,10 +44,8 @@ class CheckpointRow(Horizontal):
         self._active = False
 
     def compose(self) -> ComposeResult:
-        yield Static(classes="cr-label")
-        yield Static(classes="cr-kind")
-        yield Static(classes="cr-files")
-        yield Static(classes="cr-when")
+        yield Static(classes="tr-q")
+        yield Static(classes="tr-detail")
 
     def on_mount(self) -> None:
         self._render_row()
@@ -65,25 +58,31 @@ class CheckpointRow(Horizontal):
     def _render_row(self) -> None:
         tv = theme.palette(self)
         e = self.entry
-        label = Text()
-        label.append(" ❯ " if self._active else "   ",
-                     style=tv["primary"] if self._active else "dim")
-        label.append(e["label"] or "(no prompt)",
-                     style=f"bold {tv['primary']}" if self._active else tv["foreground"])
-        self.query_one(".cr-label", Static).update(label)
-        self.query_one(".cr-kind", Static).update(
-            Text(_KIND_TAG.get(e["kind"], e["kind"]), style=tv["muted"]))
+        q = Text()
+        q.append(" ❯ " if self._active else "   ",
+                 style=tv["primary"] if self._active else "dim")
+        q.append(e["question"],
+                 style=f"bold {tv['primary']}" if self._active else tv["foreground"])
+        self.query_one(".tr-q", Static).update(q)
+
+        # detail line: activity (left) + files · when (right), padded to a width
         nf = e.get("files")
-        files = "—" if nf is None else ("no changes" if nf == 0 else f"{nf} file{'s' if nf != 1 else ''}")
-        self.query_one(".cr-files", Static).update(Text(files, style=f"dim {tv['muted']}"))
-        self.query_one(".cr-when", Static).update(Text(e.get("when", ""), style=f"dim {tv['muted']}"))
+        meta = "" if nf is None else (
+            "no file changes" if nf == 0 else f"{nf} file{'s' if nf != 1 else ''} changed")
+        when = e.get("when", "")
+        right = "  ·  ".join(p for p in (meta, when) if p)
+        detail = Text(e.get("activity", ""), style=f"dim {tv['muted']}")
+        if right:
+            detail.append("   —   ", style=f"dim {tv['muted']}")
+            detail.append(right, style=f"dim {tv['muted']}")
+        self.query_one(".tr-detail", Static).update(detail)
 
     def on_click(self) -> None:
         self.post_message(self.Chosen(self.index))
 
 
 class RewindScreen(BlendScreen):
-    """Full-screen checkpoint picker. `dismiss(checkpoint_id | None)`."""
+    """Full-screen question picker. `dismiss(checkpoint_id | None)`."""
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
@@ -104,28 +103,28 @@ class RewindScreen(BlendScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rewind-box"):
-            yield Static("Rewind — go back to an earlier point", id="rewind-title")
+            yield Static("Rewind — jump back to one of your questions", id="rewind-title")
             yield Static(
-                "Each row is a checkpoint your work was auto-saved at. Pick one — then "
-                "choose to rewind in place (discard newer) or branch off (keep both). "
-                "“files” = how many changed since now.", id="rewind-sub")
+                "Pick a question below. Your files and the conversation are restored to "
+                "the moment just before you asked it — everything after is discarded (or "
+                "kept on a new branch). The line under each question is what that turn did.",
+                id="rewind-sub")
             with VerticalScroll(id="rewind-list"):
                 if self.entries:
                     for i, e in enumerate(self.entries):
-                        yield CheckpointRow(i, e)
+                        yield TurnRow(i, e)
                 else:
                     yield Static(
-                        "No earlier checkpoints yet. One is saved automatically at the "
-                        "end of every turn — come back after you've made some changes.",
-                        id="rewind-empty")
+                        "No earlier questions to rewind to yet — ask something and I'll "
+                        "checkpoint each turn automatically.", id="rewind-empty")
             yield Static("↑/↓ navigate   enter select   esc cancel", id="rewind-hint")
 
     def on_mount(self) -> None:
         super().on_mount()
         self._sync()
 
-    def _rows(self) -> list[CheckpointRow]:
-        return list(self.query(CheckpointRow))
+    def _rows(self) -> list[TurnRow]:
+        return list(self.query(TurnRow))
 
     def _sync(self) -> None:
         for i, row in enumerate(self._rows()):
@@ -141,7 +140,7 @@ class RewindScreen(BlendScreen):
         elif event.key == "enter":
             self._choose(); event.stop()
 
-    def on_checkpoint_row_chosen(self, msg: CheckpointRow.Chosen) -> None:
+    def on_turn_row_chosen(self, msg: TurnRow.Chosen) -> None:
         self.idx = msg.index
         self._choose()
 
