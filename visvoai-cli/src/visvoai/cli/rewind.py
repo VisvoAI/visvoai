@@ -139,6 +139,21 @@ class RewindMixin:
         self._cp_tip_id = cp_id
         self._cp_tip_sha = sha
 
+    def _snapshot_if_dirty(self) -> None:
+        """Before LEAVING the current branch (switch / fork-from), capture any
+        uncommitted working-tree drift as a checkpoint on THIS branch. Without this, a
+        hand-edit made between turns would be silently overwritten by the restore and
+        be unrecoverable; with it, the edit lands in a checkpoint and stays reachable
+        via /rewind. No-op when checkpointing is off or the tree matches the tip."""
+        repo = self._ensure_checkpoints()
+        if repo is None or self._cp_tip_sha is None:
+            return
+        try:
+            if repo.is_dirty(self._cp_tip_sha):
+                self._record_checkpoint(len(self._history), "edit", "manual edits")
+        except CheckpointError:
+            pass
+
     def _reset_checkpoints_after_compact(self, new_len: int) -> None:
         """After /compact rewrote the thread, collapse this branch's rewind timeline to a
         single post-compaction floor at `new_len`. Files are unchanged (compaction is a
@@ -378,6 +393,7 @@ class RewindMixin:
             return
         repo = self._ensure_checkpoints()
         commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        self._snapshot_if_dirty()   # keep uncommitted edits on the source branch
         if repo is not None and commit:
             try:
                 repo.restore(commit)
@@ -429,6 +445,7 @@ class RewindMixin:
             self.notify(f"branch '{name}' has no checkpoint", severity="warning")
             return
         repo = self._ensure_checkpoints()
+        self._snapshot_if_dirty()   # keep uncommitted edits on the branch we're leaving
         self._cp_branch = name
         self._history = store.load_branch_thread(self._project_id, self._conv_id, name)
         self._persisted_count = len(self._history)
@@ -610,7 +627,8 @@ class RewindMixin:
             self.notify("No checkpoints yet — they're saved automatically as you work.", severity="warning")
             return
         primary, muted = self._tv("primary"), self._tv("muted")
-        tags = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start"}
+        tags = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start",
+                "edit": "manual edits", "compact": "compacted"}
         out = []
         for r in reversed(rows):
             mark = "●" if r["checkpoint_id"] == self._cp_tip_id else "│"

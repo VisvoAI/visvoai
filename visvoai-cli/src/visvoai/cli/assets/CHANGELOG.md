@@ -5,6 +5,14 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
 ## [0.4.3] — 2026-07
 
+### Fixed
+- **Branch-switch/fork no longer silently overwrites uncommitted hand-edits.** Switching
+  branches (or forking from an earlier checkpoint) restores that branch's files — but if
+  you'd hand-edited a file since the last turn (so no checkpoint captured it), the restore
+  wiped it unrecoverably. Now the current branch's working-tree drift is snapshotted
+  ("manual edits" checkpoint) before the restore, so it's preserved and recoverable via
+  /rewind. No-op when the tree already matches the last checkpoint.
+
 ### Changed
 - **`/compact` is now real.** It was a mock (a fake "18 messages folded", hardcoded
   14%). It now LLM-summarizes the older prefix into a dense continuation note, keeps the

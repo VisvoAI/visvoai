@@ -18,7 +18,8 @@ from textual.widgets import Static
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
 
-_KIND_TAG = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start"}
+_KIND_TAG = {"turn": "turn end", "pre_batch": "before tools", "baseline": "start",
+             "edit": "manual edits", "compact": "compacted"}
 
 
 class CheckpointRow(Horizontal):
