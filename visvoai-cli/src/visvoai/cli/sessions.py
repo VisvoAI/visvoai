@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from textual.containers import VerticalScroll
 
-from visvoai.cli import agent, gitio, store
+from visvoai.cli import agent, gitio, state, store
 from visvoai.cli.screens import GitScreen, SessionsScreen
 from visvoai.cli.widgets import SystemNote
 
@@ -175,6 +175,7 @@ class SessionsMixin:
             return
         result = await self.push_screen_wait(GitScreen(status, cwd=self._cwd))
         if result:
+            state.record_used("commit")
             log = self.query_one("#log", VerticalScroll)
             await log.mount(SystemNote(
                 f'committed {result["n_files"]} file(s) on {result["branch"]} '

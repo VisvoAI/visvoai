@@ -107,43 +107,61 @@ class Assistant(Markdown):
         await self.append(token)
 
 
+# Tip catalog: (feature_key | None, text). A tip whose feature the user has already
+# used is suppressed (they know it) — see adaptive_tips(). feature_key None = always
+# eligible (general guidance). Keep each ≤ one 80-col line, action-oriented.
+TIP_CATALOG: list[tuple[str | None, str]] = [
+    ("rewind", "every turn auto-saves a checkpoint — /rewind to undo"),
+    ("branch", "/branch keeps both timelines when you go back — nothing is lost"),
+    ("fork", "/fork opens a checkpoint in a new folder to try things in parallel"),
+    ("export", "/export saves this chat as a shareable transcript or bundle"),
+    ("log", "/log lists the checkpoints your work was auto-saved at"),
+    ("mode", "shift+tab cycles approval mode — auto-edit lets writes through, still asks before shell"),
+    ("commit", "/commit (Ctrl+G) reviews changes and makes a real git commit"),
+    ("esc", "esc stops the current turn mid-stream"),
+    ("mention", "@file attaches a file to your message"),
+    (None, "type / for commands — /help explains everything"),
+    (None, "click a ✦ thought block to expand the model's reasoning"),
+    (None, "writes stay inside your project; [permissions] can pre-authorize safe ops"),
+]
+
+def adaptive_tips(used: set[str]) -> tuple[str, ...]:
+    """The tips to rotate, given the features the user has already exercised:
+    - while any feature is still undiscovered → show those (plus the general tips),
+      so the spinner keeps steering toward what they haven't found;
+    - once every feature is learned → the full pool, for light variety."""
+    unlearned = [t for k, t in TIP_CATALOG if k is not None and k not in used]
+    general = [t for k, t in TIP_CATALOG if k is None]
+    if unlearned:
+        return tuple(unlearned + general)
+    return tuple(t for _, t in TIP_CATALOG)   # fully fluent → everything
+
+
 class WorkingIndicator(Static):
     """A transient spinner shown the instant a turn starts, so there's never a dead
     gap before the first output. Removed as soon as real content/thinking/a tool
     arrives — so it only ever lives during the initial wait. Two lines: spinner +
     label, then a muted tip that rotates every ~12s and teaches a discoverable
-    feature. Each new indicator opens on the NEXT tip so variety builds across turns."""
+    feature. `tips` (from adaptive_tips) is the pool; each indicator opens on the NEXT
+    tip so variety builds across turns."""
 
     FRAMES = "⠋⠙⠹⠸⠼⠴▴▾◂▸"
     TIP_INTERVAL = 12.0
-
-    # One rotating pool. Short (one line on 80 cols) and action-oriented — the user
-    # is waiting, not reading; the tip teaches by sitting next to the spinner.
-    TIPS: tuple[str, ...] = (
-        "every turn auto-saves a checkpoint — /rewind to undo, /branch to fork",
-        "esc stops the current turn mid-stream",
-        "@file attaches a file to your message",
-        "type / for commands — try /help for everything",
-        "shift+tab cycles approval mode — auto-edit allows writes but still asks before shell",
-        "click a ✦ thought block to expand the model's reasoning",
-        "tools ask before mutating — approve once, allow-all-session, or deny",
-        "writes stay inside your project; [permissions] in .visvoai/config.toml can pre-authorize",
-        "/log lists the checkpoints your work was auto-saved at",
-    )
     _next_start = 0   # class-level cursor → consecutive turns open on different tips
 
     DEFAULT_CSS = """
     WorkingIndicator { color: $secondary; margin: 0; padding: 0 1; background: transparent; }
     """
 
-    def __init__(self, label: str = "working…") -> None:
+    def __init__(self, label: str = "working…", tips: tuple[str, ...] | None = None) -> None:
         super().__init__()
         self._label = label
         self._i = 0
+        self._tips = tuple(tips) if tips else tuple(t for _, t in TIP_CATALOG)
         cls = type(self)
-        self._tip_index = cls._next_start % len(self.TIPS)
+        self._tip_index = cls._next_start % len(self._tips)
         cls._next_start += 1
-        self._tip = self.TIPS[self._tip_index]
+        self._tip = self._tips[self._tip_index]
 
     def on_mount(self) -> None:
         self._tick_timer = self.set_interval(0.08, self._tick_frame)
@@ -155,8 +173,8 @@ class WorkingIndicator(Static):
         self.refresh()
 
     def _tick_tip(self) -> None:
-        self._tip_index = (self._tip_index + 1) % len(self.TIPS)
-        self._tip = self.TIPS[self._tip_index]
+        self._tip_index = (self._tip_index + 1) % len(self._tips)
+        self._tip = self._tips[self._tip_index]
         self.refresh()
 
     def render(self) -> Text:

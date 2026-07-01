@@ -30,7 +30,7 @@ from pathlib import Path
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from textual.containers import VerticalScroll
 
-from visvoai.cli import agent, store
+from visvoai.cli import agent, state, store
 from visvoai.cli.checkpoints import CheckpointError, ShadowRepo
 from visvoai.cli.screens import BranchScreen, RewindScreen
 from visvoai.cli.screens.branch_view import NEW_BRANCH
@@ -270,6 +270,7 @@ class RewindMixin:
         except (CheckpointError, OSError):
             pass
         await self._replay_history(self._history)
+        state.record_used("rewind")
         await self._drop_marker(
             f"rewound to “{row['label'] or 'start'}” — files and conversation restored")
 
@@ -369,6 +370,7 @@ class RewindMixin:
                 repo.ref_set(self._branch_ref(name), commit)
         except (CheckpointError, OSError):
             pass
+        state.record_used("branch")
         await self._replay_history(new_thread)
         await self._drop_marker(f"branched to “{name}” from “{row['label'] or 'start'}” "
                                 f"— both timelines kept")
@@ -399,6 +401,7 @@ class RewindMixin:
                 repo.restore(commit)
             except CheckpointError:
                 pass
+        state.record_used("branch")
         await self._replay_history(self._history)
         await self._drop_marker(f"switched to branch “{name}”")
 
@@ -467,6 +470,7 @@ class RewindMixin:
             self.notify(f"forked files but could not seed conversation: {e}",
                         severity="warning")
             return None
+        state.record_used("fork")
         return fork_cid
 
     # ── export (Plan G) ───────────────────────────────────────────────────────
@@ -516,6 +520,7 @@ class RewindMixin:
                                      multiline=False) or "").strip() or default))
             path = self._do_export("bundle", out)
         if path:
+            state.record_used("export")
             await self._drop_marker(f"exported → {path.replace(os.path.expanduser('~'), '~')}")
 
     def _do_export(self, kind: str, out_path: str) -> str | None:
@@ -571,6 +576,7 @@ class RewindMixin:
                        f"[dim {muted}]{tag} · {_relative_iso(r.get('created'))}[/]")
         markup = (f"[b {primary}]branch {self._cp_branch}[/]  "
                   f"[dim {muted}]({len(rows)} checkpoints)[/]\n\n" + "\n".join(out))
+        state.record_used("log")
         log = self.query_one("#log", VerticalScroll)
         await log.mount(Welcome(lambda: markup))
         log.scroll_end(animate=False)

@@ -340,6 +340,7 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         accept-all. Relaxes WHEN the gate asks; path confinement is unaffected.
         The active mode shows as the status-bar chip — no toast needed."""
         self._hitl_mode = self._hitl_mode.next()
+        state_mod.record_used("mode")
         self.query_one("#status", StatusBar).set_mode(self._hitl_mode.chip)
 
     def notify(self, message: str, *, severity: str = "information", **kwargs) -> None:

@@ -17,9 +17,10 @@ from textual.containers import VerticalScroll
 import time
 
 from visvoai.cli import agent, store
+from visvoai.cli import state as ui_state   # aliased: `state` is a local (graph input) below
 from visvoai.cli.widgets import (
     Assistant, CleanDiff, ErrorBlock, Plan, SystemNote, Thinking, ToolOutput,
-    TurnFooter, WorkingIndicator,
+    TurnFooter, WorkingIndicator, adaptive_tips,
 )
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 
@@ -107,6 +108,7 @@ class AgentTurnMixin:
         if worker is None or not worker.is_running:
             return
         worker.cancel()
+        ui_state.record_used("esc")
         self._turn_worker = None
         self._set_status(None)
         # Freeze any live plan spinner — its interval is independent of the worker.
@@ -167,7 +169,7 @@ class AgentTurnMixin:
         # Starts in 'working' phase; tips rotate per phase as the turn progresses
         # (thinking → working → tool → working). The indicator's lifetime is
         # bounded — _clear_working removes it the moment real output arrives.
-        self._working = WorkingIndicator()
+        self._working = WorkingIndicator(tips=adaptive_tips(ui_state.used_features()))
         await log.mount(self._working)
         log.scroll_end(animate=False)
         try:

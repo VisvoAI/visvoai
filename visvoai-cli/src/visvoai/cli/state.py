@@ -50,3 +50,70 @@ def update_state(project_id: str, **fields) -> dict:
     tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
     os.replace(tmp, p)
     return state
+
+
+# ── global (per-user) state: learned features + one-time flags ───────────────
+# Lives at `~/.visvoai/state.json` (NOT per-project). A user who learned /rewind in
+# one project knows it everywhere, so adaptive tips + coachmarks are user-scoped.
+def _global_path() -> Path:
+    return store.visvoai_home() / "state.json"
+
+
+def get_global() -> dict:
+    """The per-user state (never raises; {} when absent/corrupt)."""
+    p = _global_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _write_global(state: dict) -> None:
+    p = _global_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(tmp, p)
+
+
+def used_features() -> set[str]:
+    """The set of feature keys the user has exercised at least once."""
+    return set(get_global().get("used", []))
+
+
+def record_used(feature: str) -> None:
+    """Mark a feature as used (idempotent). Drives adaptive tips — once a feature is
+    learned, its tip stops showing and an undiscovered one surfaces instead."""
+    state = get_global()
+    used = set(state.get("used", []))
+    if feature in used:
+        return
+    used.add(feature)
+    state["used"] = sorted(used)
+    try:
+        _write_global(state)
+    except OSError:
+        pass   # best-effort — a missed write just re-shows a tip the user knows
+
+
+def was_shown(key: str) -> bool:
+    """True if a one-time coachmark `key` has already been shown."""
+    return key in set(get_global().get("shown", []))
+
+
+def mark_shown(key: str) -> bool:
+    """Mark a one-time coachmark as shown. Returns True if this call is the FIRST
+    time (caller should show it now), False if already shown."""
+    state = get_global()
+    shown = set(state.get("shown", []))
+    if key in shown:
+        return False
+    shown.add(key)
+    state["shown"] = sorted(shown)
+    try:
+        _write_global(state)
+    except OSError:
+        return False
+    return True

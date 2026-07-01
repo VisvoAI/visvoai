@@ -11,7 +11,7 @@ import re
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
-from visvoai.cli import agent, gitio, theme
+from visvoai.cli import agent, gitio, state, theme
 from visvoai.cli.widgets import (
     CompactionMarker, Welcome, WelcomeBanner,
 )
@@ -159,6 +159,7 @@ class CommandsMixin:
     async def _compact_flow(self) -> None:
         """`/compact` — fold older turns into a summary. Drops a prominent marker
         (states messages folded + window before → after) and resets the gauge."""
+        state.record_used("compact")
         before, after = self._ctx_pct, 14
         log = self.query_one("#log", VerticalScroll)
         before_txt = f"{before}%" if before is not None else "—"
@@ -292,6 +293,7 @@ class CommandsMixin:
         at = text.rfind("@", m.start())   # the '@' that opened this mention
         prompt.text = text[:at] + f"@{path} "
         prompt.move_cursor(prompt.document.end)
+        state.record_used("mention")
 
     def run_command(self, name: str) -> None:
         if name == "theme":
@@ -422,6 +424,7 @@ class CommandsMixin:
         return "\n".join(out)
 
     async def _show_help(self) -> None:
+        state.record_used("help")
         log = self.query_one("#log", VerticalScroll)
         await log.mount(Welcome(self._help_markup))
         log.scroll_end(animate=False)

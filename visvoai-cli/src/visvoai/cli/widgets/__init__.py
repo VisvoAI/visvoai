@@ -6,6 +6,7 @@ from visvoai.cli.widgets.conversation import (
     TurnFooter,
     UserMsg,
     WorkingIndicator,
+    adaptive_tips,
 )
 from visvoai.cli.widgets.welcome import Welcome, WelcomeBanner
 from visvoai.cli.widgets.citation import Citation
@@ -47,6 +48,7 @@ __all__ = [
     "Thinking",
     "TurnFooter",
     "WorkingIndicator",
+    "adaptive_tips",
     "ToolRow",
     "ToolNode",
     "ToolGroup",
