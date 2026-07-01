@@ -14,6 +14,9 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
   Every question is a target, including the most recent (so you can undo the last turn).
   The `/branch`-new and `/fork` pickers use the same clear turn view.
 
+- More breathing room between turns — each question now has a clear 2-line break above
+  it (the answer stays attached below), so the transcript reads less congested.
+
 ### Fixed
 - **Branch-switch/fork no longer silently overwrites uncommitted hand-edits.** Switching
   branches (or forking from an earlier checkpoint) restores that branch's files — but if

@@ -15,14 +15,14 @@ from visvoai.cli import grid, theme
 
 class UserMsg(Static):
     """The user's prompt — the turn anchor. Uses the SAME `❯` marker as the main
-    input (so a sent message visually echoes the prompt) on a subtle primary wash,
-    with a blank line above and below so each turn reads as a distinct, scannable
-    header."""
+    input (so a sent message visually echoes the prompt) on a subtle primary wash.
+    Two blank lines ABOVE (a clear break from the previous turn) and one below (the
+    answer stays attached to its question) so turns don't feel congested."""
 
     DEFAULT_CSS = """
     UserMsg {
         background: $primary 10%;   /* subtle wash — differential, not loud */
-        margin: 1 0;               /* one blank line before AND after the anchor */
+        margin: 2 0 1 0;           /* 2 blanks above (turn break) · 1 below (answer hugs Q) */
         padding: 1;                /* roomy card: a washed line above/below + side pad */
     }
     """
