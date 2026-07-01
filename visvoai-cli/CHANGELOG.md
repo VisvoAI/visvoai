@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.4.2] — 2026-07
+
+### Changed
+- **Tool-result management.** The model API is stateless, so the whole thread (incl.
+  every tool result) is re-sent on each call. When building the model input we now keep
+  the most recent tool results verbatim up to a char budget and elide older large ones
+  to a stub (id preserved, so the model can re-run the tool if needed) — bounding
+  carried-over context across turns. Model-agnostic; transforms only the sent copy, the
+  durable thread keeps full fidelity (rewind/replay/persistence unaffected). Note: this
+  bounds cross-turn growth, not the intra-turn re-sends of a single heavy tool loop
+  (that needs per-call handling in the runtime, or prompt caching).
+
 ## [0.4.1] — 2026-07
 
 ### Fixed

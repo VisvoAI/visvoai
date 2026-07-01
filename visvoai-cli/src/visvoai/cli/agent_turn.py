@@ -56,6 +56,47 @@ def _sanitize_thread(msgs: list[BaseMessage]) -> list[BaseMessage]:
     return out
 
 
+# Tool-result management: the model API is stateless, so the whole thread (incl. every
+# tool result) is re-sent on every call. Old tool results (a file read / grep / shell
+# output from earlier subtasks) are usually dead weight once the model has acted on
+# them — so when building the model input we keep the most RECENT tool results verbatim
+# up to a char budget and elide older large ones to a stub (the model can re-run the
+# tool if it still needs them). This bounds the CARRIED-OVER context across turns and
+# is model-agnostic. It transforms only the copy sent to the model — the durable
+# `_history` keeps full fidelity (rewind/replay/persistence unaffected).
+TOOL_RESULT_BUDGET_CHARS = 40_000   # ~10k tokens of recent tool output kept verbatim
+MIN_ELIDE_CHARS = 400               # don't bother eliding a small old result
+
+
+def _prune_tool_results(msgs: list[BaseMessage]) -> tuple[list[BaseMessage], int]:
+    """Return `(model_messages, n_elided)`: newest→oldest, keep tool results whole until
+    `TOOL_RESULT_BUDGET_CHARS` is filled, then replace older large ones with a short
+    stub (keeping their tool_call_id so the AIMessage/ToolMessage pairing stays valid).
+    Non-tool messages and small/recent results pass through untouched."""
+    elide: set[int] = set()
+    kept = 0
+    for i in range(len(msgs) - 1, -1, -1):
+        m = msgs[i]
+        if isinstance(m, ToolMessage) and isinstance(m.content, str):
+            if kept >= TOOL_RESULT_BUDGET_CHARS and len(m.content) > MIN_ELIDE_CHARS:
+                elide.add(i)
+            else:
+                kept += len(m.content)
+    if not elide:
+        return msgs, 0
+    out: list[BaseMessage] = []
+    for i, m in enumerate(msgs):
+        if i in elide:
+            label = getattr(m, "name", None) or "tool"
+            out.append(ToolMessage(
+                content=f"[{len(m.content)} chars of earlier {label} output elided to "
+                        f"save context — re-run the tool if you still need it]",
+                tool_call_id=m.tool_call_id))
+        else:
+            out.append(m)
+    return out, len(elide)
+
+
 _AUTH_HINTS = ("401", "403", "unauthorized", "api key", "api_key",
                "user not found", "authentication", "invalid_api_key")
 _NET_HINTS = ("connection", "timeout", "timed out", "network", "getaddrinfo",
@@ -170,7 +211,8 @@ class AgentTurnMixin:
         # Sanitize before sending to the model: a prior crashed/errored turn may have
         # left a dangling tool_call in the thread (durable log isn't trimmed) — strip it
         # so the provider never sees an unanswered tool_call.
-        state = {"messages": _sanitize_thread(self._history)}
+        model_messages, n_elided = _prune_tool_results(_sanitize_thread(self._history))
+        state = {"messages": model_messages}
 
         current: Assistant | None = None         # active reply block (None between runs)
         answer_blocks: list[Assistant] = []      # every reply block this turn (mermaid scan)
@@ -319,7 +361,12 @@ class AgentTurnMixin:
         # when it's at least as complete; the persist flushes any remaining delta. A
         # dangling tool_call left by an errored turn is never trimmed from storage —
         # it's stripped at point-of-use (_sanitize_thread, when building model state).
-        if final_messages is not None and len(final_messages) >= len(self._history):
+        # Skip the wholesale adopt when we elided tool results this turn: final_messages
+        # was built from the PRUNED input, so adopting it would overwrite full old
+        # tool-result content in memory with stubs. The incremental appends above already
+        # hold every new message at full fidelity, so _history stays complete + durable.
+        if (n_elided == 0 and final_messages is not None
+                and len(final_messages) >= len(self._history)):
             self._history = list(final_messages)
         self._persist_turn()
         # cli-git-structure: capture the post-turn tree. Dedup makes a no-file-change
