@@ -6,6 +6,12 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 ## [0.4.3] — 2026-07
 
 ### Changed
+- **`/rewind` offers granular actions at a question** (like a familiar coding-agent
+  menu), because we track the code and conversation axes separately: *Revert code +
+  conversation*, *Revert conversation only* (keep current files), *Revert code only*
+  (keep the chat), *Summarize up to here* (fold older turns via a chosen cut point), or
+  *Branch from here*. The split-axis reverts record a fresh checkpoint so code + chat
+  stay coherent afterward.
 - **`/rewind` is now question-oriented.** The picker was a flat list of checkpoints
   tagged "turn end / before tools / start" — confusing, and it offered no way to rewind
   to a *question* (only to tool boundaries). It now lists YOUR QUESTIONS (newest first),

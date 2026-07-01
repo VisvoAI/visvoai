@@ -325,15 +325,26 @@ class RewindMixin:
             return
         q = entry["question"]
         q = q[:47] + "…" if len(q) > 48 else q
-        prompt = f"Go back to just before “{q}”? Your files and the chat after it are discarded."
+        prompt = f"At “{q}” — what do you want to do?"
         if self._rewind_crosses_baseline(rows, cid):
-            prompt += " ⚠ This also discards changes made outside this session."
-        idx, _ = await self.ask_choice(
-            prompt,
-            ["Rewind here (discard newer)", "Branch from here (keep both)", "Cancel"])
+            prompt += " ⚠ Reverting code past here also discards changes made outside this session."
+        idx, _ = await self.ask_choice(prompt, [
+            "Revert code + conversation",
+            "Revert conversation only (keep current files)",
+            "Revert code only (keep the chat)",
+            "Summarize up to here (fold older turns)",
+            "Branch from here (keep both timelines)",
+            "Cancel",
+        ])
         if idx == 0:
             await self._apply_rewind(row)
         elif idx == 1:
+            await self._revert_conversation_only(row)
+        elif idx == 2:
+            await self._revert_code_only(row)
+        elif idx == 3:
+            await self._compact_to(row["message_index"])
+        elif idx == 4:
             name = await self.ask_text("Name the new branch:",
                                        placeholder="e.g. alt-approach", multiline=False)
             if name and name.strip():
@@ -393,10 +404,54 @@ class RewindMixin:
                 repo.ref_set(self._branch_ref(self._cp_branch), commit)
         except (CheckpointError, OSError):
             pass
+        state.record_used("rewind")
         await self._replay_history(self._history)
+        await self._drop_marker(
+            f"reverted to “{row['label'] or 'start'}” — files and conversation restored")
+
+    async def _revert_conversation_only(self, row: dict) -> None:
+        """#2 — rewind the CHAT to `row`, but keep the current working files. The thread
+        is truncated; the files on disk are left as-is and captured as a fresh checkpoint
+        at the new (shorter) message index, so code + conversation stay coherent going
+        forward."""
+        idx = row["message_index"]
+        self._history = self._history[:idx]
+        store.write_branch_thread(self._project_id, self._conv_id, self._cp_branch, self._history)
+        self._persisted_count = len(self._history)
+        store.truncate_branch_receipts(self._project_id, self._conv_id, self._cp_branch,
+                                       self._completed_turns(self._history))
+        store.write_timeline(self._project_id, self._conv_id, self._cp_branch,
+                             _truncate_to(self._timeline(), row["checkpoint_id"]))
+        # Point the tip at the target, then snapshot the CURRENT (unchanged) tree at the
+        # new index — so the timeline reflects "these files, this shorter chat".
+        self._cp_tip_id = row["checkpoint_id"]
+        self._cp_tip_sha = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        store.write_meta(self._project_id, self._conv_id,
+                         active_branch=self._cp_branch, msg_count=len(self._history))
+        self._record_checkpoint(len(self._history), "edit", "reverted conversation")
+        state.record_used("rewind")
+        await self._replay_history(self._history)
+        await self._drop_marker("conversation reverted — your current files were kept")
+
+    async def _revert_code_only(self, row: dict) -> None:
+        """#3 — restore the FILES to `row`, but keep the whole conversation. The reverted
+        tree is captured as a fresh checkpoint at the end of the (unchanged) thread; the
+        chat 'remembers' edits that are no longer on disk, which is the intent."""
+        repo = self._ensure_checkpoints()
+        commit = store.registry_commit(self._project_id, self._conv_id, row["checkpoint_id"])
+        if repo is None or not commit:
+            self.notify("Can't revert files — checkpointing is unavailable.", severity="warning")
+            return
+        try:
+            repo.restore(commit)
+        except CheckpointError as e:
+            self.notify(f"could not restore files: {e}", severity="error")
+            return
+        # Conversation unchanged; record the reverted tree at the current thread end.
+        self._record_checkpoint(len(self._history), "edit", "reverted code")
         state.record_used("rewind")
         await self._drop_marker(
-            f"rewound to “{row['label'] or 'start'}” — files and conversation restored")
+            f"files reverted to “{row['label'] or 'start'}” — the conversation was kept")
 
     async def _drop_marker(self, text: str) -> None:
         log = self.query_one("#log", VerticalScroll)

@@ -198,27 +198,37 @@ class CommandsMixin:
         actual compacted size. No-op with a reason when there's too little to fold or the
         summary can't be produced (thread left untouched)."""
         state.record_used("compact")
-        log = self.query_one("#log", VerticalScroll)
-
         cut = _compaction_cut(self._history, self.COMPACT_KEEP_TURNS)
         if cut is None:
             self.notify(f"Not enough to compact yet — keeps the last "
                         f"{self.COMPACT_KEEP_TURNS} turns verbatim.", severity="warning")
             return
+        await self._compact_to(cut)
+
+    async def _compact_to(self, cut: int) -> bool:
+        """Fold `self._history[:cut]` into one LLM summary, keep the rest verbatim, and
+        rewrite/persist the thread + reset the rewind floor + update the gauge. `cut` is a
+        turn boundary (a HumanMessage index). Shared by /compact (auto cut) and /rewind's
+        'Summarize up to here' (chosen cut). Returns True on success. No-op with a reason
+        when there's nothing to fold or the summary is empty."""
+        log = self.query_one("#log", VerticalScroll)
+        if cut <= 0 or cut >= len(self._history):
+            self.notify("Nothing to summarize at that point.", severity="warning")
+            return False
 
         from langchain_core.messages import SystemMessage
         prefix, tail = self._history[:cut], self._history[cut:]
         before_pct = self._ctx_pct
 
-        self._set_status("compacting…")
+        self._set_status("summarizing…")
         try:
             summary = await agent.summarize_history(self._model, agent.render_thread(prefix))
         finally:
             self._set_status(None)
         if not summary:
-            self.notify("Couldn't compact — the summary model returned nothing "
+            self.notify("Couldn't summarize — the model returned nothing "
                         "(check the model's key). Thread left unchanged.", severity="warning")
-            return
+            return False
 
         folded = len(prefix)
         new_thread = [SystemMessage(content=f"[Summary of earlier conversation]\n{summary}")] + tail
@@ -247,6 +257,7 @@ class CommandsMixin:
             f"{folded} message{'s' if folded != 1 else ''} folded into a summary  ·  "
             f"{before_txt} → {after_txt} context"))
         log.scroll_end(animate=False)
+        return True
 
     async def on_text_area_changed(self, event) -> None:
         prompt = self.query_one("#prompt", PromptArea)
