@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.4.1] — 2026-07
+
+### Fixed
+- **`/rewind` silently did nothing when visvoai was launched in the home directory.**
+  `resolve_project_id` anchored on the global `~/.visvoai/config.toml`, so the shadow
+  repo's work tree became `$HOME` and `git add -A` over the whole home dir failed/timed
+  out — and the error was swallowed, leaving 0 checkpoints and an empty `/rewind`. Now:
+  checkpointing refuses to run when the working directory is the home dir / filesystem
+  root (anything containing the `~/.visvoai` data dir) and says so once; and any
+  snapshot failure disables checkpointing loudly-once instead of silently — so `/rewind`
+  being unavailable is always explained.
+
 ## [0.4.0] — 2026-06
 
 ### Added

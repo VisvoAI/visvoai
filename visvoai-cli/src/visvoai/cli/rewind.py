@@ -77,6 +77,17 @@ class RewindMixin:
             return None
         if self._project_id is None or self._conv_id is None:
             return None
+        # Never snapshot the home dir / filesystem root — `git add -A` would try to
+        # stage an enormous tree (this is the classic "launched visvoai in ~" trap that
+        # silently killed checkpointing). Disable loudly, ONCE, so /rewind's absence is
+        # explained instead of mysterious.
+        reason = store.checkpoints_disabled_reason(self._cwd)
+        if reason:
+            self._cp_failed = True
+            self.notify(f"Checkpointing & /rewind are off — {reason}. "
+                        f"Run visvoai inside a project folder to enable them.",
+                        severity="warning")
+            return None
         try:
             self._checkpoints = ShadowRepo.for_project(self._project_id, self._cwd)
         except CheckpointError:
@@ -103,7 +114,14 @@ class RewindMixin:
             return
         try:
             sha, _made = repo.snapshot(self._cp_tip_sha, label or kind)
-        except CheckpointError:
+        except CheckpointError as e:
+            # A snapshot failure means checkpointing won't work this session (e.g. a
+            # git error / a tree too large to stage in time). Surface it ONCE and stop
+            # retrying, rather than silently leaving /rewind empty.
+            self._cp_failed = True
+            self.notify(f"Checkpointing disabled — couldn't snapshot the working tree "
+                        f"({str(e)[:120]}). /rewind won't be available this session.",
+                        severity="warning")
             return
         cp_id = uuid.uuid4().hex[:8]
         row = {"checkpoint_id": cp_id, "message_index": message_index,

@@ -109,6 +109,24 @@ def project_root(cwd: str) -> Path:
     return start
 
 
+def checkpoints_disabled_reason(cwd: str) -> Optional[str]:
+    """Why the shadow checkpoint repo must NOT run for this cwd, or None if it's fine.
+    Snapshotting the home directory (or the filesystem root, or any ancestor of the
+    visvoai data dir) is never intended — `git add -A` would try to stage an enormous
+    tree (and would sweep in `~/.visvoai` itself). Returns a short human reason for the
+    'checkpointing off' notice; None means checkpointing is safe."""
+    try:
+        root = project_root(cwd).resolve()
+        vh = visvoai_home().resolve()
+    except OSError:
+        return None
+    # vh (~/.visvoai) is under $HOME, so `vh under root` is true exactly when root is
+    # the home dir, the filesystem root, or another ancestor of the data dir.
+    if vh == root or vh.is_relative_to(root):
+        return "the working directory is your home directory (or filesystem root)"
+    return None
+
+
 def new_conversation_id() -> str:
     return uuid.uuid4().hex[:8]
 
