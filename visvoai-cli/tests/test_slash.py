@@ -59,9 +59,15 @@ async def test_arrow_navigates_and_enter_runs_command():
         p.focus()
         await pilot.press("/")
         await pilot.pause()
+        from visvoai.cli.commands import SLASH_COMMANDS
         menu = app.query(SlashMenu).first()
-        assert menu.selected() == "help"
+        assert menu.selected() == SLASH_COMMANDS[0][0]   # first item highlighted
         await pilot.press("down")
+        await pilot.pause()
+        assert menu.selected() == SLASH_COMMANDS[1][0]   # arrow moves the selection
+        # filter to /model so the rest is independent of the menu's order
+        for ch in "model":
+            await pilot.press(ch)
         await pilot.pause()
         assert menu.selected() == "model"
         await pilot.press("enter")
@@ -87,9 +93,11 @@ async def test_tab_autocompletes_without_running():
         p = app.query_one("#prompt", PromptArea)
         p.focus()
         await pilot.press("/")
+        for ch in "model":         # filter to "model" (order-independent)
+            await pilot.press(ch)
         await pilot.pause()
-        await pilot.press("down")  # highlight "model"
-        await pilot.pause()
+        menu = app.query(SlashMenu).first()
+        assert menu.selected() == "model"
         await pilot.press("tab")   # autocomplete, must NOT run
         await pilot.pause()
         from visvoai.cli.screens import ModelScreen

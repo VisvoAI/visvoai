@@ -27,6 +27,27 @@ def test_no_match_returns_none():
     assert _closest_command("") is None
 
 
+def test_tour_is_registered_and_multistep():
+    from visvoai.cli.commands import SLASH_COMMANDS
+    assert "tour" in {n for n, _ in SLASH_COMMANDS}
+    assert len(VisvoApp._TOUR_STEPS) >= 3
+    assert all(title and body for title, body in VisvoApp._TOUR_STEPS)
+
+
+@pytest.mark.asyncio
+async def test_tour_opens_a_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("VISVOAI_HOME", str(tmp_path))
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.run_worker(app._tour_flow())
+        await pilot.pause()
+        from visvoai.cli.widgets import Selection
+        assert app.query(Selection)          # a paged step prompt is shown
+        await pilot.press("escape")           # bail out of the tour
+        await pilot.pause()
+
+
 @pytest.mark.asyncio
 async def test_placeholder_rotates(tmp_path, monkeypatch):
     monkeypatch.setenv("VISVOAI_HOME", str(tmp_path))

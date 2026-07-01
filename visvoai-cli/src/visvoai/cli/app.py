@@ -19,7 +19,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
-from visvoai.cli import agent, cli_changelog, store, theme
+from visvoai.cli import agent, cli_changelog, gitio, store, theme
 from visvoai.cli import state as state_mod
 from visvoai.cli.mock import git_info
 from visvoai.cli.widgets import (
@@ -30,6 +30,7 @@ from visvoai.cli.widgets import (
     StatusBar,
     ToolGroup,
     ToolNode,
+    SystemNote,
     UserMsg,
     Welcome,
     WelcomeBanner,
@@ -240,6 +241,7 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # (skipped on /clear — the panel was already shown & marked-seen at first
         # launch, and /clear intentionally gives a blank slate).
         self._maybe_mount_changelog_panel()
+        self._maybe_launch_scan()
 
     # Context fill at/above this %, warn the user to compact or switch models.
     CTX_WARN_PCT = 85
@@ -440,8 +442,9 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             f"  [{secondary}]›[/] fix the failing test in tests/\n"
             f"  [{secondary}]›[/] add an anthropic provider to my config\n"
             f"  [{secondary}]›[/] refactor auth.py to use dataclasses\n\n"
-            f"[dim]type[/] [b {secondary}]/[/][dim] for commands (try "
-            f"[b {secondary}]/help[/])[/]\n"
+            f"[dim]type[/] [b {secondary}]/[/][dim] for commands · [/]"
+            f"[b {secondary}]/help[/][dim] to learn · [/]"
+            f"[b {secondary}]/tour[/][dim] for a 60-second walkthrough[/]\n"
             f"[dim]type[/] [b {secondary}]@file[/][dim] to attach a file[/]\n\n"
             f"[{muted}]every turn auto-saves a checkpoint — "
             f"[b {primary}]/rewind[/] to undo, "
@@ -464,6 +467,27 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             f"[dim]type[/] [b {secondary}]/[/][dim] for commands · "
             f"[b {primary}]/help[/] [dim]for the full list[/]"
         )
+
+    # ── proactive launch scan (#7) ────────────────────────────────────────────
+    def _maybe_launch_scan(self) -> None:
+        """One quiet, actionable line at launch if the repo has uncommitted changes —
+        so a returning user is oriented ('you left N changes here') with a next step.
+        Diff-free (status_summary), git-repo-only, silent when clean or not a repo."""
+        if self.is_headless:
+            return   # don't do real-git startup I/O under test / headless runs
+        try:
+            status = gitio.status_summary(self._cwd)
+        except Exception:
+            return
+        files = (status or {}).get("files") or []
+        if not files:
+            return
+        n = len(files)
+        log = self.query_one("#log", VerticalScroll)
+        log.mount(SystemNote(
+            f"{n} uncommitted change{'s' if n != 1 else ''} in this repo — "
+            f"/commit (Ctrl+G) to review, or just tell me what to change", kind="info"))
+        log.scroll_end(animate=False)
 
     # ── changelog "what's new" panel ──────────────────────────────────────────
     def _maybe_mount_changelog_panel(self) -> None:

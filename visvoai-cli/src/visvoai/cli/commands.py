@@ -31,6 +31,7 @@ _MENTION_RE = re.compile(r"(?:^|\s)@(\S*)$")
 # /demo (the menu only dispatches names present here), so it never ships to users.
 SLASH_COMMANDS: list[tuple[str, str]] = [
     ("help", "How it works — keys, commands & time-travel explained"),
+    ("tour", "Take a 60-second guided walkthrough"),
     ("model", "Switch the AI model (and thinking depth)"),
     ("login", "Add a provider API key to unlock more models"),
     ("resume", "Reopen a past conversation in this project"),
@@ -324,6 +325,8 @@ class CommandsMixin:
             self.run_worker(self._clear_log())
         elif name == "help":
             self.run_worker(self._show_help())
+        elif name == "tour":
+            self.run_worker(self._tour_flow())
         elif name == "demo":
             self.run_worker(self._demo_picker())
         elif name == "model":
@@ -445,6 +448,38 @@ class CommandsMixin:
             f"shareable file.[/]",
         ]
         return "\n".join(out)
+
+    # ── guided tour (#6) ──────────────────────────────────────────────────────
+    _TOUR_STEPS: list[tuple[str, str]] = [
+        ("Welcome to visvoai",
+         "I'm a coding agent in your terminal. Describe a task and I'll read & edit "
+         "files and run commands — you approve anything that touches your code."),
+        ("Time travel",
+         "Every turn auto-saves a checkpoint (your files + the chat) in a private "
+         "store — your own git is never touched. Ctrl+B (or /rewind) restores any "
+         "earlier point."),
+        ("Branch — don't lose work",
+         "When you go back, choose 'branch from here' to keep BOTH timelines. /branch "
+         "switches between them; /fork opens one in a separate folder to explore in "
+         "parallel."),
+        ("Approvals",
+         "By default I ask before editing files or running shell. Shift+Tab cycles "
+         "modes: normal → auto-edit (writes through, shell still asks) → accept-all."),
+        ("You're set",
+         "/help lists everything, and tips rotate under the spinner while you wait. "
+         "So — what would you like to build?"),
+    ]
+
+    async def _tour_flow(self) -> None:
+        """`/tour` — a paged, opt-in walkthrough of the core features."""
+        n = len(self._TOUR_STEPS)
+        for i, (title, body) in enumerate(self._TOUR_STEPS):
+            last = i == n - 1
+            options = ["Done ✓"] if last else ["Next →", "Skip tour"]
+            idx, _ = await self.ask_choice(f"[{i + 1}/{n}]  {title}\n\n{body}", options)
+            if idx is None or (not last and idx != 0):   # esc or "Skip tour"
+                break
+        state.record_used("tour")
 
     async def _suggest_command(self, fragment: str) -> None:
         """`/xyz` matched no command — mount a quiet 'did you mean' hint (#4)."""
