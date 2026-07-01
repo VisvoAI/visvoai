@@ -24,6 +24,18 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
     it warns that out-of-session changes will be discarded.
   - All best-effort: missing git or any checkpoint error is swallowed — it never breaks
     a turn.
+- **Onboarding & self-driving guidance** — teach features by context, never nag:
+  - Launch-state welcome (first-time onboarding · returning-but-empty nudge · standard)
+    and a "what's new" panel showing CHANGELOG entries since your last visit.
+  - A sectioned `/help` (Chat / Time travel / Project + keyboard table + a plain-English
+    explainer) and `/tour`, an opt-in 60-second walkthrough.
+  - Rotating spinner tips that **adapt** — a feature's tip stops once you've used it and
+    an undiscovered one surfaces; contextual post-turn nudges (files changed → /rewind or
+    /commit; a tool failed → /rewind) that self-silence once learned; and one-time
+    coachmarks (first checkpoint, first approval).
+  - Typing an unknown `/command` suggests the closest (`/undo` → /rewind); the prompt
+    placeholder rotates example tasks; a returning project with uncommitted changes gets
+    one quiet "N changes — /commit to review" line at launch.
 
 ## [0.3.4] — 2026-06
 
