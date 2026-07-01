@@ -110,9 +110,27 @@ class Assistant(Markdown):
 class WorkingIndicator(Static):
     """A transient spinner shown the instant a turn starts, so there's never a dead
     gap before the first output. Removed as soon as real content/thinking/a tool
-    arrives. Kept minimal — a spinner + a calm 'working…' on the grid."""
+    arrives — so it only ever lives during the initial wait. Two lines: spinner +
+    label, then a muted tip that rotates every ~12s and teaches a discoverable
+    feature. Each new indicator opens on the NEXT tip so variety builds across turns."""
 
-    FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    FRAMES = "⠋⠙⠹⠸⠼⠴▴▾◂▸"
+    TIP_INTERVAL = 12.0
+
+    # One rotating pool. Short (one line on 80 cols) and action-oriented — the user
+    # is waiting, not reading; the tip teaches by sitting next to the spinner.
+    TIPS: tuple[str, ...] = (
+        "every turn auto-saves a checkpoint — /rewind to undo, /branch to fork",
+        "esc stops the current turn mid-stream",
+        "@file attaches a file to your message",
+        "type / for commands — try /help for everything",
+        "shift+tab cycles approval mode — auto-edit allows writes but still asks before shell",
+        "click a ✦ thought block to expand the model's reasoning",
+        "tools ask before mutating — approve once, allow-all-session, or deny",
+        "writes stay inside your project; [permissions] in .visvoai/config.toml can pre-authorize",
+        "/log lists the checkpoints your work was auto-saved at",
+    )
+    _next_start = 0   # class-level cursor → consecutive turns open on different tips
 
     DEFAULT_CSS = """
     WorkingIndicator { color: $secondary; margin: 0; padding: 0 1; background: transparent; }
@@ -122,26 +140,46 @@ class WorkingIndicator(Static):
         super().__init__()
         self._label = label
         self._i = 0
+        cls = type(self)
+        self._tip_index = cls._next_start % len(self.TIPS)
+        cls._next_start += 1
+        self._tip = self.TIPS[self._tip_index]
 
     def on_mount(self) -> None:
-        self._timer = self.set_interval(0.08, self._tick)
+        self._tick_timer = self.set_interval(0.08, self._tick_frame)
+        self._tip_timer = self.set_interval(self.TIP_INTERVAL, self._tick_tip)
         self.refresh()
 
-    def _tick(self) -> None:
+    def _tick_frame(self) -> None:
         self._i += 1
+        self.refresh()
+
+    def _tick_tip(self) -> None:
+        self._tip_index = (self._tip_index + 1) % len(self.TIPS)
+        self._tip = self.TIPS[self._tip_index]
         self.refresh()
 
     def render(self) -> Text:
         tv = theme.palette(self)
+        muted = tv.get("muted") or tv.get("foreground")
         frame = self.FRAMES[self._i % len(self.FRAMES)]
         t = grid.gutter(frame, tv["secondary"])
         t.append(self._label, style=tv["secondary"])
+        # Tip line: indented to the content column, a 💡 marker, then the text.
+        # muted may be absent on some themes → fall back to foreground so we never
+        # emit `[dim None]` markup.
+        t.append("\n")
+        t.append(grid.INDENT)
+        t.append("💡 ", style=tv["secondary"])
+        t.append(self._tip, style=f"dim {muted}")
         return t
 
     def stop(self) -> None:
-        if getattr(self, "_timer", None):
-            self._timer.stop()
-            self._timer = None
+        for attr in ("_tick_timer", "_tip_timer"):
+            t = getattr(self, attr, None)
+            if t is not None:
+                t.stop()
+                setattr(self, attr, None)
 
     def on_unmount(self) -> None:
         self.stop()

@@ -164,6 +164,9 @@ class AgentTurnMixin:
         thinking_durations: list[float] = []     # each reasoning block's wall-clock seconds
         self._set_status("responding…")
         # Immediate feedback: a spinner so there's never a dead gap before output.
+        # Starts in 'working' phase; tips rotate per phase as the turn progresses
+        # (thinking → working → tool → working). The indicator's lifetime is
+        # bounded — _clear_working removes it the moment real output arrives.
         self._working = WorkingIndicator()
         await log.mount(self._working)
         log.scroll_end(animate=False)
