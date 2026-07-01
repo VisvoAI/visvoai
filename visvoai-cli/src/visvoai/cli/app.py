@@ -393,6 +393,26 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             return "standard"          # history exists
         return "empty"                 # project exists but no conversations yet
 
+    # Rotating input placeholders (#5) — a blank prompt suggests what's possible.
+    _PROMPT_EXAMPLES = (
+        "Describe a task, ask a question, or @mention a file…",
+        "try: fix the failing test in tests/",
+        "try: refactor auth.py to use dataclasses",
+        "try: add tests for the payment module",
+        "try: explain how the request flow works here",
+        "try: find and remove dead code",
+        "try: summarize what changed on this branch",
+    )
+
+    def _rotate_placeholder(self) -> None:
+        """Advance the prompt's placeholder to the next example (called after each turn
+        and after /clear). Best-effort — a terminal that ignores it just keeps the last."""
+        self._placeholder_i = (getattr(self, "_placeholder_i", 0) + 1) % len(self._PROMPT_EXAMPLES)
+        try:
+            self.query_one("#prompt", PromptArea).placeholder = self._PROMPT_EXAMPLES[self._placeholder_i]
+        except Exception:
+            pass
+
     def _welcome_standard(self) -> str:
         """The original copy: assumes the user knows what visvoai is."""
         secondary, fg = self._tv("secondary"), self._tv("foreground")

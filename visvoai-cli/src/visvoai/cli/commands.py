@@ -7,6 +7,7 @@ VisvoApp; pickers reuse ask_choice and demo actions via self.
 """
 from __future__ import annotations
 
+import difflib
 import re
 
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -53,6 +54,23 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
      ["rewind", "branch", "fork", "log", "export"]),
     ("Project", ["resume", "commit", "theme", "quit"]),
 ]
+
+def _closest_command(fragment: str) -> str | None:
+    """The nearest real command name to a mistyped `fragment` (e.g. 'undo' → 'rewind'
+    by alias, 'reset'→'rewind' by fuzz), or None if nothing is close. Pure/testable."""
+    names = [n for n, _ in SLASH_COMMANDS]
+    # Hand-picked aliases: intent words users try that aren't the literal command.
+    aliases = {"undo": "rewind", "revert": "rewind", "back": "rewind",
+               "checkout": "branch", "switch": "branch", "timeline": "branch",
+               "share": "export", "save": "export", "history": "log",
+               "commands": "help", "keys": "help", "?": "help",
+               "exit": "quit", "restart": "clear", "reset": "clear",
+               "models": "model", "key": "login", "apikey": "login"}
+    if fragment in aliases:
+        return aliases[fragment]
+    match = difflib.get_close_matches(fragment, names, n=1, cutoff=0.6)
+    return match[0] if match else None
+
 
 # (key, what it does) — the always-on shortcuts, surfaced in /help.
 _HELP_KEYS: list[tuple[str, str]] = [
@@ -261,11 +279,15 @@ class CommandsMixin:
         elif event.action == "accept":
             name = menu.selected()
             prompt = self.query_one("#prompt", PromptArea)
+            typed = prompt.text.strip()   # capture before clearing (for did-you-mean)
             prompt.slash_active = False
             prompt.text = ""  # also triggers Changed → menu hides
             await self._hide_slash_menu()
             if name:
                 self.run_command(name)
+            elif typed.startswith("/"):
+                # No command matched what they typed (#4) — suggest the closest.
+                self.run_worker(self._suggest_command(typed[1:].split(" ")[0]))
 
     async def _handle_file_key(self, menu: FileMenu, action: str) -> None:
         prompt = self.query_one("#prompt", PromptArea)
@@ -366,6 +388,7 @@ class CommandsMixin:
         # knows visvoai (they reached /clear), so the heavy onboarding would be
         # patronising and the 'history' copy is wrong (we just emptied it).
         await log.mount(WelcomeBanner(self._welcome_left, self._welcome_empty))
+        self._rotate_placeholder()   # fresh example for the new conversation (#5)
 
     async def action_request_clear(self) -> None:
         if self._clearing:
@@ -422,6 +445,18 @@ class CommandsMixin:
             f"shareable file.[/]",
         ]
         return "\n".join(out)
+
+    async def _suggest_command(self, fragment: str) -> None:
+        """`/xyz` matched no command — mount a quiet 'did you mean' hint (#4)."""
+        from visvoai.cli.widgets import SystemNote
+        guess = _closest_command(fragment)
+        if guess:
+            msg = f"no /{fragment} — did you mean [b]/{guess}[/]?  ({dict(SLASH_COMMANDS)[guess]})"
+        else:
+            msg = f"no command /{fragment} — type / to see all, or /help"
+        log = self.query_one("#log", VerticalScroll)
+        await log.mount(SystemNote(msg, kind="info"))
+        log.scroll_end(animate=False)
 
     async def _show_help(self) -> None:
         state.record_used("help")

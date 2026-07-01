@@ -355,6 +355,7 @@ class AgentTurnMixin:
         self._persist_receipt(elapsed, model_name, cost, turn_in, turn_out,
                               last_input, thinking_durations)
         await self._maybe_turn_nudges(pre_tip, log)
+        self._rotate_placeholder()   # freshen the next prompt's example (#5)
 
     def _persist_receipt(self, seconds, model_name, cost, tin, tout, context_tokens,
                          thinking_durations):
