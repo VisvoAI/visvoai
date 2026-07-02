@@ -3,6 +3,20 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.5] — 2026-07
+
+### Changed
+- **The connected look is back — with soft borders.** 0.7.4's vertical-free
+  redesign is reverted: the wired tool spine (┌─/├─/└─), full table grids, the
+  side-by-side diff divider, citation rails, and tree lines are all restored.
+  Diagnosis concluded: Terminal.app renders STYLED box glyphs from the font
+  (a hair short of the cell) while default-attribute text gets procedurally
+  drawn perfect boxes — so every styled TUI (Claude Code's tables included) has
+  the same hairline seams. Ours were only glaring because table grid lines were
+  drawn at full strength; they're now 35% ($foreground) so the seams vanish
+  into the line's softness. (0.7.4 remains in history if a spacing-proof mode
+  is ever wanted as a config flag.)
+
 ## [0.7.3] — 2026-07
 
 ### Fixed

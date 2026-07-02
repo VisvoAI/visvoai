@@ -90,9 +90,12 @@ class Assistant(Markdown):
         background: $primary 12%;
         color: $secondary;
     }
-    /* Tables: prominent grid lines (Textual's default is $foreground 20% — washed
-       out). Full $foreground reads clean and crisp. */
-    Assistant MarkdownTableContent { keyline: thin $foreground; }
+    /* Tables: SOFT grid lines (35%). Terminal.app renders styled box glyphs from
+       the font, which sit a hair short of the cell — full-strength $foreground
+       made those hairline seams glaring (esp. dark-on-light); at 35% the seams
+       disappear into the line's own softness (same trick Claude Code's dim
+       borders rely on). Do NOT raise this back to full strength. */
+    Assistant MarkdownTableContent { keyline: thin $foreground 35%; }
     /* Kill the paragraph's trailing margin so it doesn't COMPOUND with the
        between-group gap (was producing a 2-line gap after the answer). */
     Assistant MarkdownParagraph { margin: 0; }
