@@ -59,3 +59,23 @@ def test_no_screen_hand_rolls_title_css():
         src = f.read_text()
         assert not re.search(r"#\w+-title \{", src), f.name
     assert not re.search(r"#sessions-title \{", (SCREENS / "sessions.py").read_text())
+
+
+# ── Plan C: stream widgets stay on the vocabulary ────────────────────────────
+
+WIDGETS = SCREENS.parent / "widgets"
+
+
+def test_no_literal_rich_colors_in_stream_widgets():
+    """Stream widgets take colors only from theme tokens (dim/bold modifiers ok)."""
+    for f in WIDGETS.glob("*.py"):
+        src = f.read_text()
+        assert not re.search(r'style="(green|red|yellow|blue|magenta|cyan)"', src), f.name
+
+
+def test_note_kinds_live_in_iconography():
+    from visvoai.cli.iconography import GIT, MILESTONE, NOTE_KINDS
+    from visvoai.cli.widgets.system_note import _KINDS
+    assert _KINDS is NOTE_KINDS                       # one table, imported
+    assert NOTE_KINDS["branch"][0] == MILESTONE       # conversation branch = ◈
+    assert all(icon != GIT for icon, _ in NOTE_KINDS.values())  # ⎇ stays git-only

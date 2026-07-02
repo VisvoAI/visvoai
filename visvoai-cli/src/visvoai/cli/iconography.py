@@ -32,6 +32,17 @@ STATE_IDLE = "○"
 
 GIT = "⎇"
 MODE_CHIP = "◆"
+MILESTONE = "◈"   # checkpoints / conversation branches / rewind markers (NOT git — that's ⎇)
+
+# SystemNote kinds → (icon, theme token). The stream's class-8 vocabulary lives
+# here with everything else so no widget invents glyphs locally.
+NOTE_KINDS: dict[str, tuple[str, str]] = {
+    "info": ("⊕", "muted"),
+    "compacted": ("✦", "secondary"),
+    "branch": (MILESTONE, "primary"),   # conversation branch — ⎇ is reserved for git
+    "stopped": ("⊘", "warning"),
+    "stale": ("↺", "warning"),
+}
 
 # State → (icon, theme token) for the common lifecycle vocabulary. Screens map
 # their domain states onto these; the token is a `theme.palette()` key.

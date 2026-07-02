@@ -11,15 +11,7 @@ from rich.text import Text
 from textual.widgets import Static
 
 from visvoai.cli import grid, theme
-
-# kind -> (icon, palette-key for the icon accent). Message text stays muted.
-_KINDS = {
-    "info": ("⊕", "muted"),
-    "compacted": ("✦", "secondary"),
-    "branch": ("⎇", "primary"),
-    "stopped": ("⊘", "warning"),
-    "stale": ("↺", "warning"),   # file changed since the agent read it — re-reading
-}
+from visvoai.cli.iconography import NOTE_KINDS as _KINDS
 
 
 class SystemNote(Static):

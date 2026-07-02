@@ -15,7 +15,7 @@ async def test_system_note_render_per_kind():
         await pilot.pause()
         log = app.query_one("#log")
         for kind, glyph in [("stopped", "⊘"), ("compacted", "✦"),
-                            ("branch", "⎇"), ("zzz", "⊕")]:  # zzz → info fallback
+                            ("branch", "◈"), ("zzz", "⊕")]:  # zzz → info fallback; ◈ = milestone (⎇ is git-only)
             note = SystemNote(kind, kind=kind)
             await log.mount(note)
             await pilot.pause()
