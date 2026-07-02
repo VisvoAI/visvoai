@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-cli"
-version = "0.7.0"
+version = "0.7.1"
 description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
 readme = "README.md"
 license = { text = "MIT" }

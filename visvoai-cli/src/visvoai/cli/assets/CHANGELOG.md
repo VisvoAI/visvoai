@@ -3,6 +3,15 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.1] — 2026-07
+
+### Changed
+- **/rewind reads like the chat.** The question picker is now chronological —
+  oldest at the top, newest at the bottom — matching the direction the
+  conversation itself scrolls, and opens with the newest question already
+  selected (the likeliest rewind target). Same for the /branch and /fork
+  checkpoint pickers, which share the screen.
+
 ## [0.7.0] — 2026-07
 
 ### Changed — UX polish (self-usable for new users)

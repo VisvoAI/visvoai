@@ -94,7 +94,10 @@ class RewindScreen(BlendScreen):
     def __init__(self, entries: list[dict]) -> None:
         super().__init__()
         self.entries = entries
-        self.idx = 0
+        # Entries are chronological (oldest first) to mirror the chat; open with
+        # the NEWEST question selected — the likeliest rewind target — and let
+        # _sync's scroll_visible bring the bottom of the list into view.
+        self.idx = max(len(entries) - 1, 0)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="rewind-box", classes="sc-box"):

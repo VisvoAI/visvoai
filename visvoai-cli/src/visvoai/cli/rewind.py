@@ -255,7 +255,9 @@ class RewindMixin:
         return store.read_timeline(self._project_id, self._conv_id, self._cp_branch)
 
     def _turn_rewind_entries(self, rows: list[dict], *, with_files: bool = True) -> list[dict]:
-        """Turn-oriented rewind targets (newest question first) — the user thinks in
+        """Turn-oriented rewind targets in CHRONOLOGICAL order (oldest first, like
+        the conversation itself — the picker reads the same way the chat scrolls,
+        with the most recent question at the bottom). The user thinks in
         questions, not checkpoint kinds. One entry per user question: rewinding to it
         restores files + chat to the moment JUST BEFORE that question (so you can re-ask).
         Each entry carries the question text and a summary of what that turn did.
@@ -299,8 +301,7 @@ class RewindMixin:
                 "files": files,
                 "when": _relative_iso(row.get("created")),
             })
-        entries.reverse()   # newest question first
-        return entries
+        return entries      # chronological — newest last, mirroring the chat
 
     def action_open_rewind(self) -> None:
         self.run_worker(self._rewind_flow())

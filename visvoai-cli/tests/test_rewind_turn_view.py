@@ -1,4 +1,5 @@
-"""The /rewind picker is turn-oriented: one entry per USER QUESTION (newest first),
+"""The /rewind picker is turn-oriented: one entry per USER QUESTION, chronological
+(oldest at the top, newest at the bottom — mirroring how the chat reads),
 each mapping to 'the moment just before you asked it', with an activity summary. This
 is the fix for 'I can only rewind to tools, not to my question'."""
 from __future__ import annotations
@@ -46,19 +47,19 @@ async def test_rewind_entries_are_one_per_question_incl_latest(tmp_path, monkeyp
             app._record_checkpoint(len(app._history), "turn", f"question {i}")
 
         entries = app._turn_rewind_entries(app._timeline())
-        # one entry per question, newest first, INCLUDING the latest (undo last turn)
-        assert [e["question"] for e in entries] == ["question 3", "question 2", "question 1"]
-        assert [e["n"] for e in entries] == [3, 2, 1]
+        # one entry per question, CHRONOLOGICAL (like the chat), incl. the latest
+        assert [e["question"] for e in entries] == ["question 1", "question 2", "question 3"]
+        assert [e["n"] for e in entries] == [1, 2, 3]
 
 
 @pytest.mark.asyncio
 async def test_rewind_screen_renders_turn_rows_and_selects(tmp_path):
     from visvoai.cli.screens.rewind_view import RewindScreen, TurnRow
-    entries = [
-        {"id": "b2", "n": 2, "question": "add tests", "activity": "wrote test_x.py",
-         "files": 1, "when": "2m ago"},
+    entries = [   # chronological, like the chat — oldest first
         {"id": "b1", "n": 1, "question": "add a rate limiter", "activity": "edited api.py",
          "files": 2, "when": "5m ago"},
+        {"id": "b2", "n": 2, "question": "add tests", "activity": "wrote test_x.py",
+         "files": 1, "when": "2m ago"},
     ]
     chosen = {}
     app = VisvoApp()
@@ -71,8 +72,10 @@ async def test_rewind_screen_renders_turn_rows_and_selects(tmp_path):
                 break
         rows = list(app.screen.query(TurnRow))
         assert len(rows) == 2                                # two-line question rows
-        assert rows[0].entry["question"] == "add tests"      # newest first, as passed
-        await pilot.press("down")                            # highlight 2nd
+        assert rows[0].entry["question"] == "add a rate limiter"  # oldest at the top
+        # opens with the NEWEST question (bottom) selected — the likeliest target
+        assert app.screen.idx == 1
+        await pilot.press("up")                              # move to the older one
         await pilot.press("enter")
         await pilot.pause()
         assert chosen["id"] == "b1"                           # selected question's checkpoint
