@@ -27,6 +27,7 @@ from textual.widgets import Input, Static, TextArea
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 from visvoai.cli.widgets.diff import CleanDiff
 
 # status letter -> palette key for its accent (chip + path emphasis)
@@ -146,7 +147,7 @@ class GitScreen(BlendScreen):
         Binding("ctrl+s", "toggle_stage", "Stage/unstage", show=False),
     ]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     GitScreen { align: center top; }
     /* Whole screen is two top-level columns: the full commit window on the left,
        the selected file's diff on the right. The right column is hidden until a
@@ -158,7 +159,6 @@ class GitScreen(BlendScreen):
     #git-preview-col { width: 1fr; height: 1fr; padding: 1 2; display: none; scrollbar-size-vertical: 1; }
     #git-preview { height: auto; }
 
-    #git-title { text-style: bold; color: $primary; padding: 0 1; }
     #git-branch { padding: 0 1; margin: 1 0 0 0; }
     #git-stat { padding: 0 1; margin: 0 0 1 0; }
 
@@ -266,10 +266,11 @@ class GitScreen(BlendScreen):
     def compose(self) -> ComposeResult:
         with Horizontal(id="git-screen"):
             with Vertical(id="git-box"):                       # left: the full commit window
-                yield Static("Commit changes", id="git-title")
+                yield Static("Commit changes", id="git-title", classes="sc-title")
                 yield Static(self._branch_line(), id="git-branch")
                 yield Static(self._stat_line(), id="git-stat")
-                yield Static("Review  ·  click a file (or ctrl+↑/↓) to view its diff  ·  ctrl+s stage/unstage",
+                yield Static("Review   ·   " + hint(("click / ^↑↓", "view a file's diff"),
+                                                     ("^s", "stage/unstage")),
                              id="git-review-hint")
                 with VerticalScroll(id="git-files"):
                     yield from self._file_widgets()

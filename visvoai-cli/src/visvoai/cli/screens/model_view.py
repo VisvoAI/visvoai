@@ -28,6 +28,7 @@ from textual.widgets.option_list import Option
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
 # Provider id → display name (proper casing; the registry uses lowercase ids).
 _PROVIDER_DISPLAY = {
@@ -106,11 +107,8 @@ class ModelScreen(BlendScreen):
         "context": lambda d: (-d.context_window, d.display_name.lower()),
     }
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     ModelScreen { align: center top; }
-    ModelScreen > #model-box { width: 100%; max-width: 120; padding: 1 4; height: 1fr; }
-
-    #model-title { text-style: bold; color: $primary; padding: 0 1; }
     #model-search, #model-search:focus {
         border: none; background: transparent; padding: 0 1; margin: 0 0 1 0;
         border-bottom: solid $primary;
@@ -119,8 +117,7 @@ class ModelScreen(BlendScreen):
     #model-list:focus { border: none; }
     #model-list > .option-list--option-highlighted { background: $hover; }
     #model-list > .option-list--option-disabled { color: $muted; }
-    #model-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
-
+    
     #think-panel { height: auto; display: none; padding: 1 1 0 1; border-top: solid $primary-darken-2; margin: 1 0 0 0; }
     #think-panel.shown { display: block; }
     #think-label { color: $primary; text-style: bold; }
@@ -226,14 +223,16 @@ class ModelScreen(BlendScreen):
         ol.highlighted = target
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="model-box"):
-            yield Static("Select model", id="model-title")
+        with Vertical(id="model-box", classes="sc-box"):
+            yield Static("Select model", id="model-title", classes="sc-title")
             yield Input(placeholder="search models…", id="model-search")
             yield OptionList(id="model-list")
             with Vertical(id="think-panel"):
                 yield Static("", id="think-label")
                 yield Horizontal(id="think-chips")
-            yield Static("type to search   ↑/↓ choose   enter select   esc cancel", id="model-hint")
+            yield Static(hint(("type", "search"), ("↑/↓", "choose"), ("enter", "select"),
+                              ("^s", "sort"), ("^t", "thinking-only"), ("^k", "connected-only"),
+                              ("esc", "cancel")), id="model-hint", classes="sc-hint")
 
     def on_mount(self) -> None:
         super().on_mount()

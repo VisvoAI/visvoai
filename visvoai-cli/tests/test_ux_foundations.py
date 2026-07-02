@@ -40,3 +40,22 @@ def test_reference_screens_use_no_literal_rich_colors(fname):
     adopters against style="green"/"red"/"yellow" literals creeping back."""
     src = (SCREENS / fname).read_text()
     assert not re.search(r'style="(green|red|yellow|blue|magenta|cyan)"', src), fname
+
+
+# ── Plan B: all screens on the shared chrome ─────────────────────────────────
+
+@pytest.mark.parametrize("fname", ["mcp_view.py", "process_view.py", "rewind_view.py",
+                                   "branch_view.py", "sessions.py", "model_view.py"])
+def test_screens_use_shared_chrome(fname):
+    src = (SCREENS / fname).read_text()
+    assert "CHROME_CSS" in src, f"{fname} not on shared chrome"
+    assert "hint(" in src, f"{fname} not using shared hint()"
+
+
+def test_no_screen_hand_rolls_title_css():
+    """The drifting per-screen `#x-title {…}` rules are gone — title styling
+    comes only from .sc-title in chrome.py."""
+    for f in SCREENS.glob("*_view.py"):
+        src = f.read_text()
+        assert not re.search(r"#\w+-title \{", src), f.name
+    assert not re.search(r"#sessions-title \{", (SCREENS / "sessions.py").read_text())

@@ -16,6 +16,7 @@ from textual.widgets import Static
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
 
 class TurnRow(Vertical):
@@ -86,14 +87,8 @@ class RewindScreen(BlendScreen):
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     RewindScreen { align: center top; }
-    RewindScreen > #rewind-box { width: 100%; max-width: 120; padding: 1 4; height: 1fr; }
-    #rewind-title { text-style: bold; color: $primary; padding: 0 1; }
-    #rewind-sub { color: $muted; padding: 0 1; margin: 0 0 1 0; }
-    #rewind-list { height: 1fr; }
-    #rewind-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
-    #rewind-empty { color: $muted; padding: 0 1; }
     """
 
     def __init__(self, entries: list[dict]) -> None:
@@ -102,22 +97,26 @@ class RewindScreen(BlendScreen):
         self.idx = 0
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="rewind-box"):
-            yield Static("Rewind — jump back to one of your questions", id="rewind-title")
+        with Vertical(id="rewind-box", classes="sc-box"):
+            yield Static("Rewind — jump back to one of your questions", id="rewind-title", classes="sc-title")
             yield Static(
-                "Pick a question below. Your files and the conversation are restored to "
-                "the moment just before you asked it — everything after is discarded (or "
-                "kept on a new branch). The line under each question is what that turn did.",
-                id="rewind-sub")
-            with VerticalScroll(id="rewind-list"):
+                "Pick a question — you're taken back to the moment just before you "
+                "asked it. Nothing is lost yet: the next step asks what to revert "
+                "(code, chat, or both) and always offers a branch instead.",
+                id="rewind-sub", classes="sc-sub")
+            with VerticalScroll(id="rewind-list", classes="sc-list"):
                 if self.entries:
                     for i, e in enumerate(self.entries):
                         yield TurnRow(i, e)
                 else:
                     yield Static(
-                        "No earlier questions to rewind to yet — ask something and I'll "
-                        "checkpoint each turn automatically.", id="rewind-empty")
-            yield Static("↑/↓ navigate   enter select   esc cancel", id="rewind-hint")
+                        "No earlier questions yet. Every turn is checkpointed "
+                        "automatically — ask anything, and this screen fills in. "
+                        "(Files snapshot to a shadow repo; your own git is never touched.)",
+                        id="rewind-empty", classes="sc-empty")
+            yield Static(hint(("↑/↓", "navigate"),
+                              ("enter", "choose action: revert code / chat / both · summarize · branch"),
+                              ("esc", "cancel")), id="rewind-hint", classes="sc-hint")
 
     def on_mount(self) -> None:
         super().on_mount()

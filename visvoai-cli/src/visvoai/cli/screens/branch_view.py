@@ -16,6 +16,7 @@ from textual.widgets import Static
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
 NEW_BRANCH = "+new"
 
@@ -81,13 +82,9 @@ class BranchScreen(BlendScreen):
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     BranchScreen { align: center top; }
-    BranchScreen > #branch-box { width: 100%; max-width: 110; padding: 1 4; height: 1fr; }
-    #branch-title { text-style: bold; color: $primary; padding: 0 1; }
-    #branch-sub { color: $muted; padding: 0 1; margin: 0 0 1 0; }
-    #branch-list { height: 1fr; }
-    #branch-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
+    BranchScreen > .sc-box { max-width: 110; }
     """
 
     def __init__(self, entries: list[dict]) -> None:
@@ -97,17 +94,18 @@ class BranchScreen(BlendScreen):
         self.idx = 0
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="branch-box"):
-            yield Static("Branches — your saved timelines", id="branch-title")
+        with Vertical(id="branch-box", classes="sc-box"):
+            yield Static("Branches — your saved timelines", id="branch-title", classes="sc-title")
             yield Static(
-                "Each branch is an independent timeline with its own chat + files. "
-                "Selecting one switches to it (restoring its files); ● marks the current "
-                "one. Or start a new branch from any checkpoint — nothing is ever lost.",
-                id="branch-sub")
-            with VerticalScroll(id="branch-list"):
+                "Each branch is an independent timeline of THIS conversation — its own "
+                "chat + files (not a git branch; your repo is untouched). Selecting one "
+                "switches to it; ● marks the current one. Nothing is ever lost.",
+                id="branch-sub", classes="sc-sub")
+            with VerticalScroll(id="branch-list", classes="sc-list"):
                 for i, e in enumerate(self.entries):
                     yield BranchRow(i, e)
-            yield Static("↑/↓ navigate   enter select   esc cancel", id="branch-hint")
+            yield Static(hint(("↑/↓", "navigate"), ("enter", "switch (or ＋ start a new branch)"),
+                              ("esc", "cancel")), id="branch-hint", classes="sc-hint")
 
     def on_mount(self) -> None:
         super().on_mount()

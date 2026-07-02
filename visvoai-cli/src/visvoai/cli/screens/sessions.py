@@ -19,6 +19,7 @@ from textual.widgets import Input, Static
 
 from visvoai.cli import theme
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
 
 def _date_group(ts: float) -> str:
@@ -99,18 +100,14 @@ class SessionsScreen(BlendScreen):
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     SessionsScreen { align: center top; }
-    SessionsScreen > #sessions-box { width: 100%; max-width: 110; padding: 1 4; height: 1fr; }
-    #sessions-title { text-style: bold; color: $primary; padding: 0 1; }
+    SessionsScreen > .sc-box { max-width: 110; }
     #sessions-search, #sessions-search:focus {
         border: none; background: transparent; padding: 0 1; margin: 0 0 1 0;
         border-bottom: solid $primary;
     }
-    #sessions-list { height: 1fr; }
     .sessions-group { text-style: bold; color: $muted; padding: 0 1; margin: 1 0 0 0; }
-    #sessions-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
-    #sessions-empty { color: $muted; padding: 0 1; }
     """
 
     def __init__(self, sessions: list[dict]) -> None:
@@ -133,12 +130,13 @@ class SessionsScreen(BlendScreen):
         return widgets
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="sessions-box"):
-            yield Static("Resume a conversation", id="sessions-title")
+        with Vertical(id="sessions-box", classes="sc-box"):
+            yield Static("Resume a conversation", id="sessions-title", classes="sc-title")
             yield Input(placeholder="search sessions…", id="sessions-search")
-            with VerticalScroll(id="sessions-list"):
+            with VerticalScroll(id="sessions-list", classes="sc-list"):
                 yield from self._list_widgets()
-            yield Static("↑/↓ navigate   enter resume   esc close", id="sessions-hint")
+            yield Static(hint(("↑/↓", "navigate"), ("enter", "resume"), ("type", "search"),
+                              ("esc", "close")), id="sessions-hint", classes="sc-hint")
 
     def on_mount(self) -> None:
         super().on_mount()  # blend with the terminal background
@@ -162,7 +160,8 @@ class SessionsScreen(BlendScreen):
             await lst.mount_all(self._list_widgets())
             self._sync()
         else:
-            await lst.mount(Static("no matching sessions", id="sessions-empty"))
+            await lst.mount(Static("no matching sessions — clear the search to see all",
+                                   id="sessions-empty", classes="sc-empty"))
 
     def on_key(self, event) -> None:
         if not self.filtered:

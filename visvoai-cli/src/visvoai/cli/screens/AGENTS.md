@@ -15,6 +15,7 @@ resume, git commit). Each `dismiss(...)`es a result the caller awaits.
 - `mcp_view.py` → `MCPScreen` — MCP server status (untrusted-first ordering), setup help when empty, and trust-toggling for project-defined servers (enter marks pending; applied by the caller on close). `dismiss(list[str])` — server names to trust. Infrastructure state deliberately lives here, not in the chat log.
 
 # Conventions
+- ALL screens embed `CHROME_CSS` and style title/sub/list/hint/empty via the sc-* classes (ids remain for tests/queries); key-help lines are built with `chrome.hint()` — never hand-rolled strings. GitScreen keeps its custom two-column layout but uses sc-title + hint() for the shared parts.
 - Screens subclass `BlendScreen` (not raw `Screen`) so the background matches the app.
 - Driven by plain data passed in (e.g. a `DeployView` list, a git status) — they don't import `visvoai.ai`/`gitio` for data directly where the caller can supply it.
 
