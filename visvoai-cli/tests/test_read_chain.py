@@ -57,8 +57,9 @@ async def test_read_chain_wires_connectors():
             await group.add_node(_node(i))
         await pilot.pause()
         rows = [n.row for n in group.nodes()]
-        for row in rows:                        # uniform single-line tick — no spine
-            assert "╶─" in str(row.render())
+        assert "┌─" in str(rows[0].render())   # first row opens the wire downward
+        assert "├─" in str(rows[1].render())   # middle row
+        assert "└─" in str(rows[-1].render())  # last row corners
 
 
 @pytest.mark.asyncio

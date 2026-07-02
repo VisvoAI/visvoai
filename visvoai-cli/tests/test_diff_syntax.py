@@ -89,8 +89,8 @@ async def test_side_by_side_when_explicit_and_wide():
         await app.query_one("#log").mount(d)
         await pilot.pause()
         assert d._built_layout == "side"
-        # no divider glyph anywhere — the panes split by gap + background wash
-        assert not any("│" in str(r.render()) for r in d.query(_DiffLine))
+        # the before/after divider appears in rows
+        assert any("│" in str(r.render()) for r in d.query(_DiffLine))
 
 
 @_pytest.mark.asyncio

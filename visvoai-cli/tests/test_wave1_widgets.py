@@ -96,5 +96,5 @@ async def test_citation_renders_source_and_quoted_excerpt():
         assert "≡" in out
         assert "SQLAlchemy 2.0 migration guide" in out
         assert "docs.sqlalchemy.org" in out
-        assert "▍" in out                         # per-line quote tick (no cross-line glyph)
+        assert "│" in out                         # quote bar
         assert "Use Session.get() instead." in out

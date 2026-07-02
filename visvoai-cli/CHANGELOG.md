@@ -3,20 +3,6 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
-## [0.7.4] — 2026-07
-
-### Changed — spacing-proof rendering
-- **No glyph relies on touching the line above/below anymore.** Terminals with
-  line spacing above 1.0 (e.g. Terminal.app with a custom line height) render any
-  cross-line vertical as broken dashes. Redesigned, per user report + screenshot:
-  - **Tables**: continuous full-width horizontal rules (top, between rows, bottom)
-    with padded columns — the bordered look, nothing vertical to break.
-  - **Tool wires**: every row is the single-line `╶─` tick; clusters read via
-    adjacency and the aligned verb column (was a connected ┌─/├─/└─ spine).
-  - **Side-by-side diffs**: the `│` divider is gone — panes split by gap and the
-    add/del background washes.
-  - Citations (quote rail), the structure tree, and /log's chain marker likewise.
-
 ## [0.7.3] — 2026-07
 
 ### Fixed

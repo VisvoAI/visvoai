@@ -46,7 +46,7 @@ class Citation(Static):
         for line in self.excerpt.splitlines():
             t.append("\n")
             t.append(grid.INDENT)            # reach col CONTENT (3)
-            t.append("▍ ", style=f"dim {tv['muted']}")  # left tick per line (spacing-proof — no cross-line glyph)
+            t.append("│ ", style=f"dim {tv['muted']}")  # bar at col 3, text at col 5
             t.append(line, style=tv["foreground"])
         return t
 

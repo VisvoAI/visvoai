@@ -4,7 +4,7 @@ A tool call is a node on a vertical box-drawing wire. Each `ToolRow`:
 
     {connector} {verb}  {target}                      {rail metadata} {glyph}
 
-- **connector** (always the single-line `╶─` tick — spacing-proof) is set by the owning
+- **connector** (`├─` mid-cluster, `└─` last, `╶─` lone) is set by the owning
   `ToolGroup` — it shows cluster membership + where the cluster ends.
 - **verb** = lowercase mapped tool name, coloured by *consequence*: reads/searches
   are muted (cheap, safe), edits/writes carry the brand accent (mutating), run is
@@ -14,7 +14,7 @@ A tool call is a node on a vertical box-drawing wire. Each `ToolRow`:
   WHAT KIND of action; the rail glyph says HOW IT WENT.
 
 `ToolGroup` owns the wire: consecutive tool rows mount into one group so the
-rows cluster by adjacency; a non-tool block seals the group.
+connectors join them; a non-tool block seals the group (the last row keeps `└─`).
 """
 from __future__ import annotations
 
@@ -324,8 +324,8 @@ class ToolNode(Vertical):
 
 class ToolGroup(Vertical):
     """Owns the wire for a cluster of tool units. `add(item)` joins a `ToolRow` or
-    `ToolNode` to the wire; every row carries the same `╶─` tick (no vertical
-    spine — see _rewire), so clusters read via adjacency."""
+    `ToolNode` to the wire; the group keeps `├─` on every item except the last,
+    which gets `└─`. A lone item (group of one) reads as a single `└─` leaf."""
 
     DEFAULT_CSS = """
     ToolGroup { background: transparent; height: auto; margin: 0; padding: 0; }
@@ -342,13 +342,20 @@ class ToolGroup(Vertical):
         return item
 
     def _rewire(self) -> None:
-        # Every row is the same single-line tick `╶─`. The wire USED to be a
-        # connected spine (┌─/├─/└─), but any glyph relying on touching the line
-        # above/below renders as broken dashes on terminals with line-spacing > 1
-        # (user-reported, Terminal.app). Clustering reads from adjacency + the
-        # aligned verb column instead — same schematic feel, spacing-proof.
-        for item in self._items:
-            item.set_connector("╶─")
+        # A lone row is a single-line leaf `╶─`. In a multi-row cluster the first
+        # row OPENS the wire downward with `┌─` (down+right) so it connects into the
+        # ├─ below it; the `└─` corner closes the bottom.
+        n = len(self._items)
+        for i, item in enumerate(self._items):
+            if n == 1:
+                conn = "╶─"
+            elif i == 0:
+                conn = "┌─"
+            elif i == n - 1:
+                conn = "└─"
+            else:
+                conn = "├─"
+            item.set_connector(conn)
 
     def rows(self) -> list:
         return list(self._items)
