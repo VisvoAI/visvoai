@@ -19,9 +19,13 @@ from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
+from visvoai.cli.iconography import STATE_STYLE
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
-_STATE_ICON = {"connected": "●", "failed": "✗", "untrusted": "◆", "disabled": "○"}
+# domain state → shared lifecycle state (iconography.STATE_STYLE)
+_LIFECYCLE = {"connected": "ok", "failed": "failed",
+              "untrusted": "attention", "disabled": "disabled"}
 _STATE_LABEL = {"connected": "connected", "failed": "failed",
                 "untrusted": "needs approval", "disabled": "disabled"}
 
@@ -86,18 +90,19 @@ class ServerRow(Vertical):
     def _render_row(self) -> None:
         tv = theme.palette(self)
         s = self.status
-        state_style = {"connected": "green", "failed": "red",
-                       "untrusted": "yellow", "disabled": f"dim {tv['muted']}"}[s.state]
+        icon, token = STATE_STYLE[_LIFECYCLE[s.state]]
+        state_style = f"dim {tv['muted']}" if token == "muted" else tv[token]
 
         # Line 1 — marker, state dot, name, then state · source · transport.
         head = Text()
         head.append(" ❯ " if self._active else "   ",
                     style=tv["primary"] if self._active else "dim")
-        head.append(f"{_STATE_ICON[s.state]} ", style=state_style)
+        head.append(f"{icon} ", style=state_style)
         head.append(s.name, style=f"bold {tv['primary']}" if self._active
                     else f"bold {tv['foreground']}")
         label = "trusted — connects on close" if self.pending_trust else _STATE_LABEL[s.state]
-        head.append(f"   {label}", style=state_style if not self.pending_trust else "green")
+        head.append(f"   {label}",
+                    style=state_style if not self.pending_trust else tv["success"])
         head.append(f" · {s.source} · {s.transport}", style=f"dim {tv['muted']}")
         self.query_one(".sr-head", Static).update(head)
 
@@ -111,10 +116,10 @@ class ServerRow(Vertical):
             if sample:
                 line2.append(f": {sample}", style=f"dim {tv['muted']}")
         elif s.state == "failed":
-            line2.append(s.error or "connection failed", style="red")
+            line2.append(s.error or "connection failed", style=tv["error"])
         elif s.state == "untrusted":
             line2.append("this project's config defines it — press enter to trust "
-                         "(one-time, remembered outside the repo)", style="yellow")
+                         "(one-time, remembered outside the repo)", style=tv["warning"])
         else:
             line2.append("disabled in config (enabled = false)", style=f"dim {tv['muted']}")
         self.query_one(".sr-tools", Static).update(line2)
@@ -133,14 +138,8 @@ class MCPScreen(BlendScreen):
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     MCPScreen { align: center top; }
-    MCPScreen > #mcp-box { width: 100%; max-width: 120; padding: 1 4; height: 1fr; }
-    #mcp-title { text-style: bold; color: $primary; padding: 0 1; }
-    #mcp-sub { color: $muted; padding: 0 1; margin: 0 0 1 0; }
-    #mcp-list { height: 1fr; }
-    #mcp-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
-    #mcp-empty { padding: 0 1; }
     #mcp-add { padding: 0 1; margin: 1 0 0 0; }
     """
 
@@ -168,25 +167,27 @@ class MCPScreen(BlendScreen):
         return "  ·  ".join(parts)
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="mcp-box"):
-            yield Static("MCP servers — plug external tools into the agent", id="mcp-title")
+        with Vertical(id="mcp-box", classes="sc-box"):
+            yield Static("MCP servers — plug external tools into the agent", id="mcp-title", classes="sc-title")
             yield Static(self._summary() if self.statuses else
                          "Connect the agent to browsers, issue trackers, databases and "
                          "hundreds of other tools via the Model Context Protocol.",
-                         id="mcp-sub")
-            with VerticalScroll(id="mcp-list"):
+                         id="mcp-sub", classes="sc-sub")
+            with VerticalScroll(id="mcp-list", classes="sc-list"):
                 if self.statuses:
                     for i, s in enumerate(self.statuses):
                         yield ServerRow(i, s, self.specs.get(s.name),
                                         self.tools_by_server.get(s.name, []))
                 else:
-                    yield Static(self._empty_help(), id="mcp-empty")
+                    yield Static(self._empty_help(), id="mcp-empty", classes="sc-empty")
             if self.statuses:
                 yield Static(self._add_more_help(), id="mcp-add")
-            hint = ("↑/↓ navigate   enter trust/untrust a project server   esc apply & close"
-                    if self.statuses else
-                    "esc close — re-open /mcp after adding a server to see it connect")
-            yield Static(hint, id="mcp-hint")
+            hint_line = (hint(("↑/↓", "navigate"),
+                               ("enter", "trust/untrust a project server"),
+                               ("esc", "apply & close"))
+                         if self.statuses else
+                         hint(("esc", "close — re-open /mcp after adding a server")))
+            yield Static(hint_line, id="mcp-hint", classes="sc-hint")
 
     def _empty_help(self) -> Text:
         tv = theme.palette(self)

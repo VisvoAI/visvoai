@@ -4,6 +4,7 @@ Full-screen Textual views pushed over the main conversation (model picker, sessi
 resume, git commit). Each `dismiss(...)`es a result the caller awaits.
 
 # Key Files
+- `chrome.py` → shared screen chrome: `CHROME_CSS` (class-based .sc-box/.sc-title/.sc-sub/.sc-list/.sc-hint/.sc-empty) + `hint((key, action), …)` for the standard key-help line. New screens embed CHROME_CSS and style via the sc-* classes (ids stay for tests); mcp_view + process_view are the reference adopters.
 - `base.py` → `BlendScreen` — shared base that paints the detected terminal background so a screen blends with the app.
 - `model_view.py` → `ModelScreen` (the model page): a virtualized `OptionList` + search `Input` (handles the full ~4000-model catalog), grouped by provider (connected first, locked tagged "· needs key"), aligned ctx/thinking/cost columns + `ThinkChip` (thinking-level chooser). Sort (⌃s name/cost/context, within group) + filters (⌃t thinking-only, ⌃k connected-only). Returns `(deployment_id, level)`. Search input style matches `SessionsScreen`.
 - `sessions.py` → `SessionsScreen` — resume a past conversation. Rows grouped by recency via `_date_group(ts)` (Today / Yesterday / Last 7 days / Last month / Older) off each session's `_sort` epoch; centered layout matching the model page.

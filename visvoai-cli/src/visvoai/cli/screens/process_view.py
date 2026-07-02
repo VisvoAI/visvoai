@@ -16,8 +16,10 @@ from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
+from visvoai.cli.iconography import STATE_STYLE
 from visvoai.cli.processes import ProcessRegistry, describe_cmd
 from visvoai.cli.screens.base import BlendScreen
+from visvoai.cli.screens.chrome import CHROME_CSS, hint
 
 
 def _age(started_at: float) -> str:
@@ -73,12 +75,14 @@ class ProcRow(Vertical):
         head = Text()
         head.append(" ❯ " if self._active else "   ",
                     style=tv["primary"] if self._active else "dim")
-        head.append("⏵ " if running else "○ ", style="green" if running else f"dim {tv['muted']}")
+        icon, token = STATE_STYLE["running" if running else "idle"]
+        head.append(f"{icon} ",
+                    style=tv[token] if running else f"dim {tv['muted']}")
         head.append(f"{info.id}  ", style=f"dim {tv['muted']}")
         head.append(describe_cmd(info.command),
                     style=f"bold {tv['primary']}" if self._active else f"bold {tv['foreground']}")
         if running:
-            head.append(f"   running · {_age(info.started_at)}", style="green")
+            head.append(f"   running · {_age(info.started_at)}", style=tv["success"])
         else:
             by = f" by {info.stopped_by}" if info.stopped_by else ""
             head.append(f"   {info.status}{by} (exit {info.returncode})",
@@ -104,14 +108,8 @@ class ProcessScreen(BlendScreen):
 
     BINDINGS = [Binding("escape", "close", "Close", show=False)]
 
-    DEFAULT_CSS = """
+    DEFAULT_CSS = CHROME_CSS + """
     ProcessScreen { align: center top; }
-    ProcessScreen > #ps-box { width: 100%; max-width: 120; padding: 1 4; height: 1fr; }
-    #ps-title { text-style: bold; color: $primary; padding: 0 1; }
-    #ps-sub { color: $muted; padding: 0 1; margin: 0 0 1 0; }
-    #ps-list { height: 1fr; }
-    #ps-hint { color: $muted; padding: 0 1; margin: 1 0 0 0; }
-    #ps-empty { color: $muted; padding: 0 1; }
     """
 
     def __init__(self, registry: ProcessRegistry) -> None:
@@ -136,13 +134,13 @@ class ProcessScreen(BlendScreen):
         return " · ".join(parts) or "none"
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="ps-box"):
-            yield Static("Background processes", id="ps-title")
+        with Vertical(id="ps-box", classes="sc-box"):
+            yield Static("Background processes", id="ps-title", classes="sc-title")
             yield Static(
                 "Servers and watchers the agent started with start_process. They keep "
                 "running between turns; everything here is killed when the app exits.",
-                id="ps-sub")
-            with VerticalScroll(id="ps-list"):
+                id="ps-sub", classes="sc-sub")
+            with VerticalScroll(id="ps-list", classes="sc-list"):
                 procs = self._procs()
                 if procs:
                     for i, p in enumerate(procs):
@@ -151,9 +149,10 @@ class ProcessScreen(BlendScreen):
                     yield Static(
                         "Nothing running. When the agent needs a dev server or watcher "
                         "it starts one here — or ask it to (\"run the app in the "
-                        "background\").", id="ps-empty")
-            yield Static("↑/↓ navigate   enter stop / dismiss   r refresh   esc close",
-                         id="ps-hint")
+                        "background\").", id="ps-empty", classes="sc-empty")
+            yield Static(hint(("↑/↓", "navigate"), ("enter", "stop / dismiss"),
+                              ("r", "refresh"), ("esc", "close")),
+                         id="ps-hint", classes="sc-hint")
 
     def on_mount(self) -> None:
         super().on_mount()
@@ -188,7 +187,7 @@ class ProcessScreen(BlendScreen):
         else:
             await box.mount(Static(
                 "Nothing running. When the agent needs a dev server or watcher it "
-                "starts one here — or ask it to.", id="ps-empty"))
+                "starts one here — or ask it to.", id="ps-empty", classes="sc-empty"))
         self.idx = min(self.idx, max(len(procs) - 1, 0))
         self._sync()
 
