@@ -101,6 +101,18 @@ _HELP_KEYS: list[tuple[str, str]] = [
     ("Esc", "Stop the current turn"),
 ]
 
+# Prompt editing keys (surfaced in /help "Typing & editing"). TextArea stock +
+# PromptArea's parity bindings — keep in sync with widgets/prompt.py.
+_HELP_EDIT_KEYS: list[tuple[str, str]] = [
+    ("Ctrl+W / ⌥⌫", "Delete the previous word"),
+    ("Ctrl+U / Ctrl+K", "Delete to start / end of line"),
+    ("Ctrl+A / Ctrl+E", "Jump to start / end of line"),
+    ("Ctrl+←/→ · ⌥←/→", "Jump by word"),
+    ("Ctrl+Z / Ctrl+Y", "Undo / redo"),
+    ("Ctrl+J / ⇧Enter", "New line without sending"),
+    ("@file", "Attach a file (picker opens as you type)"),
+]
+
 
 class CommandsMixin:
     """Slash-command menu + the /theme, /model, /compact, /clear, /help flows."""
@@ -267,6 +279,7 @@ class CommandsMixin:
         on close."""
         from visvoai.cli.screens import ProcessScreen
 
+        state.record_used("ps")
         await self.push_screen_wait(ProcessScreen(self._processes))
         self._refresh_process_chip()
 
@@ -285,6 +298,7 @@ class CommandsMixin:
         from visvoai.cli import mcp
         from visvoai.cli.screens import MCPScreen
 
+        state.record_used("mcp")
         self._set_status("connecting to MCP servers…")
         try:
             statuses, tools = await mcp.get_mcp_tools(self._cwd)
@@ -414,6 +428,21 @@ class CommandsMixin:
             elif typed.startswith("/"):
                 # No command matched what they typed (#4) — suggest the closest.
                 self.run_worker(self._suggest_command(typed[1:].split(" ")[0]))
+
+    async def on_slash_menu_clicked(self, msg: SlashMenu.Clicked) -> None:
+        """Mouse parity: clicking a palette row runs it, same as enter."""
+        prompt = self.query_one("#prompt", PromptArea)
+        prompt.slash_active = False
+        prompt.text = ""
+        await self._hide_slash_menu()
+        self.run_command(msg.command)
+
+    async def on_file_menu_clicked(self, msg: FileMenu.Clicked) -> None:
+        """Mouse parity: clicking a file row inserts the @-mention, same as enter."""
+        prompt = self.query_one("#prompt", PromptArea)
+        self._insert_mention(prompt, msg.path)
+        prompt.slash_active = False
+        await self._hide_file_menu()
 
     async def _handle_file_key(self, menu: FileMenu, action: str) -> None:
         prompt = self.query_one("#prompt", PromptArea)
@@ -561,6 +590,13 @@ class CommandsMixin:
         out.append(f"[b {secondary}]Keyboard[/]")
         for key, what in _HELP_KEYS:
             out.append(f"  [b {primary}]{key:<11}[/] [dim {muted}]{what}[/]")
+        out.append("")
+
+        out.append(f"[b {secondary}]Typing & editing[/]")
+        for key, what in _HELP_EDIT_KEYS:
+            out.append(f"  [b {primary}]{key:<17}[/] [dim {muted}]{what}[/]")
+        out.append(f"  [dim {muted}]Mouse works everywhere: click rows to select, chips in "
+                   f"the footer to act, ✦ thoughts to expand.[/]")
         out.append("")
 
         out.append(f"[b {secondary}]Time travel — how it works[/]")

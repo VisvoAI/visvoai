@@ -371,6 +371,14 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         self._apply_theme(theme.theme_name(palette, new_mode))
         self.notify(f"theme: {palette} · {new_mode}")
 
+    def on_status_bar_mode_chip_clicked(self, _msg) -> None:
+        """Mouse parity: clicking the ◆ mode chip cycles the approval mode."""
+        self.action_cycle_hitl_mode()
+
+    def on_status_bar_procs_chip_clicked(self, _msg) -> None:
+        """Mouse parity: clicking the ⏵ processes chip opens /ps."""
+        self.run_worker(self._ps_flow())
+
     def action_cycle_hitl_mode(self) -> None:
         """Shift+Tab (and /mode) — cycle the approval mode: normal → auto-edit →
         accept-all. Relaxes WHEN the gate asks; path confinement is unaffected.

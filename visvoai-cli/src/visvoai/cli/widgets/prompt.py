@@ -8,12 +8,25 @@ prompts with Up/Down when the caret is at the first/last line.
 from __future__ import annotations
 
 from textual.message import Message
+from textual.binding import Binding
 from textual.widgets import TextArea
 
 
 
 class PromptArea(TextArea):
     """Auto-growing prompt composer. Posts `PromptArea.Submitted` on Enter."""
+
+    # Editing parity on top of TextArea's stock set (which already covers
+    # ctrl+w/u/k, ctrl+a/e, ctrl+←/→ word jumps, shift-selections, cut/copy/paste):
+    # undo/redo, the macOS Option-arrow word motions (terminals send alt+…), and
+    # the emacs alt+b/f/d aliases. super+z covers terminals that pass ⌘ through.
+    BINDINGS = [
+        Binding("ctrl+z,super+z", "undo", "Undo", show=False),
+        Binding("ctrl+y,super+shift+z", "redo", "Redo", show=False),
+        Binding("alt+left,alt+b", "cursor_word_left", "Word left", show=False),
+        Binding("alt+right,alt+f", "cursor_word_right", "Word right", show=False),
+        Binding("alt+d", "delete_word_right", "Delete word right", show=False),
+    ]
 
     DEFAULT_CSS = """
     PromptArea, PromptArea:focus {

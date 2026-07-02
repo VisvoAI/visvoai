@@ -135,7 +135,7 @@ class SessionsScreen(BlendScreen):
             yield Input(placeholder="search sessions…", id="sessions-search")
             with VerticalScroll(id="sessions-list", classes="sc-list"):
                 yield from self._list_widgets()
-            yield Static(hint(("↑/↓", "navigate"), ("enter", "resume"), ("type", "search"),
+            yield Static(hint(("↑/↓", "navigate"), ("enter/click", "resume"), ("type", "search"),
                               ("esc", "close")), id="sessions-hint", classes="sc-hint")
 
     def on_mount(self) -> None:

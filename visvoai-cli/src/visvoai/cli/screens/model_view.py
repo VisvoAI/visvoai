@@ -230,7 +230,7 @@ class ModelScreen(BlendScreen):
             with Vertical(id="think-panel"):
                 yield Static("", id="think-label")
                 yield Horizontal(id="think-chips")
-            yield Static(hint(("type", "search"), ("↑/↓", "choose"), ("enter", "select"),
+            yield Static(hint(("type", "search"), ("↑/↓", "choose"), ("enter/click", "select"),
                               ("^s", "sort"), ("^t", "thinking-only"), ("^k", "connected-only"),
                               ("esc", "cancel")), id="model-hint", classes="sc-hint")
 

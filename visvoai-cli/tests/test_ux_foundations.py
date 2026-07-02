@@ -79,3 +79,76 @@ def test_note_kinds_live_in_iconography():
     assert _KINDS is NOTE_KINDS                       # one table, imported
     assert NOTE_KINDS["branch"][0] == MILESTONE       # conversation branch = ◈
     assert all(icon != GIT for icon, _ in NOTE_KINDS.values())  # ⎇ stays git-only
+
+
+# ── Plan E2: mouse parity ────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_footer_chips_post_click_messages():
+    from visvoai.cli import VisvoApp
+    from visvoai.cli.widgets.status import StatusBar
+
+    app = VisvoApp()
+    seen = []
+
+    async def fake_ps_flow():
+        seen.append("procs")
+
+    async with app.run_test() as pilot:
+        # Textual dispatches on_* handlers via the class, so spy one level deeper:
+        # the real handlers resolve these through normal instance attribute lookup.
+        app.action_cycle_hitl_mode = lambda: seen.append("mode")
+        app._ps_flow = fake_ps_flow
+        sb = app.query_one("#status", StatusBar)
+        sb.set_mode("auto-edit")
+        sb.set_processes(1)
+        await pilot.pause()
+        await pilot.click("#sb-mode")
+        await pilot.click("#sb-procs")
+        await pilot.pause()
+    assert seen == ["mode", "procs"]
+
+
+@pytest.mark.asyncio
+async def test_slash_menu_row_click_runs_command():
+    from visvoai.cli import VisvoApp
+    from visvoai.cli.widgets.prompt import PromptArea
+
+    app = VisvoApp()
+    ran = []
+    async with app.run_test() as pilot:
+        app.run_command = lambda name: ran.append(name)
+        prompt = app.query_one("#prompt", PromptArea)
+        prompt.text = "/hel"
+        await pilot.pause()
+        rows = app.query("SlashCommand")
+        assert rows
+        rows.first().post_message(rows.first().app.query_one("SlashMenu").Clicked("help"))
+        await pilot.pause()
+    assert ran == ["help"]
+
+
+# ── Plan E3: prompt editing parity ───────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_prompt_undo_and_word_motions():
+    from visvoai.cli import VisvoApp
+    from visvoai.cli.widgets.prompt import PromptArea
+
+    app = VisvoApp()
+    async with app.run_test() as pilot:
+        prompt = app.query_one("#prompt", PromptArea)
+        prompt.focus()
+        await pilot.pause()
+        for ch in "hello world":
+            await pilot.press(ch if ch != " " else "space")
+        assert prompt.text == "hello world"
+
+        await pilot.press("ctrl+w")            # delete word left
+        assert prompt.text == "hello "
+        await pilot.press("ctrl+z")            # undo brings it back
+        assert "world" in prompt.text
+        await pilot.press("alt+b")             # word left
+        col_after_b = prompt.cursor_location[1]
+        await pilot.press("alt+f")             # word right
+        assert prompt.cursor_location[1] > col_after_b

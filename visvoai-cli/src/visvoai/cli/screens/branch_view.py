@@ -104,7 +104,7 @@ class BranchScreen(BlendScreen):
             with VerticalScroll(id="branch-list", classes="sc-list"):
                 for i, e in enumerate(self.entries):
                     yield BranchRow(i, e)
-            yield Static(hint(("↑/↓", "navigate"), ("enter", "switch (or ＋ start a new branch)"),
+            yield Static(hint(("↑/↓", "navigate"), ("enter/click", "switch (or ＋ start a new branch)"),
                               ("esc", "cancel")), id="branch-hint", classes="sc-hint")
 
     def on_mount(self) -> None:

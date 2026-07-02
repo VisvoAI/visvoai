@@ -3,6 +3,28 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.0] — 2026-07
+
+### Changed — UX polish (self-usable for new users)
+- **One visual system.** A single icon vocabulary (`❯` active, `●` connected,
+  `⏵` running, `✗` failed, `!` needs you, `◈` checkpoints/branches — `⎇` now means
+  git only) and a 9-class output taxonomy: every block in the stream has one icon
+  family, one accent, and one typography rule, documented as the convention for
+  new widgets.
+- **All 7 full-screen pages share one chrome** (title / subtitle / list / hint) with
+  identical key-help formatting. Guidance where it was missing: Rewind explains
+  nothing is lost until you choose; Branch clarifies branches are conversation-local
+  (not git); Model surfaces its sort/filter chords; Sessions teaches search recovery.
+- **The mouse works everywhere.** Slash-menu and @-file rows run/insert on click;
+  the ◆ mode chip cycles approval mode on click; the ⏵ processes chip opens /ps;
+  picker hints say enter/click. (Rows, thoughts, and diffs were already clickable.)
+- **Editor-grade prompt editing.** Undo/redo (Ctrl+Z / Ctrl+Y), macOS Option-arrow
+  and emacs alt+b/f word motions, alt+d delete-word-right — on top of the stock
+  word-delete/kill-line/word-jump set. All documented in /help's new
+  "Typing & editing" section.
+- /help gains the editing section + a mouse note; the working-spinner tips now
+  teach /mcp and /ps until you've used them.
+
 ## [0.6.0] — 2026-07
 
 ### Added

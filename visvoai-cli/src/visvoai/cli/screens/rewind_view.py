@@ -115,7 +115,7 @@ class RewindScreen(BlendScreen):
                         "(Files snapshot to a shadow repo; your own git is never touched.)",
                         id="rewind-empty", classes="sc-empty")
             yield Static(hint(("↑/↓", "navigate"),
-                              ("enter", "choose action: revert code / chat / both · summarize · branch"),
+                              ("enter/click", "choose action: revert code / chat / both · summarize · branch"),
                               ("esc", "cancel")), id="rewind-hint", classes="sc-hint")
 
     def on_mount(self) -> None:

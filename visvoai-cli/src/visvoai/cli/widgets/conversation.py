@@ -120,7 +120,10 @@ TIP_CATALOG: list[tuple[str | None, str]] = [
     ("commit", "/commit (Ctrl+G) reviews changes and makes a real git commit"),
     ("esc", "esc stops the current turn mid-stream"),
     ("mention", "@file attaches a file to your message"),
+    ("mcp", "/mcp plugs external tools into the agent (browsers, issue trackers, …)"),
+    ("ps", "/ps shows background processes the agent started — stop them anytime"),
     (None, "type / for commands — /help explains everything"),
+    (None, "the mouse works everywhere — click rows, footer chips, and menus"),
     (None, "click a ✦ thought block to expand the model's reasoning"),
     (None, "writes stay inside your project; [permissions] can pre-authorize safe ops"),
 ]

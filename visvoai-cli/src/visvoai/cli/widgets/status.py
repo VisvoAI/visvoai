@@ -10,6 +10,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.css.query import NoMatches
+from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
@@ -28,9 +29,21 @@ def fmt_tokens(n: int) -> str:
 
 
 class StatusBar(Horizontal):
+    """Bottom bar. The mode chip and the processes chip are CLICKABLE (cycle
+    mode / open /ps) — they're separate child Statics so they get real hit
+    areas; the app handles the posted messages."""
+
+    class ModeChipClicked(Message):
+        pass
+
+    class ProcsChipClicked(Message):
+        pass
+
     DEFAULT_CSS = """
     StatusBar { height: 1; padding: 0 1; }
+    StatusBar > #sb-mode { width: auto; }
     StatusBar > #sb-left { width: 1fr; }
+    StatusBar > #sb-procs { width: auto; }
     StatusBar > #sb-right { width: auto; content-align: right middle; }
     """
 
@@ -47,7 +60,9 @@ class StatusBar(Horizontal):
         self._processes: int = 0       # running background processes (0 → chip hidden)
 
     def compose(self) -> ComposeResult:
+        yield _ModeChip(id="sb-mode")
         yield Static(id="sb-left")
+        yield _ProcsChip(id="sb-procs")
         yield Static(id="sb-right")
 
     def on_mount(self) -> None:
@@ -139,27 +154,33 @@ class StatusBar(Horizontal):
         # The bar's child Statics exist only between compose and unmount; a status/
         # context update racing teardown would otherwise raise NoMatches.
         try:
+            mode_cell = self.query_one("#sb-mode", Static)
             left_cell = self.query_one("#sb-left", Static)
+            procs_cell = self.query_one("#sb-procs", Static)
             right_cell = self.query_one("#sb-right", Static)
         except NoMatches:
             return
         tv = theme.palette(self)
-        left = Text()
+        mode = Text()
         if self._mode is not None:
-            # A reverse-video chip so the active mode is unmissable.
-            left.append(f" ◆ {self._mode} ", style=f"bold {tv['warning']} reverse")
-            left.append("  ", style=tv["muted"])
+            # A reverse-video chip so the active mode is unmissable. Clickable: cycles.
+            mode.append(f" ◆ {self._mode} ", style=f"bold {tv['warning']} reverse")
+            mode.append("  ", style=tv["muted"])
+        mode_cell.update(mode)
+        left = Text()
         if self._status:
             left.append(self._status, style=tv["secondary"])
         else:
             left.append_text(self._model_text(tv))
         left_cell.update(left)
-        right = Text()
+        procs = Text()
         if self._processes > 0:
-            right.append(f"⏵ {self._processes} proc{'s' if self._processes != 1 else ''}",
+            procs.append(f"⏵ {self._processes} proc{'s' if self._processes != 1 else ''}",
                          style=tv["secondary"])
-            right.append("  /ps", style=f"dim {tv['muted']}")
-            right.append("   ", style=tv["muted"])
+            procs.append(" /ps", style=f"dim {tv['muted']}")
+            procs.append("   ", style=tv["muted"])
+        procs_cell.update(procs)
+        right = Text()
         if self._cost > 0:
             right.append("~$", style=f"dim {tv['muted']}")
             right.append(f"{self._cost:.4f}", style=tv["secondary"])
@@ -173,3 +194,13 @@ class StatusBar(Horizontal):
             right.append("   ", style=tv["muted"])
         right.append(self._location, style=tv["muted"])
         right_cell.update(right)
+
+
+class _ModeChip(Static):
+    def on_click(self) -> None:
+        self.post_message(StatusBar.ModeChipClicked())
+
+
+class _ProcsChip(Static):
+    def on_click(self) -> None:
+        self.post_message(StatusBar.ProcsChipClicked())

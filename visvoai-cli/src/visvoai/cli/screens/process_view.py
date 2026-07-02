@@ -150,7 +150,7 @@ class ProcessScreen(BlendScreen):
                         "Nothing running. When the agent needs a dev server or watcher "
                         "it starts one here — or ask it to (\"run the app in the "
                         "background\").", id="ps-empty", classes="sc-empty")
-            yield Static(hint(("↑/↓", "navigate"), ("enter", "stop / dismiss"),
+            yield Static(hint(("↑/↓", "navigate"), ("enter/click", "stop / dismiss"),
                               ("r", "refresh"), ("esc", "close")),
                          id="ps-hint", classes="sc-hint")
 

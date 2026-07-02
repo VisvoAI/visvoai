@@ -30,11 +30,12 @@ async def test_statusbar_mode_chip():
         sb = StatusBar(model="gemini", location="repo:main")
         await app.query_one("#log").mount(sb)
         await pilot.pause()
-        left = app.query_one("#log").query_one("#sb-left")
+        # mode lives in its own clickable chip cell since the mouse-parity pass
+        mode_cell = app.query_one("#log").query_one("#sb-mode")
         sb.set_mode("plan")
-        assert "plan" in str(left.render())
+        assert "plan" in str(mode_cell.render())
         sb.set_mode(None)
-        assert "plan" not in str(left.render())
+        assert "plan" not in str(mode_cell.render())
 
 
 @pytest.mark.asyncio

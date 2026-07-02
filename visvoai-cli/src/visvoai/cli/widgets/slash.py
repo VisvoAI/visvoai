@@ -10,6 +10,7 @@ from __future__ import annotations
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
@@ -41,10 +42,19 @@ class SlashCommand(Static):
         t.append(f"   {self.desc}", style=f"dim {tv['muted']}")
         return t
 
+    def on_click(self) -> None:
+        self.post_message(SlashMenu.Clicked(self.cmd))
+
 
 class SlashMenu(Vertical):
     """Filtered command list. `update_query()` refilters; `move()`/`selected()`
-    drive navigation. Mounting/removal is the app's responsibility."""
+    drive navigation; clicking a row posts `Clicked` (the app runs it, same as
+    enter). Mounting/removal is the app's responsibility."""
+
+    class Clicked(Message):
+        def __init__(self, command: str) -> None:
+            self.command = command
+            super().__init__()
 
     DEFAULT_CSS = """
     SlashMenu {

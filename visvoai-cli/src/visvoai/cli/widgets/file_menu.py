@@ -12,6 +12,7 @@ import os
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical
+from textual.message import Message
 from textual.widgets import Static
 
 from visvoai.cli import theme
@@ -56,8 +57,17 @@ class FileRow(Static):
         t.append(tail, style=f"bold {tv['primary']}" if self._active else tv["foreground"])
         return t
 
+    def on_click(self) -> None:
+        self.post_message(FileMenu.Clicked(self.path))
+
 
 class FileMenu(Vertical):
+
+    class Clicked(Message):
+        def __init__(self, path: str) -> None:
+            self.path = path
+            super().__init__()
+
     """Filtered file list over a fixed candidate set. `update_query()` refilters;
     `move()`/`selected()` drive navigation. Mounting/removal is the app's job."""
 

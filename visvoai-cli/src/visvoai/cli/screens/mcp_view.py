@@ -183,7 +183,7 @@ class MCPScreen(BlendScreen):
             if self.statuses:
                 yield Static(self._add_more_help(), id="mcp-add")
             hint_line = (hint(("↑/↓", "navigate"),
-                               ("enter", "trust/untrust a project server"),
+                               ("enter/click", "trust/untrust a project server"),
                                ("esc", "apply & close"))
                          if self.statuses else
                          hint(("esc", "close — re-open /mcp after adding a server")))
