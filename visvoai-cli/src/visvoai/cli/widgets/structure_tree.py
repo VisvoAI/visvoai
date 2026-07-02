@@ -27,13 +27,13 @@ def _flatten(layout: dict, prefix: str = "", parents: tuple = ()):
     items = list(layout.items())
     for i, (name, child) in enumerate(items):
         last = i == len(items) - 1
-        connector = "└─ " if last else "├─ "
+        connector = "╶─ "   # single-line tick — no vertical stem to break
         is_dir = isinstance(child, dict)
         # parents holds ancestor dir *paths*; the last is this node's parent.
         path = (parents[-1] + "/" + name) if parents else name
         yield prefix + connector, name, is_dir, path, parents
         if is_dir:
-            ext = "   " if last else "│  "
+            ext = "   "   # no cross-line vertical (line-spacing-proof)
             yield from _flatten(child, prefix + ext, (*parents, path))
 
 

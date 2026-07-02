@@ -90,9 +90,25 @@ class Assistant(Markdown):
         background: $primary 12%;
         color: $secondary;
     }
-    /* Tables: prominent grid lines (Textual's default is $foreground 20% — washed
-       out). Full $foreground reads clean and crisp. */
-    Assistant MarkdownTableContent { keyline: thin $foreground; }
+    /* Tables: HORIZONTAL rules only. Vertical │ separators are deliberately
+       absent — terminals with line-spacing > 1 (user's Terminal.app) render any
+       cross-line vertical glyph as broken dashes, while horizontal rules live
+       inside one line and stay continuous at any spacing. Rules come from cell
+       border-tops (cells touch horizontally → tops fuse into one line); the
+       container's border-bottom closes the frame. */
+    Assistant MarkdownTable {
+        border-bottom: solid $foreground 50%;
+        margin-bottom: 1;
+    }
+    Assistant MarkdownTableContent {
+        keyline: none;
+        grid-gutter: 0 0;
+    }
+    Assistant MarkdownTableContent > .cell,
+    Assistant MarkdownTableContent > .header {
+        border-top: solid $foreground 50%;
+        padding: 0 2 0 1;
+    }
     /* Kill the paragraph's trailing margin so it doesn't COMPOUND with the
        between-group gap (was producing a 2-line gap after the answer). */
     Assistant MarkdownParagraph { margin: 0; }

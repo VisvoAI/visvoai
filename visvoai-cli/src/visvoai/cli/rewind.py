@@ -753,7 +753,7 @@ class RewindMixin:
                 "edit": "manual edits", "compact": "compacted"}
         out = []
         for r in reversed(rows):
-            mark = "●" if r["checkpoint_id"] == self._cp_tip_id else "│"
+            mark = "●" if r["checkpoint_id"] == self._cp_tip_id else "·"
             tag = tags.get(r["kind"], r["kind"])
             out.append(f"  [{primary}]{mark}[/] {r['label'] or '(start)'}   "
                        f"[dim {muted}]{tag} · {_relative_iso(r.get('created'))}[/]")

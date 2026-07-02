@@ -52,7 +52,7 @@ async def test_status_glyph_in_rail():
 
 @pytest.mark.asyncio
 async def test_group_wires_connectors_last_gets_corner():
-    """First row leads in with ╶─; the last row of a cluster gets └─; re-wires on add."""
+    """Every row carries the same single-line ╶─ tick (spacing-proof — no spine)."""
     app = VisvoApp()
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -60,18 +60,18 @@ async def test_group_wires_connectors_last_gets_corner():
         await app.query_one("#log").mount(g)
         r1 = await g.add(ToolRow("read_file", "a.py"))
         await pilot.pause()
-        # a lone row reads as a single-line lead-in ╶─ (not the └─ corner)
+        # a lone row reads as a single-line lead-in ╶─
         assert "╶─" in _row(r1)
         r2 = await g.add(ToolRow("read_file", "b.py"))
         await pilot.pause()
-        # first row OPENS the wire downward (┌─); the last row gets the └─ corner
-        assert "┌─" in _row(r1)
-        assert "└─" in _row(r2)
+        # clustered rows keep the same tick — no vertical spine to break
+        assert "╶─" in _row(r1)
+        assert "╶─" in _row(r2)
         r3 = await g.add(ToolRow("read_file", "c.py"))
         await pilot.pause()
-        # middle row now gets ├─
-        assert "├─" in _row(r2)
-        assert "└─" in _row(r3)
+        # middle row: same tick
+        assert "╶─" in _row(r2)
+        assert "╶─" in _row(r3)
 
 
 @pytest.mark.asyncio
@@ -187,5 +187,5 @@ async def test_group_wires_nodes():
         n1 = await g.add(ToolNode("read_file", "a.py"))
         n2 = await g.add(ToolNode("read_file", "b.py"))
         await pilot.pause()
-        assert "┌─" in str(n1.row.render())   # first row opens the wire downward
-        assert "└─" in str(n2.row.render())   # last row corners
+        assert "╶─" in str(n1.row.render())   # uniform single-line tick
+        assert "╶─" in str(n2.row.render())

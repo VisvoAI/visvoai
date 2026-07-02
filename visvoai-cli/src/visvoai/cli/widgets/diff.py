@@ -147,11 +147,13 @@ class CleanDiff(Vertical):
         return t
 
     def _build_side(self) -> list[DiffLine]:
-        """Side-by-side: before │ after, changed lines paired across the divider."""
+        """Side-by-side: before / after, paired per line. The two panes separate by
+        a 3-space gap (the add/del background washes carry the split) — the old │
+        divider column rendered as broken dashes on line-spaced terminals."""
         tv = theme.palette(self)
         syntax = self._highlighter()
         width = self.size.width or 90
-        side = max(20, (width - 3) // 2)   # 3 = " │ "
+        side = max(20, (width - 3) // 2)   # 3 = the inter-pane gap
         add_bg, del_bg = tv["diff-add-bg"], tv["diff-del-bg"]
         rows: list[DiffLine] = []
         ln_l = ln_r = 1
@@ -172,7 +174,7 @@ class CleanDiff(Vertical):
                                          add_bg, del_bg, ln_l, ln_r))
                 ln_l += len(dels); ln_r += len(adds)
                 continue
-            row = left + Text(" │ ", style=f"dim {tv['muted']}") + right
+            row = left + Text("   ") + right
             rows.append(DiffLine(row, classes="diff-ctx"))
         return rows
 
@@ -187,7 +189,7 @@ class CleanDiff(Vertical):
                 right = self._cell(syntax, ln_r + k, "+", adds[k], side, tv, False, add_bg)
             else:
                 right = self._cell(syntax, 0, "", "", side, tv, True, None)
-            row = left + Text(" │ ", style=f"dim {tv['muted']}") + right
+            row = left + Text("   ") + right
             rows.append(DiffLine(row))
         return rows
 
