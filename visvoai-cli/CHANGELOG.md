@@ -3,6 +3,15 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.4] — 2026-07
+
+### Changed
+- **Markdown tables are borderless.** The full keyline grid (borders around every
+  cell) was the only heavy-bordered element in an otherwise borderless UI — and on
+  terminals with line-spacing above 1.0 its vertical rules rendered as broken
+  dashes. Tables now use a bold accent header, a faint wash to hold the block
+  together, and gutter-based column separation — nothing left to break.
+
 ## [0.7.3] — 2026-07
 
 ### Fixed
