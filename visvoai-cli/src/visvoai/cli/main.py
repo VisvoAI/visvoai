@@ -16,7 +16,43 @@ import sys
 import click
 
 
-@click.command()
+class _DefaultGroup(click.Group):
+    """A click Group that falls back to a default command, so `visvoai <prompt>`
+    and `visvoai --model x` keep working while `visvoai mcp …` dispatches to a
+    subcommand. Anything whose first token isn't a known subcommand is routed to
+    the default command untouched."""
+
+    def __init__(self, *args, default_command: str, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._default = default_command
+
+    # Group-level flags that must NOT be routed into the default command.
+    _GROUP_FLAGS = ("--help", "-h", "--version")
+
+    def parse_args(self, ctx, args):
+        if not args or (args[0] not in self.commands
+                        and args[0] not in self._GROUP_FLAGS):
+            args = [self._default, *args]
+        return super().parse_args(ctx, args)
+
+
+@click.group(cls=_DefaultGroup, default_command="chat",
+             context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(package_name="visvoai-cli", prog_name="visvoai-cli",
+                      message="%(prog)s v%(version)s")
+def cli() -> None:
+    """VisvoAI — terminal coding agent.
+
+    \b
+    visvoai                       launch the interactive TUI
+    visvoai "refactor the auth"   single-shot: stream one turn to stdout
+    visvoai mcp add/list/remove   manage MCP servers
+
+    Chat options (--model, --cwd, --resume, …): `visvoai chat --help`.
+    """
+
+
+@cli.command("chat")
 @click.argument("prompt", nargs=-1, required=False)
 @click.option(
     "--model",
@@ -55,8 +91,8 @@ import click
     help="Store an API key for a provider (e.g. gemini), then exit. Prompts for the "
          "key (hidden) and where to save it (global or this project).",
 )
-def cli(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
-        assume_yes: bool, set_key_provider: str, refresh_models: bool) -> None:
+def chat(prompt: tuple, model: str, cwd: str, resume: str, verbose: bool,
+         assume_yes: bool, set_key_provider: str, refresh_models: bool) -> None:
     """VisvoAI — terminal coding agent. Run with no prompt for the interactive TUI,
     or pass a prompt for a single-shot stream."""
     abs_cwd = os.path.abspath(cwd)
@@ -178,6 +214,25 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
             return False
 
         tools = build_gated_tools(cwd=cwd, approve=_headless_approve)
+
+    # MCP tools: discovered once, appended to the set. In gated mode they need
+    # approval like shell (external actions); with --yes they run ungated.
+    from visvoai.cli.mcp import get_mcp_tools
+    mcp_statuses, mcp_tools = await get_mcp_tools(cwd)
+    if verbose:
+        for s in mcp_statuses:
+            if s.state == "failed":
+                click.echo(f"[mcp: {s.name} failed — {s.error}]", err=True)
+            elif s.state == "untrusted":
+                click.echo(f"[mcp: {s.name} is project-defined and untrusted — "
+                           f"approve it via /mcp in the TUI first]", err=True)
+    if mcp_tools:
+        if assume_yes:
+            tools += mcp_tools
+        else:
+            from visvoai.cli.gated_tools import gate_tool
+            tools += [gate_tool(t, _headless_approve) for t in mcp_tools]
+
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     graph = CLIRuntime(assembler=assembler).build_graph(
         model=chat_model,
@@ -211,6 +266,144 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
         click.echo("\n[interrupted]", err=True)
 
     click.echo()  # trailing newline after the streamed response
+
+
+
+
+# ── `visvoai mcp …` — manage MCP servers ─────────────────────────────────────
+
+def _kv_pairs(pairs: tuple, what: str, sep_colon_ok: bool = False) -> dict:
+    """Parse repeated 'KEY=VALUE' (and for headers also 'Name: Value') options."""
+    out = {}
+    for p in pairs:
+        if "=" in p:
+            k, v = p.split("=", 1)
+        elif sep_colon_ok and ":" in p:
+            k, v = p.split(":", 1)
+        else:
+            raise click.UsageError(f"invalid {what} '{p}' — expected KEY=VALUE")
+        out[k.strip()] = v.strip()
+    return out
+
+
+def _mcp_config_path(project: bool, cwd: str):
+    from visvoai.cli.keys import global_config_path
+    from visvoai.cli.store import project_root
+
+    if not project:
+        return global_config_path()
+    return project_root(os.path.abspath(cwd)) / ".visvoai" / "config.toml"
+
+
+@cli.group("mcp")
+def mcp_group() -> None:
+    """Manage MCP servers (Model Context Protocol).
+
+    \b
+    visvoai mcp add chrome -- npx -y chrome-devtools-mcp@latest
+    visvoai mcp add linear --url https://mcp.linear.app/mcp \\
+        --header 'Authorization=Bearer ${LINEAR_API_KEY}'
+    visvoai mcp list
+    visvoai mcp remove chrome
+
+    Secrets: always pass ${VAR} references, never raw tokens — values expand
+    from the environment (fed by the layered key store) at connect time.
+    """
+
+
+@mcp_group.command("add")
+@click.argument("name")
+@click.argument("command_args", nargs=-1)
+@click.option("--url", default=None, help="Remote server URL (instead of a command).")
+@click.option("--header", "headers", multiple=True,
+              help="HTTP header for --url servers, KEY=VALUE (repeatable).")
+@click.option("--env", "envs", multiple=True,
+              help="Env var for command servers, KEY=VALUE (repeatable).")
+@click.option("--project", is_flag=True,
+              help="Write to this project's .visvoai/config.toml (shareable via the "
+                   "repo; teammates approve it once) instead of ~/.visvoai.")
+@click.option("--cwd", default=".", help="Project directory (with --project).")
+def mcp_add(name: str, command_args: tuple, url: str, headers: tuple,
+            envs: tuple, project: bool, cwd: str) -> None:
+    """Add (or replace) an MCP server. For local servers put the launch command
+    after `--`: visvoai mcp add github -- npx -y @modelcontextprotocol/server-github"""
+    from visvoai.cli.mcp import upsert_server_config
+
+    if bool(url) == bool(command_args):
+        raise click.UsageError("give exactly one of: a command after `--`, or --url")
+    if url and envs:
+        raise click.UsageError("--env is for command servers; use --header with --url")
+    if command_args and headers:
+        raise click.UsageError("--header is for --url servers; use --env with a command")
+
+    path = _mcp_config_path(project, cwd)
+    try:
+        if url:
+            upsert_server_config(path, name, url=url,
+                                 headers=_kv_pairs(headers, "header", sep_colon_ok=True))
+        else:
+            upsert_server_config(path, name, command=command_args[0],
+                                 args=list(command_args[1:]),
+                                 env=_kv_pairs(envs, "env"))
+    except ValueError as e:
+        raise click.UsageError(str(e))
+
+    click.echo(f"Added MCP server '{name}' → {path}")
+    for v in (*headers, *envs):
+        if "${" not in v.split("=", 1)[-1] and any(
+                s in v.lower() for s in ("token", "key", "authorization", "secret")):
+            click.echo("  warning: that looks like a raw secret — prefer KEY='${VAR}' "
+                       "and store the var via `visvoai --set-key` or secrets.toml.", err=True)
+    if project:
+        click.echo("  Project-defined server: the TUI will ask for one-time approval (/mcp).")
+    click.echo("  Check it: visvoai mcp list   (status shows in the TUI via /mcp)")
+
+
+@mcp_group.command("list")
+@click.option("--cwd", default=".", help="Project directory to resolve config for.")
+def mcp_list(cwd: str) -> None:
+    """List configured MCP servers (no network — connection status lives in /mcp)."""
+    from visvoai.cli.mcp import is_trusted, load_mcp_servers
+
+    abs_cwd = os.path.abspath(cwd)
+    servers = load_mcp_servers(abs_cwd)
+    if not servers:
+        click.echo("No MCP servers configured.\n"
+                   "Add one:  visvoai mcp add <name> -- <command …>   |   "
+                   "visvoai mcp add <name> --url <url>")
+        return
+    for s in sorted(servers.values(), key=lambda s: s.name):
+        target = s.url or " ".join([s.command, *s.args])
+        flags = []
+        if not s.enabled:
+            flags.append("disabled")
+        if s.source == "project" and not is_trusted(abs_cwd, s):
+            flags.append("awaiting approval (/mcp in the TUI)")
+        suffix = f"  [{', '.join(flags)}]" if flags else ""
+        click.echo(f"{s.name:<20} {s.source:<8} {s.transport:<16} {target}{suffix}")
+
+
+@mcp_group.command("remove")
+@click.argument("name")
+@click.option("--cwd", default=".", help="Project directory to resolve config for.")
+def mcp_remove(name: str, cwd: str) -> None:
+    """Remove an MCP server from whichever config file(s) define it."""
+    from visvoai.cli.mcp import remove_server_config
+
+    removed = []
+    for project in (False, True):
+        try:
+            path = _mcp_config_path(project, cwd)
+        except Exception:
+            continue
+        if remove_server_config(path, name):
+            removed.append(str(path))
+    if removed:
+        for p in removed:
+            click.echo(f"Removed '{name}' from {p}")
+    else:
+        click.echo(f"No MCP server named '{name}' found.", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

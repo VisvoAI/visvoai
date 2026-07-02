@@ -3,6 +3,36 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.5.0] — 2026-07
+
+### Added
+- **MCP servers.** Configure `[mcp_servers.<name>]` tables in `~/.visvoai/config.toml`
+  (personal) or `<project>/.visvoai/config.toml` (shared via the repo; project wins on
+  name collisions). Both stdio servers (`command` + `args` — the CLI spawns the
+  subprocess) and remote streamable-HTTP servers (`url` + `headers`) are supported;
+  `${VAR}` values expand from the environment, so secrets ride the existing layered
+  key system and never live in config. Discovered tools are named `server__tool` and
+  join the agent's toolset; in gated modes each call needs the same approval as shell.
+- **`/mcp` command.** A full-screen server view (like `/model`) with live status
+  (✓ connected · tool count, ✗ failed · why, ! untrusted, · disabled), setup help
+  when nothing is configured, and first-use trust approval for project-defined
+  servers — infrastructure state stays out of the conversation log.
+- **Project-server trust.** A repo's config can define servers (including subprocesses),
+  so project-defined servers never connect without a one-time local approval — recorded
+  outside the repo, keyed to a hash of the server spec (editing the spec re-prompts;
+  rotating a token doesn't).
+- Dead or slow servers can't hang the TUI: per-server 10s connect timeout, failures
+  reported in `/mcp` and skipped.
+- **`visvoai mcp add/list/remove` subcommands** — script-friendly server management
+  in the Claude-Code style: `visvoai mcp add chrome -- npx -y chrome-devtools-mcp@latest`,
+  `visvoai mcp add linear --url … --header 'Authorization=Bearer ${VAR}'`. Writes the
+  config TOML surgically (everything else in the file, comments included, is preserved),
+  warns when a header/env value looks like a pasted raw secret, and `--project` targets
+  the repo-shared config. The `visvoai` entry point is now a command group with `chat`
+  as the default command — bare prompts and all existing flags work unchanged.
+- `/mcp` empty state now teaches all three setup paths: the subcommand, hand-editing
+  the config (with a copy-paste example), or just asking the agent to write it.
+
 ## [0.4.3] — 2026-07
 
 ### Changed

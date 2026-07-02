@@ -177,7 +177,8 @@ def api_key_available(deployment_id: str) -> bool:
     return provider_has_key(dep.provider if dep else "gemini")
 
 
-def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None):
+def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None,
+                      extra_tools: list | None = None):
     """Resolve the deployment via visvoai-ai and build the CLIRuntime agent graph.
 
     level: the chosen thinking level ('off'|'low'|'medium'|'high'), or None to let
@@ -188,6 +189,10 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     mutating tools (edit/write/shell) require approval; when None, the ungated
     package tools are used. Raises (KeyError/ImportError/ValueError) on a missing
     key/integration/unknown deployment — the caller surfaces it in the UI.
+
+    extra_tools: additional pre-built LangChain tools (e.g. discovered MCP tools)
+    appended to the standard set. When approve is given they are gated too — an
+    MCP tool is an external action, same trust tier as shell.
     """
     from visvoai.ai import build_chat_model
     from visvoai.cli.context import build_assembler
@@ -197,10 +202,11 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     model = build_chat_model(deployment_id, level=level)
 
     if approve is not None:
-        from visvoai.cli.gated_tools import build_gated_tools
+        from visvoai.cli.gated_tools import build_gated_tools, gate_tool
         tools = build_gated_tools(cwd=cwd, approve=approve)
+        tools += [gate_tool(t, approve) for t in (extra_tools or [])]
     else:
-        tools = build_cli_tools(cwd=cwd)
+        tools = build_cli_tools(cwd=cwd) + list(extra_tools or [])
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     return CLIRuntime(assembler=assembler).build_graph(
         model=model,

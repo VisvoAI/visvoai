@@ -190,9 +190,15 @@ class AgentTurnMixin:
             self._set_status(None)
             return
 
+        # MCP tools: cached discovery (connects only on the first turn of a session,
+        # or after /mcp trust / config edits invalidate the cache). Never raises.
+        from visvoai.cli.mcp import get_mcp_tools
+        _mcp_statuses, mcp_tools = await get_mcp_tools(self._cwd)
+
         try:
             graph = agent.build_agent_graph(
-                self._model, self._cwd, approve=self._approve, level=self._thinking)
+                self._model, self._cwd, approve=self._approve, level=self._thinking,
+                extra_tools=mcp_tools)
         except Exception as e:  # missing key / integration / unknown model — surface it
             await self._mount_block(log, SystemNote(f"model error: {e}", kind="error"), "note")
             self._set_status(None)

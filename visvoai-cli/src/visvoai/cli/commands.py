@@ -41,6 +41,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("export", "Save this chat as a shareable transcript or bundle"),
     ("log", "List this timeline's checkpoints (undo points)"),
     ("compact", "Summarize older turns to free up context"),
+    ("mcp", "MCP servers — connection status & project-server approval"),
     ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
     ("commit", "Review changes & make a git commit"),
     ("theme", "Pick a color palette (Ctrl+T toggles light/dark)"),
@@ -53,7 +54,7 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
     ("Chat", ["model", "login", "mode", "compact", "clear"]),
     ("Time travel — your work is checkpointed every turn",
      ["rewind", "branch", "fork", "log", "export"]),
-    ("Project", ["resume", "commit", "theme", "quit"]),
+    ("Project", ["resume", "commit", "mcp", "theme", "quit"]),
 ]
 
 def _compaction_cut(messages: list, keep_turns: int) -> int | None:
@@ -259,6 +260,45 @@ class CommandsMixin:
         log.scroll_end(animate=False)
         return True
 
+    async def _mcp_flow(self) -> None:
+        """`/mcp` — full-screen MCP server view (MCPScreen): status, setup help, and
+        first-use trust approval for project-defined servers. Infrastructure state
+        stays out of the conversation log; outcomes surface as toasts."""
+        from visvoai.cli import mcp
+        from visvoai.cli.screens import MCPScreen
+
+        self._set_status("connecting to MCP servers…")
+        try:
+            statuses, tools = await mcp.get_mcp_tools(self._cwd)
+        finally:
+            self._set_status(None)
+
+        # Group tool names by server (names are `server__tool`) so connected rows
+        # can preview what the agent gained.
+        tools_by_server: dict[str, list[str]] = {}
+        for t in tools:
+            tools_by_server.setdefault(t.name.split("__", 1)[0], []).append(t.name)
+
+        specs = mcp.load_mcp_servers(self._cwd)
+        to_trust = await self.push_screen_wait(MCPScreen(statuses, specs, tools_by_server))
+        if not to_trust:
+            return
+
+        # Trust is recorded per project OUTSIDE the repo; a spec edit re-prompts.
+        for name in to_trust:
+            spec = specs.get(name)
+            if spec is not None:
+                mcp.trust_server(self._cwd, spec)
+        self._set_status("connecting to MCP servers…")
+        try:
+            statuses, _tools = await mcp.get_mcp_tools(self._cwd)
+        finally:
+            self._set_status(None)
+        connected = [s for s in statuses if s.state == "connected"]
+        self.notify(f"MCP: {sum(s.tool_count for s in connected)} tools from "
+                    f"{len(connected)} server{'s' if len(connected) != 1 else ''} "
+                    f"— live from your next message.")
+
     async def on_text_area_changed(self, event) -> None:
         prompt = self.query_one("#prompt", PromptArea)
         if event.text_area is not prompt:
@@ -414,6 +454,8 @@ class CommandsMixin:
             self.run_worker(self._log_flow())
         elif name == "compact":
             self.run_worker(self._compact_flow())
+        elif name == "mcp":
+            self.run_worker(self._mcp_flow())
         elif name == "mode":
             self.action_cycle_hitl_mode()
         elif name == "commit":

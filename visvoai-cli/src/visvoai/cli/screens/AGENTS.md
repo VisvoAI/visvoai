@@ -10,6 +10,7 @@ resume, git commit). Each `dismiss(...)`es a result the caller awaits.
 - `git_view.py` → `GitScreen` (interactive staging + commit over real git via `gitio`): `GitFileRow` + `CommitMessageArea`; adaptive list→diff two-column layout.
 - `rewind_view.py` → `RewindScreen` — pick a checkpoint to rewind/branch to (active-branch chain newest-first, per-row file-diff counts). `dismiss(checkpoint_id | None)`. Used by `/rewind`, and by `/branch`+`/fork` to choose a point.
 - `branch_view.py` → `BranchScreen` — switch conversation branches or start a new fork; a leading `NEW_BRANCH` ("+new") sentinel row. `dismiss(branch_name | '+new' | None)`.
+- `mcp_view.py` → `MCPScreen` — MCP server status (untrusted-first ordering), setup help when empty, and trust-toggling for project-defined servers (enter marks pending; applied by the caller on close). `dismiss(list[str])` — server names to trust. Infrastructure state deliberately lives here, not in the chat log.
 
 # Conventions
 - Screens subclass `BlendScreen` (not raw `Screen`) so the background matches the app.

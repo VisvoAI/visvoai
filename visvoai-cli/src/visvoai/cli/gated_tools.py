@@ -130,3 +130,32 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         t.description = inspect.cleandoc(t.description)
     return [read_file, list_files, list_tree, edit_file, write_file, run_shell,
             web_search, web_fetch]
+
+
+def gate_tool(t: BaseTool, approve: ApproveFn) -> BaseTool:
+    """Return a copy of an arbitrary pre-built async tool (e.g. a discovered MCP
+    tool) that awaits `approve` before executing. Schema, name, and description
+    stay untouched so the model sees the tool unchanged. Copy, not mutation:
+    MCP tools are session-cached and re-gated on every per-turn graph rebuild —
+    wrapping in place would stack approval prompts."""
+    name = t.name
+    inner = getattr(t, "coroutine", None)
+
+    if inner is None:
+        # Sync-only tool: run it in a worker thread behind the same gate.
+        inner_sync = t.func
+
+        async def gated(**kwargs):
+            if not await approve(name, kwargs):
+                return _DENIED
+            return await asyncio.to_thread(inner_sync, **kwargs)
+    else:
+        async def gated(**kwargs):
+            if not await approve(name, kwargs):
+                return _DENIED
+            return await inner(**kwargs)
+
+    gated_copy = t.model_copy()
+    gated_copy.func = None
+    gated_copy.coroutine = gated
+    return gated_copy
