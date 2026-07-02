@@ -3,6 +3,36 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.6.0] — 2026-07
+
+### Added
+- **Background processes.** The agent can now run dev servers and watchers properly:
+  `start_process("yarn dev")` returns a process id immediately;
+  `check_process(id, wait_seconds=…)` reads new output (waiting for a "ready" line
+  instead of polling); `stop_process(id)` terminates the whole process group. Output
+  is captured to a bounded ring buffer — a chatty server can't blow memory, and the
+  child never blocks on a full pipe.
+- **`/ps` screen** — see what's running (live runtimes, last output line), stop a
+  process with enter, dismiss finished ones. A `⏵ N procs` footer chip appears
+  whenever something is running so nothing is ever invisible.
+- **No orphans.** Every process group the agent started is killed on app exit (TUI
+  and one-shot runs alike) — a closed CLI never leaves a server squatting on a port.
+- Starting/stopping a process is approval-gated like shell; reading output is free.
+  A user-stopped process reports "stopped by the user" to the agent on next check.
+
+### Fixed
+- **MCP sessions are now persistent** — one live session per server for the app's
+  lifetime, instead of a fresh subprocess per tool call. Stateful servers finally
+  work: with chrome-devtools-mcp, a page opened in one call no longer vanishes by
+  the next (each call was silently getting a brand-new browser). Sessions close on
+  app exit and when /mcp trust or config changes force a re-connect.
+- A cancelled turn (esc / quit mid-turn) no longer crashes with `NoMatches` when its
+  cleanup races app teardown — footer updates degrade to no-ops once widgets unmount.
+- `run_shell` crashed the whole turn with `TypeError` when a command timed out while
+  a backgrounded child held the stdout pipe open (Python quirk:
+  `TimeoutExpired.stdout` is bytes even with `text=True`). Timeouts now return
+  partial output as data, and the docstring teaches the correct detach idiom.
+
 ## [0.5.0] — 2026-07
 
 ### Added
