@@ -203,14 +203,28 @@ def _connection_for(spec: MCPServerSpec) -> dict:
     return {"transport": "streamable_http", "url": spec.url, "headers": spec.headers or None}
 
 
-async def _discover_one(spec: MCPServerSpec) -> tuple[MCPServerStatus, list]:
+async def _discover_one(spec: MCPServerSpec,
+                        stack: "AsyncExitStack") -> tuple[MCPServerStatus, list]:
+    """Connect ONCE and keep the session open on `stack` for the app's lifetime.
+
+    Tools are bound to that live session — stateful servers (a browser via
+    chrome-devtools-mcp, a DB connection) keep their state across tool calls.
+    The default adapter behavior (a fresh session per call) silently resets
+    such servers between calls: pages "vanished" mid-conversation. Sessions
+    close when the stack does (invalidate/close); stdio children also die with
+    the parent process (pipe EOF) as a hard backstop.
+    """
     from langchain_mcp_adapters.client import MultiServerMCPClient
+    from langchain_mcp_adapters.tools import load_mcp_tools
 
     client = MultiServerMCPClient({spec.name: _connection_for(spec)})
     try:
-        tools = await asyncio.wait_for(
-            client.get_tools(server_name=spec.name), timeout=_CONNECT_TIMEOUT_S
+        session = await asyncio.wait_for(
+            stack.enter_async_context(client.session(spec.name)),
+            timeout=_CONNECT_TIMEOUT_S,
         )
+        tools = await asyncio.wait_for(
+            load_mcp_tools(session), timeout=_CONNECT_TIMEOUT_S)
     except asyncio.TimeoutError:
         return MCPServerStatus(spec.name, spec.source, spec.transport, "failed",
                                error=f"timed out after {_CONNECT_TIMEOUT_S:.0f}s"), []
@@ -225,13 +239,44 @@ async def _discover_one(spec: MCPServerSpec) -> tuple[MCPServerStatus, list]:
 
 
 # Session cache: discovery happens once per project dir, not once per turn
-# (the agent graph is rebuilt every turn). /mcp trust and config edits call
-# invalidate_cache() to force re-discovery.
+# (the agent graph is rebuilt every turn). Each cache entry owns an
+# AsyncExitStack holding that project's live server sessions. /mcp trust and
+# config edits call invalidate_cache() to close sessions + force re-discovery.
 _cache: dict[str, tuple[list[MCPServerStatus], list]] = {}
+_stacks: dict[str, "AsyncExitStack"] = {}
 
 
 def invalidate_cache() -> None:
+    """Drop cached discovery and schedule the old sessions' shutdown. Safe to
+    call from sync code: with no running loop the stdio children still die with
+    the parent process, so skipping the graceful close leaks nothing durable."""
     _cache.clear()
+    stacks = list(_stacks.values())
+    _stacks.clear()
+    if not stacks:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    for stack in stacks:
+        loop.create_task(_close_stack(stack))
+
+
+async def _close_stack(stack: "AsyncExitStack") -> None:
+    try:
+        await stack.aclose()
+    except Exception as e:
+        logger.debug("mcp: session close failed (ignored): %s", e)
+
+
+async def close_mcp_sessions() -> None:
+    """Gracefully close every live MCP session (app shutdown)."""
+    _cache.clear()
+    stacks = list(_stacks.values())
+    _stacks.clear()
+    for stack in stacks:
+        await _close_stack(stack)
 
 
 async def get_mcp_tools(cwd: str) -> tuple[list[MCPServerStatus], list]:
@@ -255,7 +300,10 @@ async def get_mcp_tools(cwd: str) -> tuple[list[MCPServerStatus], list]:
 
     tools: list = []
     if to_connect:
-        results = await asyncio.gather(*(_discover_one(s) for s in to_connect))
+        from contextlib import AsyncExitStack
+        stack = AsyncExitStack()
+        _stacks[key] = stack
+        results = await asyncio.gather(*(_discover_one(s, stack) for s in to_connect))
         for status, server_tools in results:
             statuses.append(status)
             tools.extend(server_tools)

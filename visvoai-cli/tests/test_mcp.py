@@ -174,7 +174,7 @@ command = "npx"
 
     calls = []
 
-    async def fake_discover(spec):
+    async def fake_discover(spec, stack):
         calls.append(spec.name)
         if spec.name == "down":
             return mcp.MCPServerStatus(spec.name, spec.source, spec.transport,
