@@ -147,7 +147,9 @@ class StatusBar(Horizontal):
             if i < fill:
                 t.append(ch, style=f"bold {tv['background']} on {fill_color}")  # filled
             else:
-                t.append(ch, style=f"{tv['muted']} on {tv['panel']}")          # track
+                # hover (the row-highlight tint) — panel can equal the terminal bg,
+                # which made an empty gauge (0%) render as invisible text-on-nothing.
+                t.append(ch, style=f"{tv['muted']} on {tv['hover']}")          # track
         return t
 
     def _render_bar(self) -> None:

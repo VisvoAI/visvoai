@@ -58,9 +58,10 @@ class SessionsMixin:
         self._persisted_count = len(messages)   # all loaded msgs are already on disk
         self._title_generated = True            # existing thread already has its title
         self._conv_id = conv_id
+        meta = store.read_meta(self._project_id, conv_id)
+        self._adopt_conversation_settings(meta)
         await self._replay_history(messages)
         self._resume_checkpoints()   # adopt the checkpoint tip; baseline any external drift
-        meta = store.read_meta(self._project_id, conv_id)
         self.set_tab_title(meta.get("title") or store.title_for(messages))
         self.notify(f"resumed: {conv_id}")
 
@@ -85,6 +86,7 @@ class SessionsMixin:
         self._persisted_count = len(messages)   # all loaded msgs are already on disk
         self._title_generated = True            # existing thread already has its title
         self._conv_id = sid
+        self._adopt_conversation_settings(store.read_meta(self._project_id, sid))
         await self._replay_history(messages)
         self._resume_checkpoints()   # adopt the checkpoint tip; baseline any external drift
         self.set_tab_title(store.read_meta(self._project_id, sid).get("title")
@@ -183,3 +185,23 @@ class SessionsMixin:
                 kind="branch",
             ))
             log.scroll_end(animate=False)
+
+    def _adopt_conversation_settings(self, meta: dict) -> None:
+        """A resumed conversation continues with ITS settings (model + thinking),
+        not whatever the app happened to launch with. Unknown/uninstalled models
+        are kept-back gracefully: notify and stay on the current one."""
+        saved_model = meta.get("model")
+        if not saved_model or saved_model == self._model:
+            pass
+        elif agent.deployment_view(saved_model) is not None:
+            self._model = saved_model
+        else:
+            self.notify(f"this conversation used '{saved_model}' — not available; "
+                        f"continuing with {self._model}")
+            return
+        if "thinking" in meta:
+            dv = agent.deployment_view(self._model)
+            saved_think = meta.get("thinking")
+            if saved_think is None or (dv and saved_think in (dv.thinking_levels or [])):
+                self._thinking = saved_think
+        self._refresh_model_status()

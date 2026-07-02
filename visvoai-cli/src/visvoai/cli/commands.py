@@ -142,6 +142,10 @@ class CommandsMixin:
         )
         if result:
             self._model, self._thinking = result
+            # Remember across launches (2a) — resumed conversations still override
+            # from their own meta (2b), which is the expected precedence.
+            state.set_pref("model", self._model)
+            state.set_pref("thinking", self._thinking)
             self._refresh_model_status()
             think = f" · think:{self._thinking}" if self._thinking else ""
             self.notify(f"model: {self._model}{think}")

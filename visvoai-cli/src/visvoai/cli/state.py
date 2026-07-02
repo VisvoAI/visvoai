@@ -117,3 +117,17 @@ def mark_shown(key: str) -> bool:
     except OSError:
         return False
     return True
+
+# ── user preferences (theme, default model/thinking) ─────────────────────────
+# Same user-scoped file as tips/coachmarks: a preference chosen in one project
+# is what the user expects everywhere. Conversation-level settings (the model a
+# specific chat used) live in that conversation's meta.json instead.
+
+def get_pref(key: str, default=None):
+    return get_global().get("prefs", {}).get(key, default)
+
+
+def set_pref(key: str, value) -> None:
+    state = get_global()
+    state.setdefault("prefs", {})[key] = value
+    _write_global(state)

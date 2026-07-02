@@ -141,6 +141,12 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # model page lets the user change it. None when the model can't think.
         _dv = agent.deployment_view(self._model)
         self._thinking = _dv.default_thinking if _dv else None
+        # Saved thinking pref applies only when it belongs to the saved model —
+        # a level saved for model A must not leak onto model B's capabilities.
+        if state_mod.get_pref("model") == self._model:
+            saved_think = state_mod.get_pref("thinking", self._thinking)
+            if saved_think is None or (_dv and saved_think in (_dv.thinking_levels or [])):
+                self._thinking = saved_think
         # Real conversation history (LangChain messages) for multi-turn turns.
         self._history: list = []
         # File-based persistence (resolved lazily on first save / resume — no
@@ -203,7 +209,12 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # so text is legible on light terminals too — not just dark. Ctrl+T flips it.
         for t in theme.THEMES:
             self.register_theme(t)
-        self.theme = theme.default_theme_for_bg(self._term_bg)
+        # Saved preference wins; falls back to the terminal-bg heuristic. Validate —
+        # a stale/renamed theme name must not crash startup.
+        saved_theme = state_mod.get_pref("theme")
+        known = {t.name for t in theme.THEMES}
+        self.theme = (saved_theme if saved_theme in known
+                      else theme.default_theme_for_bg(self._term_bg))
 
     # ── layout ──────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -218,8 +229,13 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             yield StatusBar(self._model, self._status_location(), id="status")
 
     def _resolve_startup_model(self, requested: str | None) -> str:
-        """The model to start on. A requested id must be a known chat model, else
-        we fall back to the default and queue a notice (shown on mount)."""
+        """The model to start on: an explicit --model wins, then the user's saved
+        preference (from the last /model pick), then the registry default. Unknown
+        ids fall through to the next tier (stale prefs must not crash or stick)."""
+        if requested is None:
+            saved = state_mod.get_pref("model")
+            if saved and agent.deployment_view(saved) is not None:
+                requested = saved
         try:
             default = agent.default_chat_model()
         except Exception:
@@ -352,8 +368,10 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
     # ── theming ──────────────────────────────────────────────────────────────
     def _apply_theme(self, name: str) -> None:
         """Switch theme. Textual re-resolves CSS automatically; we also nudge
-        Rich render()/restyle widgets so baked-in text colors follow."""
+        Rich render()/restyle widgets so baked-in text colors follow. The choice
+        is saved as a user preference — the next launch starts on it."""
         self.theme = name
+        state_mod.set_pref("theme", name)
         self._apply_background()  # theme switch resets bg → re-paint terminal color
         for widget in self.screen.query("*"):
             restyle = getattr(widget, "restyle", None)

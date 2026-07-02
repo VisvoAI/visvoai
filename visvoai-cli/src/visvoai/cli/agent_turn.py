@@ -483,7 +483,8 @@ class AgentTurnMixin:
             # Conversation meta: model + count + active branch + a fallback title (the
             # first prompt) only until the LLM title lands — never overwrite that.
             meta = store.read_meta(self._project_id, self._conv_id)
-            fields = {"model": self._model, "msg_count": len(self._history),
+            fields = {"model": self._model, "thinking": self._thinking,
+                      "msg_count": len(self._history),
                       "active_branch": self._cp_branch}
             if not meta.get("title"):
                 fields["title"] = store.title_for(self._history)

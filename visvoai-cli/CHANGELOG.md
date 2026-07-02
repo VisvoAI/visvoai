@@ -3,6 +3,21 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.2] — 2026-07
+
+### Fixed
+- **Preferences persist across launches.** Your theme (palette + light/dark) and
+  your /model pick (model + thinking level) are saved and restored next time —
+  previously every launch reset to the defaults. Stale prefs (a renamed theme,
+  an uninstalled model) fall back gracefully instead of sticking or crashing.
+- **A resumed conversation keeps ITS settings.** /resume and --resume now restore
+  the conversation's own model + thinking level from its meta (with a notice and
+  a graceful keep-current if that model is no longer available) — a chat started
+  on one model no longer silently continues on another.
+- The footer context gauge was invisible at 0% (its empty track sat on a
+  background-colored panel); the track now uses the hover tint so the gauge
+  always has a visible body.
+
 ## [0.7.1] — 2026-07
 
 ### Changed
