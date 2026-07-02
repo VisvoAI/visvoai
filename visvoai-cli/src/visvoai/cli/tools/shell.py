@@ -3,7 +3,7 @@ import subprocess
 
 from langchain_core.tools import tool
 
-from visvoai.cli.tools._common import cap_lines
+from visvoai.cli.tools._common import as_text, cap_lines
 
 SHELL_LINE_CAP = 1000    # max output lines from run_shell
 
@@ -26,6 +26,12 @@ def run_shell(command: str, timeout_seconds: int = SHELL_TIMEOUT_DEFAULT) -> str
     timeout_seconds: how long to wait before killing the command (default 30, max
     600). Raise it for known-slow commands (installs, builds, full test suites);
     keep it low for quick checks. Synchronous — not for long-running servers/watchers.
+
+    Backgrounding (`cmd &`) a process that keeps writing to stdout will HANG this
+    call until timeout — the pipe never closes. If you must background something,
+    detach its output: `nohup cmd > /tmp/x.log 2>&1 & disown`, then read the log
+    file. Prefer not to leave processes running: stop them when you're done.
+
     Working directory: the cwd this CLI was launched from. Output is followed by the
     exit code.
     """
@@ -42,8 +48,9 @@ def run_shell(command: str, timeout_seconds: int = SHELL_TIMEOUT_DEFAULT) -> str
         # A timeout is a TOOL error, not a turn-crashing exception: return it as data
         # (with the failure marker the UI parses) so the agent can adapt and the turn
         # survives. Include any partial output captured before the kill.
+        out, err = as_text(e.stdout), as_text(e.stderr)
         partial = cap_lines(
-            ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
+            (out + (f"\n[stderr]\n{err}" if err else "")).strip(),
             SHELL_LINE_CAP)
         head = f"{partial}\n" if partial else ""
         return (f"{head}ERROR: command timed out after {timeout}s and was killed. "

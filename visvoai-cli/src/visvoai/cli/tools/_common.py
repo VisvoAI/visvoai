@@ -10,6 +10,15 @@ def clip_line(s: str) -> str:
     return s if len(s) <= MAX_LINE_LEN else s[:MAX_LINE_LEN] + " …[line truncated]"
 
 
+def as_text(v) -> str:
+    """Coerce subprocess output to str. TimeoutExpired.stdout/.stderr are BYTES
+    even when the run used text=True (Python quirk) — decoding defensively here
+    keeps a timeout from raising TypeError inside the handler."""
+    if isinstance(v, bytes):
+        return v.decode(errors="replace")
+    return v or ""
+
+
 def cap_lines(text: str, max_lines: int) -> str:
     """Return text limited to max_lines, with a marker noting how many were dropped."""
     lines = text.splitlines()

@@ -21,6 +21,7 @@ from typing import Awaitable, Callable, List
 
 from langchain_core.tools import BaseTool, tool
 
+from visvoai.cli.tools._common import as_text
 from visvoai.cli.tools import (   # read-only tools reused as-is; caps shared
     list_files, list_tree, read_file, web_search, web_fetch, cap_lines, SHELL_LINE_CAP,
 )
@@ -96,7 +97,12 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         cause could be anywhere, run it plain (output is capped automatically).
 
         timeout_seconds: seconds before the command is killed (default 30, max 600).
-        Raise it for slow commands (installs, builds, full test suites)."""
+        Raise it for slow commands (installs, builds, full test suites).
+
+        Backgrounding (`cmd &`) a process that keeps writing to stdout will HANG
+        this call until timeout — the pipe never closes. If you must background
+        something, detach its output: `nohup cmd > /tmp/x.log 2>&1 & disown`, then
+        read the log file. Prefer not to leave processes running."""
         if not await approve("run_shell", {"command": command}):
             return _DENIED
         timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
@@ -108,8 +114,9 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         except subprocess.TimeoutExpired as e:
             # A timeout is a TOOL error returned as data (with the failure marker the
             # UI parses), never a turn-crashing exception — the agent recovers.
+            out, err = as_text(e.stdout), as_text(e.stderr)
             partial = cap_lines(
-                ((e.stdout or "") + (f"\n[stderr]\n{e.stderr}" if e.stderr else "")).strip(),
+                (out + (f"\n[stderr]\n{err}" if err else "")).strip(),
                 SHELL_LINE_CAP)
             head = f"{partial}\n" if partial else ""
             return (f"{head}ERROR: command timed out after {timeout}s and was killed. "
