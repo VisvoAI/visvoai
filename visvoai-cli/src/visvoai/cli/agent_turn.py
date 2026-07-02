@@ -198,7 +198,7 @@ class AgentTurnMixin:
         try:
             graph = agent.build_agent_graph(
                 self._model, self._cwd, approve=self._approve, level=self._thinking,
-                extra_tools=mcp_tools)
+                extra_tools=mcp_tools, process_registry=self._processes)
         except Exception as e:  # missing key / integration / unknown model — surface it
             await self._mount_block(log, SystemNote(f"model error: {e}", kind="error"), "note")
             self._set_status(None)

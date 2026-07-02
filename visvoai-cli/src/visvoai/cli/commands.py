@@ -42,6 +42,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("log", "List this timeline's checkpoints (undo points)"),
     ("compact", "Summarize older turns to free up context"),
     ("mcp", "MCP servers — connection status & project-server approval"),
+    ("ps", "Background processes — see & stop what the agent left running"),
     ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
     ("commit", "Review changes & make a git commit"),
     ("theme", "Pick a color palette (Ctrl+T toggles light/dark)"),
@@ -54,7 +55,7 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
     ("Chat", ["model", "login", "mode", "compact", "clear"]),
     ("Time travel — your work is checkpointed every turn",
      ["rewind", "branch", "fork", "log", "export"]),
-    ("Project", ["resume", "commit", "mcp", "theme", "quit"]),
+    ("Project", ["resume", "commit", "mcp", "ps", "theme", "quit"]),
 ]
 
 def _compaction_cut(messages: list, keep_turns: int) -> int | None:
@@ -260,6 +261,23 @@ class CommandsMixin:
         log.scroll_end(animate=False)
         return True
 
+    async def _ps_flow(self) -> None:
+        """`/ps` — full-screen background-process manager (ProcessScreen). Stops /
+        dismissals apply immediately inside the screen; the footer chip refreshes
+        on close."""
+        from visvoai.cli.screens import ProcessScreen
+
+        await self.push_screen_wait(ProcessScreen(self._processes))
+        self._refresh_process_chip()
+
+    def _refresh_process_chip(self) -> None:
+        from visvoai.cli.widgets.status import StatusBar
+        try:
+            self.query_one("#status", StatusBar).set_processes(
+                self._processes.running_count())
+        except Exception:
+            pass   # footer not mounted (teardown/tests)
+
     async def _mcp_flow(self) -> None:
         """`/mcp` — full-screen MCP server view (MCPScreen): status, setup help, and
         first-use trust approval for project-defined servers. Infrastructure state
@@ -456,6 +474,8 @@ class CommandsMixin:
             self.run_worker(self._compact_flow())
         elif name == "mcp":
             self.run_worker(self._mcp_flow())
+        elif name == "ps":
+            self.run_worker(self._ps_flow())
         elif name == "mode":
             self.action_cycle_hitl_mode()
         elif name == "commit":

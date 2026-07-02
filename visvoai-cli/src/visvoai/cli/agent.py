@@ -178,7 +178,7 @@ def api_key_available(deployment_id: str) -> bool:
 
 
 def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None,
-                      extra_tools: list | None = None):
+                      extra_tools: list | None = None, process_registry=None):
     """Resolve the deployment via visvoai-ai and build the CLIRuntime agent graph.
 
     level: the chosen thinking level ('off'|'low'|'medium'|'high'), or None to let
@@ -193,6 +193,10 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     extra_tools: additional pre-built LangChain tools (e.g. discovered MCP tools)
     appended to the standard set. When approve is given they are gated too — an
     MCP tool is an external action, same trust tier as shell.
+
+    process_registry: the app's ProcessRegistry. When given, the background tools
+    (start/check/stop_process) are added. They gate THEMSELVES (start/stop only —
+    check is a read), so they are not wrapped by gate_tool.
     """
     from visvoai.ai import build_chat_model
     from visvoai.cli.context import build_assembler
@@ -207,6 +211,9 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
         tools += [gate_tool(t, approve) for t in (extra_tools or [])]
     else:
         tools = build_cli_tools(cwd=cwd) + list(extra_tools or [])
+    if process_registry is not None:
+        from visvoai.cli.tools.background import build_background_tools
+        tools += build_background_tools(process_registry, cwd=cwd, approve=approve)
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     return CLIRuntime(assembler=assembler).build_graph(
         model=model,

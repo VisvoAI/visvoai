@@ -44,6 +44,7 @@ class StatusBar(Horizontal):
         self._context_tokens: int | None = None  # raw tokens in context (shown as the label)
         self._cost: float = 0.0               # cumulative conversation cost (USD)
         self._mode: str | None = None  # None | "plan" | "read-only" — a left chip
+        self._processes: int = 0       # running background processes (0 → chip hidden)
 
     def compose(self) -> ComposeResult:
         yield Static(id="sb-left")
@@ -106,6 +107,12 @@ class StatusBar(Horizontal):
         self._cost = usd
         self._render_bar()
 
+    def set_processes(self, count: int) -> None:
+        """Number of running background processes; a right-rail chip when > 0 so
+        the user always knows something is running (and can /ps to manage it)."""
+        self._processes = max(0, count)
+        self._render_bar()
+
     def restyle(self) -> None:
         self._render_bar()
 
@@ -148,6 +155,11 @@ class StatusBar(Horizontal):
             left.append_text(self._model_text(tv))
         left_cell.update(left)
         right = Text()
+        if self._processes > 0:
+            right.append(f"⏵ {self._processes} proc{'s' if self._processes != 1 else ''}",
+                         style=tv["secondary"])
+            right.append("  /ps", style=f"dim {tv['muted']}")
+            right.append("   ", style=tv["muted"])
         if self._cost > 0:
             right.append("~$", style=f"dim {tv['muted']}")
             right.append(f"{self._cost:.4f}", style=tv["secondary"])

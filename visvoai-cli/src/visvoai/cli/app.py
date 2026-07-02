@@ -15,6 +15,7 @@ from contextlib import contextmanager
 
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.css.query import NoMatches
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
@@ -167,6 +168,11 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # ToolNode runs concurrent tool_calls in parallel; this serializes their
         # approval prompts so two Selections can't mount/contend at once.
         self._hitl_lock = asyncio.Lock()
+        # Background processes (dev servers, watchers) started by the agent —
+        # app-level so they survive across turns; ALL killed on app exit so a
+        # closed CLI never leaves a server squatting on a port.
+        from visvoai.cli.processes import ProcessRegistry
+        self._processes = ProcessRegistry()
         # Git-structured history (cli-git-structure): a shadow repo snapshots the work
         # tree per tool-batch + turn-end, linked to the thread by message index so code
         # and conversation rewind together. All lazy + best-effort — never breaks a turn.
@@ -225,12 +231,24 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         self._startup_notices.append(f"unknown model '{requested}' — using {default}")
         return default
 
+    async def on_unmount(self) -> None:
+        """App teardown — kill every background process group the agent started
+        and close live MCP sessions. Runs on quit, Ctrl+C, and crash-teardown
+        alike; without it a closed CLI leaves dev servers running on their ports.
+        (Stdio MCP children also die with the process — pipe EOF — as a backstop.)"""
+        self._processes.stop_all(by="shutdown")
+        from visvoai.cli.mcp import close_mcp_sessions
+        await close_mcp_sessions()
+
     def on_mount(self) -> None:
         self._apply_background()
         # The scroll log shouldn't take focus on click — keep the prompt focused.
         self.query_one("#log", VerticalScroll).can_focus = False
         self.query_one("#status", StatusBar).set_context(self._ctx_pct, self._ctx_tokens)
         self._refresh_model_status()
+        # Background-process chip: poll cheaply so the footer reflects processes the
+        # agent starts/stops mid-turn (and ones that exit on their own).
+        self.set_interval(2.0, self._refresh_process_chip)
         self.set_tab_title(None)   # brand-only until a conversation has a title
         self.query_one("#prompt", PromptArea).focus()
         for msg in self._startup_notices:
@@ -250,7 +268,10 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         """Update the context gauge. pct None → hide it (e.g. a fresh conversation)."""
         self._ctx_pct = None if pct is None else max(0, min(100, pct))
         self._ctx_tokens = None if pct is None else tokens
-        self.query_one("#status", StatusBar).set_context(self._ctx_pct, self._ctx_tokens)
+        sb = self._status_bar()
+        if sb is None:
+            return   # teardown race (cancelled turn) — see _status_bar
+        sb.set_context(self._ctx_pct, self._ctx_tokens)
         self.run_worker(self._update_ctx_warning())
 
     async def _update_ctx_warning(self) -> None:
@@ -291,12 +312,25 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
             path = "~" + path[len(home):]
         return f"{path}  ⎇ {self._git}" if self._git else path
 
+    def _status_bar(self) -> StatusBar | None:
+        """The footer StatusBar, or None during teardown. A turn worker's finally
+        block (cancel/quit mid-turn) races widget unmount — a footer update must
+        degrade to a no-op then, not crash the worker with NoMatches."""
+        try:
+            return self.query_one("#status", StatusBar)
+        except NoMatches:
+            return None
+
     def _set_status(self, text: str | None) -> None:
-        self.query_one("#status", StatusBar).set_status(text)
+        sb = self._status_bar()
+        if sb is not None:
+            sb.set_status(text)
 
     def _update_cost_status(self) -> None:
         """Push the cumulative conversation cost to the footer."""
-        self.query_one("#status", StatusBar).set_cost(self._conv_cost)
+        sb = self._status_bar()
+        if sb is not None:
+            sb.set_cost(self._conv_cost)
 
     def _refresh_model_status(self) -> None:
         """Paint the footer's idle model line from the active model + thinking level."""

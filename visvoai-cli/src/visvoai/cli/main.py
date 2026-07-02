@@ -233,6 +233,15 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
             from visvoai.cli.gated_tools import gate_tool
             tools += [gate_tool(t, _headless_approve) for t in mcp_tools]
 
+    # Background process tools — registry lives for this invocation only; every
+    # spawned process is killed in the finally below (a one-shot run must not
+    # leave servers behind).
+    from visvoai.cli.processes import ProcessRegistry
+    from visvoai.cli.tools.background import build_background_tools
+    processes = ProcessRegistry()
+    tools += build_background_tools(
+        processes, cwd=cwd, approve=None if assume_yes else _headless_approve)
+
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     graph = CLIRuntime(assembler=assembler).build_graph(
         model=chat_model,
@@ -264,6 +273,10 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
                 click.echo(f"  → {out[:200]}{'…' if len(out) > 200 else ''}", err=True)
     except KeyboardInterrupt:
         click.echo("\n[interrupted]", err=True)
+    finally:
+        processes.stop_all(by="shutdown")
+        from visvoai.cli.mcp import close_mcp_sessions
+        await close_mcp_sessions()
 
     click.echo()  # trailing newline after the streamed response
 
