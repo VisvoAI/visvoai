@@ -17,38 +17,45 @@ def home(tmp_path, monkeypatch):
 
 
 def test_prefs_roundtrip(home):
-    assert state.get_pref("theme") is None
-    state.set_pref("theme", "visvo-emerald-light")
+    assert state.get_pref("palette") is None
+    state.set_pref("palette", "emerald")
     state.set_pref("model", "gemini:gemini-3-flash-preview")
-    assert state.get_pref("theme") == "visvo-emerald-light"
+    assert state.get_pref("palette") == "emerald"
     assert state.get_pref("model") == "gemini:gemini-3-flash-preview"
     # coexists with the tips/coachmark state in the same file
     state.record_used("rewind")
-    assert state.get_pref("theme") == "visvo-emerald-light"
+    assert state.get_pref("palette") == "emerald"
 
 
 @pytest.mark.asyncio
-async def test_saved_theme_applies_on_launch(home):
-    state.set_pref("theme", "visvo-emerald-light")
-    app = VisvoApp()
+async def test_saved_palette_applies_but_mode_follows_terminal(home):
+    """The palette persists; the light/dark mode ALWAYS re-detects from the
+    terminal (regression: persisting the full theme name painted dark-theme
+    text onto light terminals)."""
+    state.set_pref("palette", "emerald")
+    app = VisvoApp(term_bg="#ffffff")            # light terminal
     async with app.run_test():
         assert app.theme == "visvo-emerald-light"
+    app = VisvoApp(term_bg="#000000")            # dark terminal, same pref
+    async with app.run_test():
+        assert app.theme == "visvo-emerald-dark"
 
 
 @pytest.mark.asyncio
-async def test_stale_theme_pref_falls_back(home):
-    state.set_pref("theme", "visvo-renamed-away-dark")
+async def test_stale_palette_pref_falls_back(home):
+    state.set_pref("palette", "renamed-away")
     app = VisvoApp()
     async with app.run_test():
         assert app.theme in {t.name for t in theme.THEMES}
 
 
 @pytest.mark.asyncio
-async def test_theme_change_is_saved(home):
+async def test_theme_change_saves_palette_only(home):
     app = VisvoApp()
     async with app.run_test():
         app._apply_theme("visvo-sunset-dark")
-    assert state.get_pref("theme") == "visvo-sunset-dark"
+    assert state.get_pref("palette") == "sunset"
+    assert state.get_pref("theme") is None       # the harmful full-name key is gone
 
 
 def test_resume_adopts_conversation_model(home, monkeypatch):

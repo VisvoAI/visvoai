@@ -3,6 +3,15 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.7.3] — 2026-07
+
+### Fixed
+- **Theme persistence broke light terminals (0.7.2 regression).** Persisting the
+  full theme name froze the light/dark mode, painting dark-theme text onto light
+  terminal backgrounds ("barely able to see anything"). Only the PALETTE is a
+  preference — the mode re-detects from the terminal background every launch,
+  as it always did. Ctrl+T stays a session-level override.
+
 ## [0.7.2] — 2026-07
 
 ### Fixed

@@ -209,12 +209,12 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # so text is legible on light terminals too — not just dark. Ctrl+T flips it.
         for t in theme.THEMES:
             self.register_theme(t)
-        # Saved preference wins; falls back to the terminal-bg heuristic. Validate —
-        # a stale/renamed theme name must not crash startup.
-        saved_theme = state_mod.get_pref("theme")
-        known = {t.name for t in theme.THEMES}
-        self.theme = (saved_theme if saved_theme in known
-                      else theme.default_theme_for_bg(self._term_bg))
+        # The PALETTE is a preference; light/dark MODE is a property of the
+        # terminal we're launched in (detected from its background) — persisting
+        # the mode painted dark-theme text onto light terminals. Recombine.
+        saved_palette = state_mod.get_pref("palette")
+        pal = saved_palette if saved_palette in theme.PALETTES else theme.DEFAULT_PALETTE
+        self.theme = theme.theme_name(pal, theme.mode_for_bg(self._term_bg))
 
     # ── layout ──────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -369,9 +369,10 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
     def _apply_theme(self, name: str) -> None:
         """Switch theme. Textual re-resolves CSS automatically; we also nudge
         Rich render()/restyle widgets so baked-in text colors follow. The choice
-        is saved as a user preference — the next launch starts on it."""
+        is saved as a user preference — the next launch starts on its PALETTE
+        (mode re-detects from the terminal; ctrl+T stays session-only)."""
         self.theme = name
-        state_mod.set_pref("theme", name)
+        state_mod.set_pref("palette", theme.parse_theme(name)[0])
         self._apply_background()  # theme switch resets bg → re-paint terminal color
         for widget in self.screen.query("*"):
             restyle = getattr(widget, "restyle", None)
