@@ -82,20 +82,6 @@ class Assistant(Markdown):
         background: transparent;
         border-left: outer $primary 50%;
     }
-    /* Tables: borderless, matching the app's design language. Textual's default
-       draws a full keyline grid (borders around every cell) — the only heavy-
-       bordered element in the UI, and terminals with line-spacing > 1 render its
-       vertical rules as broken dashes. Instead: bold $primary header, a faint
-       wash to hold the table together, column separation from the grid gutter. */
-    Assistant MarkdownTableContent {
-        keyline: none;
-        grid-gutter: 0 2;
-        background: $primary 5%;
-    }
-    Assistant MarkdownTableContent > .header {
-        color: $primary;
-        text-style: bold;
-    }
     /* Inline `code`: on-brand (a faint primary wash + secondary text), replacing
        Textual's default amber/warning tint which clashes with the palette. The
        :dark/:light variants are needed to outrank Textual's mode-scoped default. */
@@ -104,6 +90,9 @@ class Assistant(Markdown):
         background: $primary 12%;
         color: $secondary;
     }
+    /* Tables: prominent grid lines (Textual's default is $foreground 20% — washed
+       out). Full $foreground reads clean and crisp. */
+    Assistant MarkdownTableContent { keyline: thin $foreground; }
     /* Kill the paragraph's trailing margin so it doesn't COMPOUND with the
        between-group gap (was producing a 2-line gap after the answer). */
     Assistant MarkdownParagraph { margin: 0; }
