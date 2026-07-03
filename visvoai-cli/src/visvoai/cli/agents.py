@@ -51,6 +51,22 @@ logger = logging.getLogger(__name__)
 AGENT_RESULT_LINE_CAP = 400   # max lines of a subagent's final answer
 MAX_TASK_CHARS = 20_000
 
+# Tag on every run inside a subagent's graph (config tags propagate to child
+# runs). astream_events BUBBLES nested-graph events into the main turn stream —
+# without this tag the turn worker renders and PERSISTS the subagent's private
+# messages as main-conversation history (live incident: 40 leaked messages and
+# a dangling run_agent call). The worker filters on the prefix; the suffix
+# carries the agent name for status display.
+SUBAGENT_TAG_PREFIX = "visvoai_subagent:"
+
+
+def subagent_name_from_tags(tags) -> str | None:
+    """The dispatched agent's name if this event belongs to a subagent run."""
+    for t in tags or ():
+        if isinstance(t, str) and t.startswith(SUBAGENT_TAG_PREFIX):
+            return t[len(SUBAGENT_TAG_PREFIX):]
+    return None
+
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
 READ_ONLY_TOOL_NAMES = ("read_file", "list_files", "list_tree",
@@ -308,9 +324,9 @@ def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None) -> lis
 def _roster_description(specs: dict[str, AgentSpec]) -> str:
     lines = [
         "Delegate ONE self-contained task to a specialist subagent and get its "
-        "final answer back. The subagent starts with NO context — the task text "
-        "is everything it knows, so include all needed paths, names, and "
-        "constraints. It cannot ask follow-up questions.",
+        "final answer back. The subagent sees NONE of this conversation — only "
+        "your task text (plus the project environment), so include all needed "
+        "paths, names, and constraints. It cannot ask follow-up questions.",
         "Dispatch several run_agent calls IN PARALLEL (one message, multiple "
         "calls) when tasks are independent — e.g. three 'explore' agents "
         "searching different corners of a codebase.",
@@ -333,6 +349,10 @@ def _roster_description(specs: dict[str, AgentSpec]) -> str:
         "edit files; `full` ONLY when it must modify files. Connected MCP tools "
         "(named server__tool) are included in `full` and selectable by name in "
         "explicit lists — never available in `read-only`.",
+        "In the prompt BODY, describe capabilities ('audit via Lighthouse'), "
+        "don't hardcode tool names — a named tool (especially server__tool MCP "
+        "names) may not be connected when the agent runs, and stale names cause "
+        "failed calls.",
         "After creating one, tell the user in plain language: they approve it "
         "once in /agents (project agents only), then simply ASK for the task — "
         "run_agent is YOUR internal tool, never a command the user types.",
@@ -377,15 +397,30 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
             return f"ERROR: agent '{agent}' model '{dep_id}' unavailable: {e}"
 
         tools = _tools_for_spec(spec, cwd, approve, extra_tools)
-        graph = CLIRuntime().build_graph(
+        # A definition's prompt may name tools that aren't connected THIS
+        # session (live incident: a prompt hardcoding chrome__* MCP tools made
+        # the subagent call names it didn't have — prompt-following beats
+        # function-declaration awareness), so counter it in the prompt itself.
+        prompt = spec.prompt + (
+            "\n\nTool reality check: you have ONLY the tools declared in this "
+            "session. If these instructions mention a tool that is not "
+            "declared, use the closest available alternative (usually the "
+            "shell) — never call an undeclared tool name.")
+        # Same per-turn context the main agent gets (environment/cwd, project
+        # instructions, git state) — without an assembler the subagent doesn't
+        # even know its working directory.
+        from visvoai.cli.context import build_assembler
+        graph = CLIRuntime(assembler=build_assembler(prompt, cwd)).build_graph(
             model=model,
             core_tools=tools,
             all_tools_map={t.name: t for t in tools},
-            system_prompt=spec.prompt,
+            system_prompt=prompt,
         )
         try:
             result = await graph.ainvoke(
                 {"messages": [HumanMessage(content=task[:MAX_TASK_CHARS])]},
+                config={"recursion_limit": 100,
+                        "tags": [SUBAGENT_TAG_PREFIX + spec.name]},
             )
         except Exception as e:
             return f"ERROR: agent '{agent}' failed: {e}"

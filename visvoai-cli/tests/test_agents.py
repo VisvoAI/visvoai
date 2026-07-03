@@ -327,6 +327,94 @@ async def test_pending_agent_surfaced_by_app_not_model(tmp_path, monkeypatch):
         assert not any("auditor" in m for m in seen)
 
 
+def test_subagent_tag_helpers():
+    from visvoai.cli.agents import SUBAGENT_TAG_PREFIX, subagent_name_from_tags
+    assert subagent_name_from_tags([SUBAGENT_TAG_PREFIX + "explore"]) == "explore"
+    assert subagent_name_from_tags(["seq:step:1", SUBAGENT_TAG_PREFIX + "x"]) == "x"
+    assert subagent_name_from_tags(["other"]) is None
+    assert subagent_name_from_tags(None) is None
+
+
+@pytest.mark.asyncio
+async def test_subagent_events_are_tagged_not_leaked(tmp_path, monkeypatch):
+    """The leak regression: when the MAIN graph streams a turn that dispatches a
+    subagent, every nested (subagent) event must carry the subagent tag so the
+    turn worker can filter it — otherwise the subagent's private messages render
+    and persist as main-conversation history (live incident: 40 leaked msgs)."""
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage, HumanMessage
+    from visvoai.cli.agents import subagent_name_from_tags
+    from visvoai.cli.runtime import CLIRuntime
+
+    class _Fake(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+    # Subagent model: answers immediately (no tool calls).
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Fake(
+        responses=[AIMessage(content="sub answer")]))
+
+    run_agent = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+
+    # Main model: first calls run_agent, then finishes.
+    main_model = _Fake(responses=[
+        AIMessage(content="", tool_calls=[{
+            "name": "run_agent", "id": "c1",
+            "args": {"agent": "explore", "task": "look around"}}]),
+        AIMessage(content="main answer"),
+    ])
+    graph = CLIRuntime().build_graph(
+        model=main_model, core_tools=[run_agent],
+        all_tools_map={"run_agent": run_agent}, system_prompt="test")
+
+    main_msg_events, sub_msg_events = [], []
+    async for ev in graph.astream_events(
+            {"messages": [HumanMessage(content="go")]}, version="v2"):
+        if ev.get("event") not in ("on_chat_model_end", "on_tool_start", "on_tool_end"):
+            continue
+        name = subagent_name_from_tags(ev.get("tags"))
+        (sub_msg_events if name else main_msg_events).append(
+            (ev["event"], ev.get("name"), name))
+
+    assert any(n == "explore" for _, _, n in sub_msg_events)   # nested events tagged
+    # the main stream still sees ITS OWN run_agent tool events, untagged
+    assert ("on_tool_start", "run_agent", None) in main_msg_events
+    # and no main-classified event is a subagent chat turn
+    assert all(e != "on_chat_model_end" or n is None for e, _, n in main_msg_events
+               if e == "on_chat_model_end")
+
+
+@pytest.mark.asyncio
+async def test_subagent_gets_context_and_reality_check(tmp_path, monkeypatch):
+    """#2 quality: the subagent's system prompt includes the environment (cwd)
+    and the tool-reality-check clause, countering stale tool names in
+    definitions."""
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    seen_system = []
+
+    class _Fake(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, messages, *a, **kw):
+            seen_system.append(str(messages[0].content))
+            return await super().ainvoke(messages, *a, **kw)
+
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Fake(
+        responses=[AIMessage(content="done")]))
+
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+    out = await t.coroutine(agent="explore", task="scan")
+    assert "done" in out
+    system = seen_system[0]
+    assert "Tool reality check" in system
+    assert str(tmp_path) in system or "Environment" in system   # assembler ran
+
+
 # ── `visvoai agents` commands ────────────────────────────────────────────────
 
 def test_cli_agents_list_and_show(tmp_path):

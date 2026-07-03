@@ -17,6 +17,7 @@ from textual.containers import VerticalScroll
 import time
 
 from visvoai.cli import agent, store
+from visvoai.cli.agents import subagent_name_from_tags
 from visvoai.cli import state as ui_state   # aliased: `state` is a local (graph input) below
 from visvoai.cli.widgets import (
     Assistant, CleanDiff, ErrorBlock, Plan, SystemNote, Thinking, ToolOutput,
@@ -254,6 +255,22 @@ class AgentTurnMixin:
             ):
                 kind = event.get("event", "")
                 data = event.get("data", {})
+
+                # Subagent-graph events BUBBLE into this stream (astream_events
+                # surfaces nested runs). They are the subagent's private
+                # execution — rendering/persisting them here corrupts the main
+                # conversation (they'd read as the main agent's own actions).
+                # Filter them; show only a status pulse so the run_agent row's
+                # wait is legible. Token usage still counts — it's real spend.
+                sub_name = subagent_name_from_tags(event.get("tags"))
+                if sub_name is not None:
+                    if kind == "on_chat_model_stream":
+                        u = agent.usage_of(data.get("chunk"))
+                        turn_in += u["input"]; turn_out += u["output"]
+                    elif kind == "on_tool_start":
+                        self._set_status(
+                            f"agent {sub_name}: {event.get('name', 'tool')}…")
+                    continue
 
                 if kind == "on_chat_model_stream":
                     chunk = data.get("chunk")

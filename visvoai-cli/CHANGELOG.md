@@ -3,6 +3,27 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.10.1] — 2026-07
+
+### Fixed
+- **Subagent execution no longer leaks into the main conversation.** Nested
+  graph events bubble through `astream_events`; a dispatched agent's every
+  tool call and message was rendering as top-level conversation content AND
+  being persisted into the thread as the main agent's own history (with a
+  dangling `run_agent` call). Subagent runs are now tagged and filtered: the
+  main view shows the `run_agent` row plus a live status pulse ("agent
+  performance-validator: run_shell…"); the subagent's token usage still
+  counts toward the turn. Same fix in headless single-shot output.
+- **Subagents get real context.** They now run with the same per-turn context
+  assembly as the main agent — environment (cwd), project instructions
+  (AGENTS.md), git state. Previously they started blind, not even knowing the
+  working directory.
+- **Stale tool names in definitions are countered.** A definition prompt that
+  hardcodes tool names (e.g. `chrome__*` MCP tools that aren't connected
+  right now) made subagents call tools they don't have. Every subagent prompt
+  now carries a tool-reality-check clause, and creation guidance tells the
+  model to describe capabilities rather than hardcode tool names.
+
 ## [0.10.0] — 2026-07
 
 ### Added

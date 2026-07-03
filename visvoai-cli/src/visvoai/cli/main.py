@@ -258,6 +258,16 @@ async def _run_single_shot(prompt: str, model: str | None, cwd: str, verbose: bo
             state, version="v2", config={"recursion_limit": 100}
         ):
             kind = event.get("event", "")
+            # Subagent-graph events bubble into this stream (same leak the TUI
+            # filters): print only a marker per tool step, never their text —
+            # it would interleave with the main agent's answer.
+            from visvoai.cli.agents import subagent_name_from_tags
+            sub_name = subagent_name_from_tags(event.get("tags"))
+            if sub_name is not None:
+                if kind == "on_tool_start":
+                    click.echo(f"\n[agent {sub_name}: {event.get('name', 'tool')}]",
+                               err=True)
+                continue
             if kind == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
                 if chunk and getattr(chunk, "content", None):
