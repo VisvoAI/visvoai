@@ -204,10 +204,18 @@ class AgentTurnMixin:
         except Exception:
             pre_untrusted = set()
 
+        def _agent_trace_dir():
+            # Resolved at dispatch time: by then _persist_turn has assigned the
+            # conversation id (it runs before the model can call any tool).
+            if self._project_id is None or self._conv_id is None:
+                return None
+            return store.conversation_dir(self._project_id, self._conv_id) / "agents"
+
         try:
             graph = agent.build_agent_graph(
                 self._model, self._cwd, approve=self._approve, level=self._thinking,
-                extra_tools=mcp_tools, process_registry=self._processes)
+                extra_tools=mcp_tools, process_registry=self._processes,
+                agent_trace_dir_fn=_agent_trace_dir)
         except Exception as e:  # missing key / integration / unknown model — surface it
             await self._mount_block(log, SystemNote(f"model error: {e}", kind="error"), "note")
             self._set_status(None)

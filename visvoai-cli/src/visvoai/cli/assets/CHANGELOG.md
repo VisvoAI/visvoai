@@ -3,6 +3,22 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.11.0] — 2026-07
+
+### Added
+- **Subagent tracing & telemetry.** Every `run_agent` dispatch now persists its
+  full transcript (task, each model step + tool call/result, token/cost/
+  duration summary) as JSONL under the conversation's `agents/` directory —
+  the audit trail the main conversation deliberately omits. The tool result's
+  trailer now carries real telemetry: `[agent: X · 14 tool calls · 82.3k
+  tokens · $0.0210 · 192s]`. Trace writing is best-effort — it can never fail
+  a dispatch.
+- **Per-dispatch identity.** Subagent runs are tagged
+  `visvoai_subagent:<name>:<tool_call_id>` (the id injected by the tool infra,
+  never model-supplied) so parallel dispatches of the SAME agent are
+  distinguishable — required for correct trace attribution and future
+  per-row live traces.
+
 ## [0.10.1] — 2026-07
 
 ### Fixed

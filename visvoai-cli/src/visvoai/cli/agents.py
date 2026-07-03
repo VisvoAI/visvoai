@@ -45,6 +45,9 @@ import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Annotated
+
+from langchain_core.tools import InjectedToolCallId
 
 logger = logging.getLogger(__name__)
 
@@ -55,17 +58,27 @@ MAX_TASK_CHARS = 20_000
 # runs). astream_events BUBBLES nested-graph events into the main turn stream —
 # without this tag the turn worker renders and PERSISTS the subagent's private
 # messages as main-conversation history (live incident: 40 leaked messages and
-# a dangling run_agent call). The worker filters on the prefix; the suffix
-# carries the agent name for status display.
+# a dangling run_agent call). Full form `visvoai_subagent:<name>:<dispatch_id>`:
+# the worker filters on the prefix; the name feeds the status pulse; the
+# dispatch id (the run_agent tool_call_id) attributes events to ONE dispatch —
+# parallel dispatches of the SAME agent are otherwise indistinguishable.
 SUBAGENT_TAG_PREFIX = "visvoai_subagent:"
+
+
+def subagent_key_from_tags(tags) -> tuple[str, str] | None:
+    """(agent_name, dispatch_id) if this event belongs to a subagent run."""
+    for t in tags or ():
+        if isinstance(t, str) and t.startswith(SUBAGENT_TAG_PREFIX):
+            rest = t[len(SUBAGENT_TAG_PREFIX):]
+            name, _, dispatch = rest.partition(":")
+            return name, dispatch
+    return None
 
 
 def subagent_name_from_tags(tags) -> str | None:
     """The dispatched agent's name if this event belongs to a subagent run."""
-    for t in tags or ():
-        if isinstance(t, str) and t.startswith(SUBAGENT_TAG_PREFIX):
-            return t[len(SUBAGENT_TAG_PREFIX):]
-    return None
+    key = subagent_key_from_tags(tags)
+    return key[0] if key else None
 
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 
@@ -360,8 +373,74 @@ def _roster_description(specs: dict[str, AgentSpec]) -> str:
     return "\n".join(lines)
 
 
+def _write_trace(trace_dir_fn, spec: AgentSpec, dispatch_id: str, task: str,
+                 dep_id: str, messages: list, *, error: str | None,
+                 duration_s: float) -> str:
+    """Persist one dispatch's full transcript as JSONL and return the compact
+    telemetry trailer appended to the tool result. The trace is the audit log
+    the main conversation deliberately does NOT contain (subagent events are
+    filtered from the stream); `messages` is the subagent graph's own final
+    thread, so nothing is lost by the filtering.
+
+    Never raises — tracing must not break a dispatch. trace_dir_fn: () -> Path
+    or None (headless/tests without a conversation directory skip persistence
+    but still get the trailer)."""
+    from visvoai.cli.agent import chunk_text, thinking_text, turn_cost, usage_of
+
+    tin = tout = 0
+    rounds = 0
+    records: list[dict] = []
+    for m in messages:
+        kind = m.__class__.__name__
+        if kind == "AIMessage":
+            u = usage_of(m)
+            tin += u["input"]; tout += u["output"]
+            rec = {"kind": "ai", "text": chunk_text(m)[:4000]}
+            think = thinking_text(m)
+            if think:
+                rec["thinking"] = think[:2000]
+            if getattr(m, "tool_calls", None):
+                rec["tool_calls"] = [{"name": t.get("name"),
+                                      "args": {k: str(v)[:500] for k, v in
+                                               (t.get("args") or {}).items()}}
+                                     for t in m.tool_calls]
+            records.append(rec)
+        elif kind == "ToolMessage":
+            rounds += 1
+            records.append({"kind": "tool", "name": getattr(m, "name", None),
+                            "output": chunk_text(m)[:4000]})
+    cost = turn_cost(dep_id, tin, tout)
+    trailer_bits = [f"agent: {spec.name}",
+                    f"{rounds} tool call{'s' if rounds != 1 else ''}",
+                    f"{(tin + tout) / 1000:.1f}k tokens"]
+    if cost:
+        trailer_bits.append(f"${cost:.4f}")
+    trailer_bits.append(f"{duration_s:.0f}s")
+    trailer = "[" + " · ".join(trailer_bits) + "]"
+
+    try:
+        trace_dir = trace_dir_fn() if trace_dir_fn else None
+        if trace_dir is not None:
+            trace_dir = Path(trace_dir)
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            path = trace_dir / f"{spec.name}_{dispatch_id[:12]}.jsonl"
+            lines = [json.dumps({"kind": "meta", "agent": spec.name,
+                                 "dispatch_id": dispatch_id, "model": dep_id,
+                                 "tools": spec.tools, "task": task[:2000]})]
+            lines += [json.dumps(r, ensure_ascii=False) for r in records]
+            lines.append(json.dumps({
+                "kind": "summary", "error": error, "rounds": rounds,
+                "input_tokens": tin, "output_tokens": tout,
+                "cost_usd": round(cost, 6), "duration_s": round(duration_s, 1)}))
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception as e:
+        logger.warning("agents: trace write failed (ignored): %s", e)
+    return trailer
+
+
 def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
-                         level: str | None = None, extra_tools=None):
+                         level: str | None = None, extra_tools=None,
+                         trace_dir_fn=None):
     """The `run_agent(agent, task)` tool bound to this session's roster.
 
     Rebuilt every turn (like the rest of the graph) so file edits to agent
@@ -370,23 +449,36 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
 
     extra_tools: the session's discovered MCP tools, passed through to full-tier
     and explicit-list subagents (see _tools_for_spec).
+
+    trace_dir_fn: () -> Path|None, resolved AT DISPATCH TIME (the conversation
+    id doesn't exist yet when the graph is built on a fresh conversation).
+    Every dispatch persists its full transcript there (_write_trace).
     """
     from langchain_core.tools import StructuredTool
 
     specs = {n: s for n, s in load_agent_specs(cwd).items() if is_trusted(cwd, s)}
 
-    async def _run_agent(agent: str, task: str) -> str:
+    async def _run_agent(agent: str, task: str,
+                         tool_call_id: Annotated[str, InjectedToolCallId] = "") -> str:
         spec = specs.get(agent)
         if spec is None:
             known = ", ".join(specs)
             return f"ERROR: unknown agent '{agent}'. Available: {known}"
         if not task.strip():
             return "ERROR: empty task — describe what the agent should do."
+        # The dispatch id: the run_agent tool_call_id (injected by the tool
+        # infra, never model-supplied), unique per call even for parallel
+        # dispatches of the same agent. Fallback uuid covers direct invocation
+        # outside a graph (tests, headless edge paths).
+        dispatch_id = tool_call_id or __import__("uuid").uuid4().hex[:12]
+
+        import time as _time
 
         from langchain_core.messages import HumanMessage
         from visvoai.ai import build_chat_model
         from visvoai.cli.runtime import CLIRuntime
         from visvoai.cli.tools import cap_lines
+        started = _time.monotonic()
 
         dep_id = spec.model or deployment_id
         try:
@@ -420,9 +512,11 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
             result = await graph.ainvoke(
                 {"messages": [HumanMessage(content=task[:MAX_TASK_CHARS])]},
                 config={"recursion_limit": 100,
-                        "tags": [SUBAGENT_TAG_PREFIX + spec.name]},
+                        "tags": [f"{SUBAGENT_TAG_PREFIX}{spec.name}:{dispatch_id}"]},
             )
         except Exception as e:
+            _write_trace(trace_dir_fn, spec, dispatch_id, task, dep_id, [],
+                         error=str(e), duration_s=_time.monotonic() - started)
             return f"ERROR: agent '{agent}' failed: {e}"
 
         messages = result.get("messages", [])
@@ -433,11 +527,12 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
                 final = chunk_text(m).strip()
                 if final:
                     break
+        duration = _time.monotonic() - started
+        summary = _write_trace(trace_dir_fn, spec, dispatch_id, task, dep_id,
+                               messages, error=None, duration_s=duration)
         if not final:
             return f"ERROR: agent '{agent}' produced no final answer."
-        rounds = sum(1 for m in messages if m.__class__.__name__ == "ToolMessage")
-        return cap_lines(final, AGENT_RESULT_LINE_CAP) + \
-            f"\n[agent: {agent} · {rounds} tool call{'s' if rounds != 1 else ''}]"
+        return cap_lines(final, AGENT_RESULT_LINE_CAP) + "\n" + summary
 
     return StructuredTool.from_function(
         coroutine=_run_agent,

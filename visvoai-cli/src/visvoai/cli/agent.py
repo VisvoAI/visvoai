@@ -179,7 +179,7 @@ def api_key_available(deployment_id: str) -> bool:
 
 def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None,
                       extra_tools: list | None = None, process_registry=None,
-                      enable_agents: bool = True):
+                      enable_agents: bool = True, agent_trace_dir_fn=None):
     """Resolve the deployment via visvoai-ai and build the CLIRuntime agent graph.
 
     level: the chosen thinking level ('off'|'low'|'medium'|'high'), or None to let
@@ -224,7 +224,8 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
         from visvoai.cli.agents import build_run_agent_tool
         tools.append(build_run_agent_tool(cwd=cwd, deployment_id=deployment_id,
                                           approve=approve, level=level,
-                                          extra_tools=extra_tools))
+                                          extra_tools=extra_tools,
+                                          trace_dir_fn=agent_trace_dir_fn))
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     return CLIRuntime(assembler=assembler).build_graph(
         model=model,

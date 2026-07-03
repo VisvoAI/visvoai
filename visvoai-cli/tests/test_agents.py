@@ -328,11 +328,79 @@ async def test_pending_agent_surfaced_by_app_not_model(tmp_path, monkeypatch):
 
 
 def test_subagent_tag_helpers():
-    from visvoai.cli.agents import SUBAGENT_TAG_PREFIX, subagent_name_from_tags
-    assert subagent_name_from_tags([SUBAGENT_TAG_PREFIX + "explore"]) == "explore"
-    assert subagent_name_from_tags(["seq:step:1", SUBAGENT_TAG_PREFIX + "x"]) == "x"
+    from visvoai.cli.agents import (
+        SUBAGENT_TAG_PREFIX, subagent_key_from_tags, subagent_name_from_tags,
+    )
+    tag = SUBAGENT_TAG_PREFIX + "explore:call_abc123"
+    assert subagent_name_from_tags([tag]) == "explore"
+    assert subagent_key_from_tags([tag]) == ("explore", "call_abc123")
+    assert subagent_key_from_tags(["seq:step:1", SUBAGENT_TAG_PREFIX + "x:y"]) == ("x", "y")
     assert subagent_name_from_tags(["other"]) is None
     assert subagent_name_from_tags(None) is None
+
+
+def test_tool_call_id_not_model_visible(tmp_path):
+    """The dispatch id is INJECTED, never a model-facing parameter."""
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+    assert "tool_call_id" not in (t.tool_call_schema.model_json_schema()
+                                  .get("properties", {}))
+
+
+@pytest.mark.asyncio
+async def test_dispatch_writes_trace_and_telemetry_trailer(tmp_path, monkeypatch):
+    """Layer-1 observability: each dispatch persists a JSONL trace (meta,
+    steps, summary) and returns a telemetry trailer — the audit trail the
+    filtered main stream deliberately omits."""
+    import json as _json
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    class _Fake(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Fake(
+        responses=[AIMessage(content="scanned: nothing suspicious")]))
+
+    trace_dir = tmp_path / "traces"
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro",
+                             trace_dir_fn=lambda: trace_dir)
+    out = await t.coroutine(agent="explore", task="scan the repo",
+                            tool_call_id="call_xyz")
+    assert "scanned: nothing suspicious" in out
+    assert "[agent: explore · 0 tool calls" in out and out.rstrip().endswith("s]")
+
+    files = list(trace_dir.glob("explore_call_xyz*.jsonl"))
+    assert len(files) == 1
+    lines = [_json.loads(l) for l in files[0].read_text().splitlines()]
+    assert lines[0]["kind"] == "meta"
+    assert lines[0]["task"] == "scan the repo"
+    assert lines[-1]["kind"] == "summary" and lines[-1]["error"] is None
+    assert any(r["kind"] == "ai" and "scanned" in r["text"] for r in lines)
+
+
+@pytest.mark.asyncio
+async def test_trace_dir_failure_never_breaks_dispatch(tmp_path, monkeypatch):
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    class _Fake(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Fake(
+        responses=[AIMessage(content="ok")]))
+
+    def boom():
+        raise OSError("disk gone")
+
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro",
+                             trace_dir_fn=boom)
+    out = await t.coroutine(agent="explore", task="x")
+    assert "ok" in out          # tracing is best-effort, never fatal
 
 
 @pytest.mark.asyncio
@@ -368,16 +436,19 @@ async def test_subagent_events_are_tagged_not_leaked(tmp_path, monkeypatch):
         model=main_model, core_tools=[run_agent],
         all_tools_map={"run_agent": run_agent}, system_prompt="test")
 
+    from visvoai.cli.agents import subagent_key_from_tags
+
     main_msg_events, sub_msg_events = [], []
     async for ev in graph.astream_events(
             {"messages": [HumanMessage(content="go")]}, version="v2"):
         if ev.get("event") not in ("on_chat_model_end", "on_tool_start", "on_tool_end"):
             continue
-        name = subagent_name_from_tags(ev.get("tags"))
-        (sub_msg_events if name else main_msg_events).append(
-            (ev["event"], ev.get("name"), name))
+        key = subagent_key_from_tags(ev.get("tags"))
+        (sub_msg_events if key else main_msg_events).append(
+            (ev["event"], ev.get("name"), key))
 
-    assert any(n == "explore" for _, _, n in sub_msg_events)   # nested events tagged
+    # nested events tagged with BOTH name and the dispatching tool_call_id
+    assert any(k == ("explore", "c1") for _, _, k in sub_msg_events)
     # the main stream still sees ITS OWN run_agent tool events, untagged
     assert ("on_tool_start", "run_agent", None) in main_msg_events
     # and no main-classified event is a subagent chat turn
