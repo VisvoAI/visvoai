@@ -3,6 +3,16 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.9.1] — 2026-07
+
+### Fixed
+- **Agent-created agents no longer vanish.** The main agent had no way to know
+  the definition format, so "create me an agent" produced files the loader
+  silently ignored (live incident: a `.toml` definition). The `run_agent` tool
+  description now teaches the exact `.md` + frontmatter format, non-`.md`
+  files in an agents directory are logged and flagged as a warning toast when
+  `/agents` opens, and the loader behavior is otherwise unchanged.
+
 ## [0.9.0] — 2026-07
 
 ### Added

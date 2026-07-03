@@ -171,11 +171,30 @@ def _load_dir(directory: Path, source: str) -> dict[str, AgentSpec]:
     if not directory.is_dir():
         return {}
     out: dict[str, AgentSpec] = {}
-    for path in sorted(directory.glob("*.md")):
-        spec = _parse_agent_file(path, source)
-        if spec:
-            out[spec.name] = spec
+    for path in sorted(directory.iterdir()):
+        if path.suffix == ".md":
+            spec = _parse_agent_file(path, source)
+            if spec:
+                out[spec.name] = spec
+        elif path.is_file() and not path.name.startswith("."):
+            # A definition in the wrong format (e.g. .toml) would otherwise
+            # vanish silently — the #1 way an agent-created agent "doesn't show".
+            logger.warning("agents: %s ignored — definitions must be .md files "
+                           "(frontmatter + prompt body)", path)
     return out
+
+
+def stray_definition_files(cwd: str) -> list[Path]:
+    """Non-.md files sitting in an agents directory — almost always a definition
+    written in the wrong format. Surfaced by /agents so 'my agent doesn't show'
+    is self-diagnosing."""
+    strays: list[Path] = []
+    for directory in (_agents_dir_global(), _agents_dir_project(cwd)):
+        if directory.is_dir():
+            strays += [p for p in sorted(directory.iterdir())
+                       if p.is_file() and p.suffix != ".md"
+                       and not p.name.startswith(".")]
+    return strays
 
 
 def load_agent_specs(cwd: str) -> dict[str, AgentSpec]:
@@ -292,6 +311,17 @@ def _roster_description(specs: dict[str, AgentSpec]) -> str:
     ]
     for spec in specs.values():
         lines.append(f"- {spec.name}: {spec.description}")
+    lines += [
+        "",
+        "To CREATE a new agent (when asked to): write a MARKDOWN file at "
+        ".visvoai/agents/<name>.md (this project) or ~/.visvoai/agents/<name>.md "
+        "(all projects). NOT toml/json/yaml — .md only; other files are ignored. "
+        "Format: frontmatter between --- lines with `description:` (one line), "
+        "`tools:` (read-only | full | comma-separated tool names), optional "
+        "`model:` (deployment id); then the BODY is the agent's system prompt. "
+        "It joins this roster next turn (project-defined agents first need "
+        "one-time approval in /agents — tell the user).",
+    ]
     return "\n".join(lines)
 
 

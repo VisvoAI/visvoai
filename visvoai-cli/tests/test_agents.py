@@ -168,6 +168,31 @@ def test_roster_in_tool_description(tmp_path):
     assert "PARALLEL" in t.description.upper()
 
 
+def test_creation_format_in_tool_description(tmp_path):
+    """The model learns the .md format FROM the tool description — without this
+    it invents formats (live incident: an agent wrote a .toml definition that
+    the loader silently ignored)."""
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+    assert ".visvoai/agents/<name>.md" in t.description
+    assert "frontmatter" in t.description
+    assert "NOT toml" in t.description
+
+
+def test_stray_non_md_files_detected(tmp_path):
+    from visvoai.cli.agents import stray_definition_files
+    proj = tmp_path / "repo"
+    d = proj / ".visvoai" / "agents"
+    d.mkdir(parents=True)
+    (d / "guardian.toml").write_text("[agent]\nname='guardian'\n")
+    (d / "good.md").write_text("A real prompt.")
+    (d / ".DS_Store").write_text("")           # dotfiles never flagged
+
+    strays = stray_definition_files(str(proj))
+    assert [p.name for p in strays] == ["guardian.toml"]
+    roster = load_agent_specs(str(proj))
+    assert "good" in roster and "guardian" not in roster
+
+
 def test_untrusted_project_agents_excluded(tmp_path):
     proj = _project_with_agent(tmp_path)
     t = build_run_agent_tool(str(proj), "gemini:gemini-3-pro")

@@ -346,6 +346,10 @@ class CommandsMixin:
         state.record_used("agents")
         specs = agents.load_agent_specs(self._cwd)
         trusted = {n: agents.is_trusted(self._cwd, s) for n, s in specs.items()}
+        for stray in agents.stray_definition_files(self._cwd):
+            self.notify(f"Ignored {stray.name}: agent definitions must be .md "
+                        f"files (frontmatter + prompt body) — found in {stray.parent}",
+                        severity="warning", timeout=12)
         to_trust = await self.push_screen_wait(
             AgentsScreen(list(specs.values()), trusted))
         if not to_trust:
