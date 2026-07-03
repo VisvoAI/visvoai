@@ -3,6 +3,20 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.8.0] — 2026-07
+
+### Added
+- **Read/write shell gating with OS-level enforcement.** `run_shell` now
+  classifies each command: read-only commands (ls, cat, grep, rg, find,
+  git log/status/diff, docker ps, ...) run immediately — no approval prompt —
+  inside an OS sandbox that denies file writes at the kernel (macOS
+  `sandbox-exec`, Linux `bwrap`). Commands that can mutate prompt the user
+  exactly as before. A write disguised as a read (interpreters, awk
+  redirection, anything that fools the text classifier) is blocked by the
+  kernel and rerouted through the approval prompt — the silent-write path
+  does not exist. Platforms without a sandbox fall back to classifier-only
+  gating (conservative: unknown verbs always prompt).
+
 ## [0.7.5] — 2026-07
 
 ### Changed

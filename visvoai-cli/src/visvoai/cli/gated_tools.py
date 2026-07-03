@@ -26,10 +26,42 @@ from visvoai.cli.tools import (   # read-only tools reused as-is; caps shared
     list_files, list_tree, read_file, web_search, web_fetch, cap_lines, SHELL_LINE_CAP,
 )
 from visvoai.cli.tools.shell import SHELL_TIMEOUT_DEFAULT, SHELL_TIMEOUT_MAX
+from visvoai.cli.tools.shellsafe import (
+    classify_command, looks_sandbox_denied, sandbox_argv,
+)
 
 ApproveFn = Callable[[str, dict], Awaitable[bool]]
 
 _DENIED = "User declined this action. No changes were made — adjust the plan or ask why."
+
+
+async def _run_shell_capture(cmd: str | list, timeout: int) -> tuple[str, int]:
+    """Run a shell command (str → shell=True) or argv (list → sandboxed wrapper)
+    off the UI loop; return (formatted output with '[exit: N]' marker, exit code)."""
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run, cmd,
+            shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        # A timeout is a TOOL error returned as data (with the failure marker the
+        # UI parses), never a turn-crashing exception — the agent recovers.
+        out, err = as_text(e.stdout), as_text(e.stderr)
+        partial = cap_lines(
+            (out + (f"\n[stderr]\n{err}" if err else "")).strip(),
+            SHELL_LINE_CAP)
+        head = f"{partial}\n" if partial else ""
+        return ((f"{head}ERROR: command timed out after {timeout}s and was killed. "
+                 f"Pass a larger timeout_seconds (max {SHELL_TIMEOUT_MAX}) if it needs longer."
+                 f"\n[exit: -1]").strip(), -1)
+    except Exception as e:
+        return (f"ERROR: {e}\n[exit: -1]".strip(), -1)
+    output = result.stdout
+    if result.stderr:
+        output += f"\n[stderr]\n{result.stderr}"
+    # Cap before the exit marker so '[exit: N]' (parsed by the UI) survives.
+    output = cap_lines(output.strip(), SHELL_LINE_CAP)
+    return (f"{output}\n[exit: {result.returncode}]".strip(), result.returncode)
 
 
 def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
@@ -102,34 +134,27 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
         Backgrounding (`cmd &`) a process that keeps writing to stdout will HANG
         this call until timeout — the pipe never closes. If you must background
         something, detach its output: `nohup cmd > /tmp/x.log 2>&1 & disown`, then
-        read the log file. Prefer not to leave processes running."""
+        read the log file. Prefer not to leave processes running.
+
+        Read-only commands (ls, cat, grep, rg, find, git log/status/diff, ...) run
+        immediately in a no-write sandbox; commands that can mutate ask the user
+        first. Don't bury a write inside a read-looking command — it will fail."""
+        timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
+        # Read-classified commands run WITHOUT a prompt but INSIDE an OS sandbox
+        # that denies file writes at the kernel — a disguised write that fools the
+        # classifier fails with EPERM instead of mutating silently. Write-classified
+        # commands prompt the user as before and run unsandboxed.
+        if classify_command(command) == "read":
+            argv = sandbox_argv(command)
+            output, code = await _run_shell_capture(argv or command, timeout)
+            if argv is None or not looks_sandbox_denied(output, code):
+                return output
+            # The 'read' turned out to need write access (sandbox blocked it):
+            # fall through to the normal approval path and rerun unsandboxed.
         if not await approve("run_shell", {"command": command}):
             return _DENIED
-        timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
-        try:
-            result = await asyncio.to_thread(  # don't block the UI loop on the subprocess
-                subprocess.run, command,
-                shell=True, capture_output=True, text=True, timeout=timeout,
-            )
-        except subprocess.TimeoutExpired as e:
-            # A timeout is a TOOL error returned as data (with the failure marker the
-            # UI parses), never a turn-crashing exception — the agent recovers.
-            out, err = as_text(e.stdout), as_text(e.stderr)
-            partial = cap_lines(
-                (out + (f"\n[stderr]\n{err}" if err else "")).strip(),
-                SHELL_LINE_CAP)
-            head = f"{partial}\n" if partial else ""
-            return (f"{head}ERROR: command timed out after {timeout}s and was killed. "
-                    f"Pass a larger timeout_seconds (max {SHELL_TIMEOUT_MAX}) if it needs longer."
-                    f"\n[exit: -1]").strip()
-        except Exception as e:
-            return f"ERROR: {e}\n[exit: -1]".strip()
-        output = result.stdout
-        if result.stderr:
-            output += f"\n[stderr]\n{result.stderr}"
-        # Cap before the exit marker so '[exit: N]' (parsed by the UI) survives.
-        output = cap_lines(output.strip(), SHELL_LINE_CAP)
-        return f"{output}\n[exit: {result.returncode}]".strip()
+        output, _code = await _run_shell_capture(command, timeout)
+        return output
 
     # Dedent the locally-defined tools' docstrings (the model sees them verbatim);
     # the imported read/list tools were already cleaned in the package.

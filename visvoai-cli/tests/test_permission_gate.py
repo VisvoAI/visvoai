@@ -40,9 +40,12 @@ async def test_gate_allows_and_blocks_mutations():
     assert "Replaced" in await allow["edit_file"].ainvoke(
         {"path": f, "old_string": "hello", "new_string": "world"})
     assert open(f).read() == "world"
-    assert "exit: 0" in await allow["run_shell"].ainvoke({"command": "echo hi"})
-    # reads are never gated → approve never called for them
+    shell_target = os.path.join(d, "z.txt")
+    assert "exit: 0" in await allow["run_shell"].ainvoke({"command": f"touch {shell_target}"})
+    # reads are never gated → approve never called for them; that now includes
+    # read-classified shell commands (they run sandboxed instead of prompting)
     await allow["read_file"].ainvoke({"path": f})
+    assert "exit: 0" in await allow["run_shell"].ainvoke({"command": "echo hi"})
     assert calls == ["write_file", "edit_file", "run_shell"]
 
 
