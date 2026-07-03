@@ -233,6 +233,100 @@ async def test_run_agent_dispatches_subgraph(tmp_path, monkeypatch):
     assert "[agent: explore" in out
 
 
+def test_least_privilege_and_usage_guidance_in_description(tmp_path):
+    """#3/#4: the model is told to pick the smallest tier, that run_agent is
+    never a user command, and about the /agents approval step."""
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+    d = t.description
+    assert "SMALLEST tools tier" in d
+    assert "never a command the user types" in d
+    assert "/agents" in d
+
+
+def _fake_mcp_tool(name="chrome__lighthouse_audit"):
+    from langchain_core.tools import StructuredTool
+
+    async def _run(url: str) -> str:
+        return "ok"
+    return StructuredTool.from_function(coroutine=_run, name=name,
+                                        description="fake mcp tool")
+
+
+def test_mcp_tools_reach_full_tier(tmp_path):
+    """#5: session MCP tools join full-tier subagents (gated when approve given)."""
+    async def approve(name, args):
+        return True
+
+    mcp = [_fake_mcp_tool()]
+    names = _names(_tools_for_spec(BUILTIN_AGENTS["general"], str(tmp_path),
+                                   approve, extra_tools=mcp))
+    assert "chrome__lighthouse_audit" in names
+    # ungated path too
+    names2 = _names(_tools_for_spec(BUILTIN_AGENTS["general"], str(tmp_path),
+                                    None, extra_tools=mcp))
+    assert "chrome__lighthouse_audit" in names2
+
+
+def test_mcp_tools_never_in_read_only(tmp_path):
+    names = _names(_tools_for_spec(BUILTIN_AGENTS["explore"], str(tmp_path),
+                                   None, extra_tools=[_fake_mcp_tool()]))
+    assert "chrome__lighthouse_audit" not in names
+
+
+def test_mcp_tools_selectable_in_explicit_list(tmp_path):
+    spec = AgentSpec(name="x", source="global", description="d", prompt="p",
+                     tools="read_file, chrome__lighthouse_audit")
+    names = _names(_tools_for_spec(spec, str(tmp_path), None,
+                                   extra_tools=[_fake_mcp_tool()]))
+    assert names == {"read_file", "chrome__lighthouse_audit"}
+
+
+@pytest.mark.asyncio
+async def test_gated_mcp_tool_in_subagent_prompts(tmp_path):
+    """An MCP tool inside a full-tier subagent still hits the approve() gate."""
+    calls = []
+
+    async def approve(name, args):
+        calls.append(name)
+        return False
+
+    tools = _tools_for_spec(BUILTIN_AGENTS["general"], str(tmp_path), approve,
+                            extra_tools=[_fake_mcp_tool()])
+    mcp = next(t for t in tools if t.name == "chrome__lighthouse_audit")
+    out = await mcp.coroutine(url="http://x")
+    assert calls == ["chrome__lighthouse_audit"]
+    assert "declined" in out
+
+
+@pytest.mark.asyncio
+async def test_pending_agent_surfaced_by_app_not_model(tmp_path, monkeypatch):
+    """#2: an untrusted project agent triggers a DETERMINISTIC app warning —
+    at startup, and again (new-only diff) at turn end."""
+    from visvoai.cli import VisvoApp
+
+    d = tmp_path / ".visvoai" / "agents"
+    d.mkdir(parents=True)
+    (d / "auditor.md").write_text("You audit.")
+    monkeypatch.chdir(tmp_path)
+
+    app = VisvoApp()
+    seen = []
+    orig = app.notify
+    app.notify = lambda msg, **kw: (seen.append(str(msg)), orig(msg, **kw))[1]
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert any("auditor" in m and "/agents" in m for m in seen)  # startup
+
+        # Turn-end path: only NEW pending agents notify (no re-nag for 'auditor').
+        seen.clear()
+        app._notify_pending_agents(before={"auditor"})
+        assert seen == []
+        (d / "fresh.md").write_text("New one.")
+        app._notify_pending_agents(before={"auditor"})
+        assert any("fresh" in m for m in seen)
+        assert not any("auditor" in m for m in seen)
+
+
 # ── `visvoai agents` commands ────────────────────────────────────────────────
 
 def test_cli_agents_list_and_show(tmp_path):

@@ -276,6 +276,24 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # launch, and /clear intentionally gives a blank slate).
         self._maybe_mount_changelog_panel()
         self._maybe_launch_scan()
+        self._notify_pending_agents()
+
+    def _notify_pending_agents(self, before: set[str] | None = None) -> None:
+        """Deterministic surfacing of project agents awaiting trust — the SYSTEM's
+        job, never the model's (it forgets). Called at startup (before=None: any
+        pending agent) and after each turn (before=snapshot: only NEW ones, so a
+        deliberately-ignored pending agent doesn't nag every turn)."""
+        from visvoai.cli.agents import untrusted_agents
+        try:
+            pending = {s.name for s in untrusted_agents(self._cwd)}
+        except Exception:
+            return   # a broken agents dir must never break startup/turn teardown
+        fresh = pending if before is None else pending - before
+        if not fresh:
+            return
+        names = ", ".join(f"'{n}'" for n in sorted(fresh))
+        self.notify(f"Agent {names} needs one-time approval before the AI can "
+                    f"use it — open /agents.", severity="warning", timeout=12)
 
     # Context fill at/above this %, warn the user to compact or switch models.
     CTX_WARN_PCT = 85

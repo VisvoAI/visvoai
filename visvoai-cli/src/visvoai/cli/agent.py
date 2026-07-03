@@ -223,7 +223,8 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     if enable_agents:
         from visvoai.cli.agents import build_run_agent_tool
         tools.append(build_run_agent_tool(cwd=cwd, deployment_id=deployment_id,
-                                          approve=approve, level=level))
+                                          approve=approve, level=level,
+                                          extra_tools=extra_tools))
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     return CLIRuntime(assembler=assembler).build_graph(
         model=model,

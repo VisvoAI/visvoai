@@ -195,6 +195,14 @@ class AgentTurnMixin:
         from visvoai.cli.mcp import get_mcp_tools
         _mcp_statuses, mcp_tools = await get_mcp_tools(self._cwd)
 
+        # Snapshot pending-trust agents so the turn's end can surface only the ones
+        # THIS turn created (e.g. the model wrote a .visvoai/agents/*.md file).
+        from visvoai.cli.agents import untrusted_agents
+        try:
+            pre_untrusted = {s.name for s in untrusted_agents(self._cwd)}
+        except Exception:
+            pre_untrusted = set()
+
         try:
             graph = agent.build_agent_graph(
                 self._model, self._cwd, approve=self._approve, level=self._thinking,
@@ -360,6 +368,9 @@ class AgentTurnMixin:
         finally:
             self._set_status(None)
             await self._clear_working()
+            # A turn that created a project agent must SAY it needs approval —
+            # deterministically, whether or not the model mentioned it (or errored).
+            self._notify_pending_agents(before=pre_untrusted)
 
         # Each message was already persisted incrementally as it completed (above),
         # so an errored/interrupted/crashed turn keeps its work. On success, reconcile

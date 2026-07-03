@@ -273,20 +273,28 @@ def write_agent_file(directory: Path, name: str, *, description: str,
 
 # ── Subagent tool sets ────────────────────────────────────────────────────────
 
-def _tools_for_spec(spec: AgentSpec, cwd: str, approve) -> list:
+def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None) -> list:
     """The tool set a subagent gets — decided HERE at graph build, never by the
     model. read-only ⇒ reads + the write-refusing sandboxed shell, ungated.
     full ⇒ the standard set behind the same approve() gate as the top level.
-    Explicit names ⇒ that subset of the full set (unknown names ignored)."""
-    from visvoai.cli.gated_tools import build_gated_tools, build_readonly_shell
+    Explicit names ⇒ that subset of the full set (unknown names ignored).
+
+    extra_tools (session MCP tools) join the full tier and are selectable by
+    name in explicit lists — gated like any external action. They are NEVER in
+    read-only: an MCP call's side effects can't be classified, and the OS
+    sandbox doesn't cover a remote server."""
+    from visvoai.cli.gated_tools import build_gated_tools, build_readonly_shell, gate_tool
     from visvoai.cli.tools import build_cli_tools, list_files, list_tree, read_file, web_fetch, web_search
 
     tier = spec.tools.strip().lower()
     if tier == "read-only":
         return [read_file, list_files, list_tree, web_search, web_fetch,
                 build_readonly_shell()]
-    full = (build_gated_tools(cwd=cwd, approve=approve) if approve is not None
-            else build_cli_tools(cwd=cwd))
+    if approve is not None:
+        full = build_gated_tools(cwd=cwd, approve=approve)
+        full += [gate_tool(t, approve) for t in (extra_tools or [])]
+    else:
+        full = build_cli_tools(cwd=cwd) + list(extra_tools or [])
     if tier == "full":
         return full
     wanted = {n.strip() for n in spec.tools.split(",") if n.strip()}
@@ -317,21 +325,31 @@ def _roster_description(specs: dict[str, AgentSpec]) -> str:
         ".visvoai/agents/<name>.md (this project) or ~/.visvoai/agents/<name>.md "
         "(all projects). NOT toml/json/yaml — .md only; other files are ignored. "
         "Format: frontmatter between --- lines with `description:` (one line), "
-        "`tools:` (read-only | full | comma-separated tool names), optional "
-        "`model:` (deployment id); then the BODY is the agent's system prompt. "
-        "It joins this roster next turn (project-defined agents first need "
-        "one-time approval in /agents — tell the user).",
+        "`tools:` (see below), optional `model:` (deployment id); then the BODY "
+        "is the agent's system prompt. It joins this roster next turn.",
+        "Choose the SMALLEST tools tier that fits: `read-only` for analysis/"
+        "search/review agents; an explicit comma-separated list (e.g. `tools: "
+        "read_file, list_files, run_shell`) when it must run commands but never "
+        "edit files; `full` ONLY when it must modify files. Connected MCP tools "
+        "(named server__tool) are included in `full` and selectable by name in "
+        "explicit lists — never available in `read-only`.",
+        "After creating one, tell the user in plain language: they approve it "
+        "once in /agents (project agents only), then simply ASK for the task — "
+        "run_agent is YOUR internal tool, never a command the user types.",
     ]
     return "\n".join(lines)
 
 
 def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
-                         level: str | None = None):
+                         level: str | None = None, extra_tools=None):
     """The `run_agent(agent, task)` tool bound to this session's roster.
 
     Rebuilt every turn (like the rest of the graph) so file edits to agent
     definitions are picked up live. Untrusted project agents are EXCLUDED from
     the roster here — trust approval happens in /agents, not mid-turn.
+
+    extra_tools: the session's discovered MCP tools, passed through to full-tier
+    and explicit-list subagents (see _tools_for_spec).
     """
     from langchain_core.tools import StructuredTool
 
@@ -358,7 +376,7 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
         except Exception as e:
             return f"ERROR: agent '{agent}' model '{dep_id}' unavailable: {e}"
 
-        tools = _tools_for_spec(spec, cwd, approve)
+        tools = _tools_for_spec(spec, cwd, approve, extra_tools)
         graph = CLIRuntime().build_graph(
             model=model,
             core_tools=tools,

@@ -3,6 +3,26 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.10.0] — 2026-07
+
+### Added
+- **MCP tools reach subagents.** Full-tier agents now get the session's
+  connected MCP tools (gated exactly like at the top level), and explicit
+  tool lists can select them by `server__tool` name. Never in `read-only` —
+  a remote server's side effects can't be classified or sandboxed. An agent
+  like a Lighthouse auditor referencing `chrome__*` tools now actually has
+  them.
+
+### Fixed
+- **Pending agent approval is now impossible to miss.** When a turn creates a
+  project agent (or you open the CLI in a repo that ships one), the app
+  itself shows a warning toast pointing at /agents — deterministic, not
+  dependent on the model remembering to mention it.
+- **Better agent-creation guidance to the model**: pick the smallest tool
+  tier that fits (read-only / explicit list / full), and explain usage to the
+  user in plain language — run_agent is the model's internal tool, never a
+  command the user types (a live response had presented it as one).
+
 ## [0.9.1] — 2026-07
 
 ### Fixed
