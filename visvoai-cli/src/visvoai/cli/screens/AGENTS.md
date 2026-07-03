@@ -12,6 +12,7 @@ resume, git commit). Each `dismiss(...)`es a result the caller awaits.
 - `rewind_view.py` → `RewindScreen` — pick a checkpoint to rewind/branch to (active-branch chain newest-first, per-row file-diff counts). `dismiss(checkpoint_id | None)`. Used by `/rewind`, and by `/branch`+`/fork` to choose a point.
 - `branch_view.py` → `BranchScreen` — switch conversation branches or start a new fork; a leading `NEW_BRANCH` ("+new") sentinel row. `dismiss(branch_name | '+new' | None)`.
 - `process_view.py` → `ProcessScreen` — background-process manager (`/ps`): running-first rows w/ live runtime tick (1s interval), last output line, enter = stop (running, whole group, by=user) / dismiss (finished); footer `⏵ N procs` chip (StatusBar.set_processes) polled every 2s from app. `dismiss(None)` — actions apply immediately.
+- `agents_view.py` → `AgentsScreen` — merged agent roster (untrusted-first) with capability tier + model per row; trust-toggling for project-defined agents (same enter-marks-pending pattern as MCPScreen). `dismiss(list[str])` — agent names to trust.
 - `mcp_view.py` → `MCPScreen` — MCP server status (untrusted-first ordering), setup help when empty, and trust-toggling for project-defined servers (enter marks pending; applied by the caller on close). `dismiss(list[str])` — server names to trust. Infrastructure state deliberately lives here, not in the chat log.
 
 # Conventions

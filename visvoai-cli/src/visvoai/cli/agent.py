@@ -178,7 +178,8 @@ def api_key_available(deployment_id: str) -> bool:
 
 
 def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | None = None,
-                      extra_tools: list | None = None, process_registry=None):
+                      extra_tools: list | None = None, process_registry=None,
+                      enable_agents: bool = True):
     """Resolve the deployment via visvoai-ai and build the CLIRuntime agent graph.
 
     level: the chosen thinking level ('off'|'low'|'medium'|'high'), or None to let
@@ -197,6 +198,11 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     process_registry: the app's ProcessRegistry. When given, the background tools
     (start/check/stop_process) are added. They gate THEMSELVES (start/stop only —
     check is a read), so they are not wrapped by gate_tool.
+
+    enable_agents: adds the run_agent delegation tool (built-in + user-defined
+    subagents). Not wrapped by gate_tool — dispatching is free; a subagent's own
+    MUTATING tool calls still hit the same approve() gate. Subagent graphs are
+    built without this flag, capping delegation depth at 1.
     """
     from visvoai.ai import build_chat_model
     from visvoai.cli.context import build_assembler
@@ -214,6 +220,10 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     if process_registry is not None:
         from visvoai.cli.tools.background import build_background_tools
         tools += build_background_tools(process_registry, cwd=cwd, approve=approve)
+    if enable_agents:
+        from visvoai.cli.agents import build_run_agent_tool
+        tools.append(build_run_agent_tool(cwd=cwd, deployment_id=deployment_id,
+                                          approve=approve, level=level))
     assembler = build_assembler(SYSTEM_PROMPT, cwd)
     return CLIRuntime(assembler=assembler).build_graph(
         model=model,

@@ -419,5 +419,135 @@ def mcp_remove(name: str, cwd: str) -> None:
         sys.exit(1)
 
 
+# ── `visvoai agents …` — manage subagents ────────────────────────────────────
+
+def _agents_dir(project: bool, cwd: str):
+    from visvoai.cli.agents import _agents_dir_global, _agents_dir_project
+    return _agents_dir_project(os.path.abspath(cwd)) if project else _agents_dir_global()
+
+
+@cli.group("agents")
+def agents_group() -> None:
+    """Manage agents (subagents the main agent can delegate tasks to).
+
+    \b
+    visvoai agents list                  merged roster (built-ins + yours)
+    visvoai agents create reviewer       interactive: description, tools, model
+    visvoai agents show reviewer         print a definition
+    visvoai agents remove reviewer
+
+    Built-ins (explore, general) always exist. Your agents are markdown files —
+    ~/.visvoai/agents/<name>.md (global) or .visvoai/agents/<name>.md (project,
+    shareable via the repo; teammates approve it once in /agents).
+    """
+
+
+@agents_group.command("list")
+@click.option("--cwd", default=".", help="Project directory to resolve agents for.")
+def agents_list(cwd: str) -> None:
+    """List the merged agent roster."""
+    from visvoai.cli.agents import is_trusted, load_agent_specs
+
+    abs_cwd = os.path.abspath(cwd)
+    for s in load_agent_specs(abs_cwd).values():
+        flags = []
+        if s.source == "project" and not is_trusted(abs_cwd, s):
+            flags.append("awaiting approval (/agents in the TUI)")
+        suffix = f"  [{', '.join(flags)}]" if flags else ""
+        model = s.model or "session model"
+        click.echo(f"{s.name:<16} {s.source:<8} {s.tools:<12} {model:<28} "
+                   f"{s.description}{suffix}")
+
+
+@agents_group.command("show")
+@click.argument("name")
+@click.option("--cwd", default=".", help="Project directory to resolve agents for.")
+def agents_show(name: str, cwd: str) -> None:
+    """Print an agent's full definition (system prompt included)."""
+    from visvoai.cli.agents import load_agent_specs
+
+    spec = load_agent_specs(os.path.abspath(cwd)).get(name)
+    if spec is None:
+        click.echo(f"No agent named '{name}'.", err=True)
+        sys.exit(1)
+    click.echo(f"name:        {spec.name}")
+    click.echo(f"source:      {spec.source}" + (f"  ({spec.path})" if spec.path else ""))
+    click.echo(f"description: {spec.description}")
+    click.echo(f"tools:       {spec.tools}")
+    click.echo(f"model:       {spec.model or 'session model'}")
+    click.echo("\n--- system prompt ---")
+    click.echo(spec.prompt)
+
+
+@agents_group.command("create")
+@click.argument("name")
+@click.option("--project", is_flag=True,
+              help="Write to this project's .visvoai/agents/ (shareable via the "
+                   "repo; teammates approve it once) instead of ~/.visvoai/agents/.")
+@click.option("--cwd", default=".", help="Project directory (with --project).")
+def agents_create(name: str, project: bool, cwd: str) -> None:
+    """Create an agent interactively (description → tools → model → prompt)."""
+    from visvoai.cli.agents import BUILTIN_AGENTS, write_agent_file
+
+    if name in BUILTIN_AGENTS:
+        raise click.UsageError(f"'{name}' is a built-in agent — pick another name.")
+    path = _agents_dir(project, cwd) / f"{name}.md"
+    if path.exists() and not click.confirm(f"{path} exists — overwrite?"):
+        return
+
+    description = click.prompt("Description (one line — the main agent reads this "
+                               "to decide when to delegate)")
+    tier = click.prompt("Tools", type=click.Choice(["read-only", "full", "custom"]),
+                        default="read-only")
+    if tier == "custom":
+        tier = click.prompt("Tool names (comma-separated: read_file, run_shell, "
+                            "edit_file, write_file, list_files, list_tree, "
+                            "web_search, web_fetch)")
+    model = click.prompt("Model deployment id (empty = the session's model)",
+                         default="", show_default=False).strip() or None
+    click.echo("System prompt (what this agent IS and how it should work; "
+               "end with an empty line):")
+    lines: list[str] = []
+    while True:
+        line = input()
+        if not line and lines:
+            break
+        lines.append(line)
+    try:
+        out = write_agent_file(_agents_dir(project, cwd), name,
+                               description=description, tools=tier, model=model,
+                               prompt="\n".join(lines).strip())
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    click.echo(f"\nCreated agent '{name}' → {out}")
+    click.echo("Edit that file to refine the prompt — changes apply on the next turn.")
+    if project:
+        click.echo("Project-defined agent: the TUI asks for one-time approval (/agents).")
+
+
+@agents_group.command("remove")
+@click.argument("name")
+@click.option("--cwd", default=".", help="Project directory to resolve agents for.")
+def agents_remove(name: str, cwd: str) -> None:
+    """Remove an agent definition file (built-ins can't be removed)."""
+    from visvoai.cli.agents import BUILTIN_AGENTS
+
+    if name in BUILTIN_AGENTS:
+        click.echo(f"'{name}' is a built-in agent — it can't be removed.", err=True)
+        sys.exit(1)
+    removed = []
+    for project in (False, True):
+        path = _agents_dir(project, cwd) / f"{name}.md"
+        if path.exists():
+            path.unlink()
+            removed.append(str(path))
+    if removed:
+        for p in removed:
+            click.echo(f"Removed {p}")
+    else:
+        click.echo(f"No agent named '{name}' found.", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()

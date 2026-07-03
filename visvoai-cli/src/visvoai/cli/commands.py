@@ -42,6 +42,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("log", "List this timeline's checkpoints (undo points)"),
     ("compact", "Summarize older turns to free up context"),
     ("mcp", "MCP servers — connection status & project-server approval"),
+    ("agents", "Agents — specialists the AI can delegate tasks to"),
     ("ps", "Background processes — see & stop what the agent left running"),
     ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
     ("commit", "Review changes & make a git commit"),
@@ -55,7 +56,7 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
     ("Chat", ["model", "login", "mode", "compact", "clear"]),
     ("Time travel — your work is checkpointed every turn",
      ["rewind", "branch", "fork", "log", "export"]),
-    ("Project", ["resume", "commit", "mcp", "ps", "theme", "quit"]),
+    ("Project", ["resume", "commit", "mcp", "agents", "ps", "theme", "quit"]),
 ]
 
 def _compaction_cut(messages: list, keep_turns: int) -> int | None:
@@ -335,6 +336,28 @@ class CommandsMixin:
                     f"{len(connected)} server{'s' if len(connected) != 1 else ''} "
                     f"— live from your next message.")
 
+    async def _agents_flow(self) -> None:
+        """`/agents` — full-screen agent roster (AgentsScreen): built-ins + user
+        agents, capability tiers, and first-use trust approval for project-defined
+        agents. Trust applies from the next turn (the graph is rebuilt per turn)."""
+        from visvoai.cli import agents
+        from visvoai.cli.screens import AgentsScreen
+
+        state.record_used("agents")
+        specs = agents.load_agent_specs(self._cwd)
+        trusted = {n: agents.is_trusted(self._cwd, s) for n, s in specs.items()}
+        to_trust = await self.push_screen_wait(
+            AgentsScreen(list(specs.values()), trusted))
+        if not to_trust:
+            return
+        for name in to_trust:
+            spec = specs.get(name)
+            if spec is not None:
+                agents.trust_agent(self._cwd, spec)
+        self.notify(f"Agents: {len(to_trust)} project agent"
+                    f"{'s' if len(to_trust) != 1 else ''} trusted — "
+                    "available from your next message.")
+
     async def on_text_area_changed(self, event) -> None:
         prompt = self.query_one("#prompt", PromptArea)
         if event.text_area is not prompt:
@@ -507,6 +530,8 @@ class CommandsMixin:
             self.run_worker(self._compact_flow())
         elif name == "mcp":
             self.run_worker(self._mcp_flow())
+        elif name == "agents":
+            self.run_worker(self._agents_flow())
         elif name == "ps":
             self.run_worker(self._ps_flow())
         elif name == "mode":

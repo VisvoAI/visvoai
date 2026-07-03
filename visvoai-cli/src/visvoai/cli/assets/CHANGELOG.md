@@ -3,6 +3,27 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.9.0] — 2026-07
+
+### Added
+- **Agents & subagents.** The main agent can now delegate self-contained tasks
+  via a `run_agent(agent, task)` tool. Two built-ins ship with the CLI:
+  `explore` (fast read-only reconnaissance — reads, searches, and a shell that
+  refuses writes and runs inside the OS no-write sandbox; zero approval
+  prompts) and `general` (full tool set — mutations still ask you, exactly as
+  at the top level). Independent dispatches run IN PARALLEL. Each subagent
+  starts with a fresh, isolated context; only its final answer returns.
+- **User-defined agents.** Drop a markdown file in `~/.visvoai/agents/`
+  (personal) or `.visvoai/agents/` (project, shareable via the repo) —
+  frontmatter sets description/tools/model, the body is the system prompt.
+  Project-defined agents need one-time approval in `/agents` (recorded outside
+  the repo; any edit re-prompts) — same trust model as project MCP servers.
+- **`/agents` screen** — the merged roster with each agent's capability tier
+  and model, plus trust approval for project agents.
+- **`visvoai agents list/show/create/remove`** — manage agents headlessly;
+  `create` is an interactive wizard. Or just ask the agent to write one — a
+  definition is a plain file, created through the normal edit approval.
+
 ## [0.8.0] — 2026-07
 
 ### Added

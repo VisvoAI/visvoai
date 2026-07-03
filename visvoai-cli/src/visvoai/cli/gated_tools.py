@@ -164,6 +164,33 @@ def build_gated_tools(cwd: str, approve: ApproveFn) -> List[BaseTool]:
             web_search, web_fetch]
 
 
+def build_readonly_shell() -> BaseTool:
+    """A run_shell variant for read-only agents: write-classified commands are
+    REFUSED outright (no approval path exists), read-classified ones run inside
+    the OS no-write sandbox. Capability is fixed at construction — there is no
+    parameter the model can pass to escape it."""
+
+    @tool
+    async def run_shell(command: str, timeout_seconds: int = SHELL_TIMEOUT_DEFAULT) -> str:
+        """Run a READ-ONLY shell command (ls, cat, grep, rg, find, git log/status/
+        diff, ...) and return combined output + exit code. Pipes and && work.
+        This shell cannot modify anything: write commands are rejected and file
+        writes are blocked at the OS level — don't attempt them.
+
+        timeout_seconds: seconds before the command is killed (default 30, max 600)."""
+        if classify_command(command) != "read":
+            return ("ERROR: this agent's shell is read-only and the command was "
+                    "classified as a write. Rephrase as a read (grep/cat/ls/git "
+                    "log ...) or report what change is needed instead.\n[exit: -1]")
+        timeout = max(1, min(int(timeout_seconds or SHELL_TIMEOUT_DEFAULT), SHELL_TIMEOUT_MAX))
+        argv = sandbox_argv(command)
+        output, _code = await _run_shell_capture(argv or command, timeout)
+        return output
+
+    run_shell.description = inspect.cleandoc(run_shell.description)
+    return run_shell
+
+
 def gate_tool(t: BaseTool, approve: ApproveFn) -> BaseTool:
     """Return a copy of an arbitrary pre-built async tool (e.g. a discovered MCP
     tool) that awaits `approve` before executing. Schema, name, and description
