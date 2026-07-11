@@ -34,6 +34,7 @@ VERB_MAP = {
     "update_file": "edit", "edit_file": "edit", "write_file": "write", "create": "write",
     "run_shell": "run", "shell": "run",
     "web_search": "search", "web_fetch": "fetch",
+    "run_agent": "agent",
 }
 # Raw tool name → the human DISPLAY name shown in the row (Title Case, readable) —
 # distinct from the internal identifier the agent calls.
@@ -43,6 +44,7 @@ TOOL_DISPLAY = {
     "edit_file": "Edit", "update_file": "Edit", "write_file": "Write", "create": "Write",
     "run_shell": "Bash", "shell": "Bash",
     "web_search": "Web", "web_fetch": "Fetch",
+    "run_agent": "Agent",
 }
 # Verb → palette key for the display-name colour (consequence: safe reads = calm
 # `secondary` accent — coloured + readable in BOTH light/dark, not flat foreground;
@@ -52,6 +54,7 @@ _VERB_COLOR = {
     "fetch": "secondary",
     "edit": "primary", "write": "primary",
     "run": "warning",
+    "agent": "primary",   # delegation is a first-class, consequential action
 }
 _NAME_W = 6  # fixed display-name column so targets align down the wire
 

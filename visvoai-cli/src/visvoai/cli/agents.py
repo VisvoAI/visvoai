@@ -302,7 +302,8 @@ def write_agent_file(directory: Path, name: str, *, description: str,
 
 # ── Subagent tool sets ────────────────────────────────────────────────────────
 
-def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None) -> list:
+def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None,
+                    process_registry=None) -> list:
     """The tool set a subagent gets — decided HERE at graph build, never by the
     model. read-only ⇒ reads + the write-refusing sandboxed shell, ungated.
     full ⇒ the standard set behind the same approve() gate as the top level.
@@ -324,6 +325,14 @@ def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None) -> lis
         full += [gate_tool(t, approve) for t in (extra_tools or [])]
     else:
         full = build_cli_tools(cwd=cwd) + list(extra_tools or [])
+    if process_registry is not None:
+        # Background tools (start/check/stop_process, self-gating) — without
+        # them a subagent has NO way to run a dev server except blocking its
+        # synchronous shell until timeout (live incident: a Lighthouse agent
+        # hung on a foreground `yarn dev`). Registry is the APP's — processes
+        # show in /ps and die on app exit like any other.
+        from visvoai.cli.tools.background import build_background_tools
+        full += build_background_tools(process_registry, cwd=cwd, approve=approve)
     if tier == "full":
         return full
     wanted = {n.strip() for n in spec.tools.split(",") if n.strip()}
@@ -373,42 +382,21 @@ def _roster_description(specs: dict[str, AgentSpec]) -> str:
     return "\n".join(lines)
 
 
-def _write_trace(trace_dir_fn, spec: AgentSpec, dispatch_id: str, task: str,
-                 dep_id: str, messages: list, *, error: str | None,
-                 duration_s: float) -> str:
-    """Persist one dispatch's full transcript as JSONL and return the compact
-    telemetry trailer appended to the tool result. The trace is the audit log
-    the main conversation deliberately does NOT contain (subagent events are
-    filtered from the stream); `messages` is the subagent graph's own final
-    thread, so nothing is lost by the filtering.
-
-    Never raises — tracing must not break a dispatch. trace_dir_fn: () -> Path
-    or None (headless/tests without a conversation directory skip persistence
-    but still get the trailer)."""
-    from visvoai.cli.agent import chunk_text, thinking_text, turn_cost, usage_of
+def _telemetry_trailer(spec: AgentSpec, dep_id: str, messages: list,
+                       duration_s: float) -> str:
+    """The compact telemetry trailer appended to the tool result:
+    `[agent: X · N tool calls · Yk tokens · $C · Ds]`."""
+    from visvoai.cli.agent import turn_cost, usage_of
 
     tin = tout = 0
     rounds = 0
-    records: list[dict] = []
     for m in messages:
         kind = m.__class__.__name__
         if kind == "AIMessage":
             u = usage_of(m)
             tin += u["input"]; tout += u["output"]
-            rec = {"kind": "ai", "text": chunk_text(m)[:4000]}
-            think = thinking_text(m)
-            if think:
-                rec["thinking"] = think[:2000]
-            if getattr(m, "tool_calls", None):
-                rec["tool_calls"] = [{"name": t.get("name"),
-                                      "args": {k: str(v)[:500] for k, v in
-                                               (t.get("args") or {}).items()}}
-                                     for t in m.tool_calls]
-            records.append(rec)
         elif kind == "ToolMessage":
             rounds += 1
-            records.append({"kind": "tool", "name": getattr(m, "name", None),
-                            "output": chunk_text(m)[:4000]})
     cost = turn_cost(dep_id, tin, tout)
     trailer_bits = [f"agent: {spec.name}",
                     f"{rounds} tool call{'s' if rounds != 1 else ''}",
@@ -416,31 +404,46 @@ def _write_trace(trace_dir_fn, spec: AgentSpec, dispatch_id: str, task: str,
     if cost:
         trailer_bits.append(f"${cost:.4f}")
     trailer_bits.append(f"{duration_s:.0f}s")
-    trailer = "[" + " · ".join(trailer_bits) + "]"
+    return "[" + " · ".join(trailer_bits) + "]"
+
+
+def _write_headless_trace(trace_path: Path, spec: AgentSpec, dispatch_id: str,
+                          task: str, dep_id: str, messages: list,
+                          summary: str) -> None:
+    """One-shot trace for runs WITHOUT a registry (headless single-shot). The
+    TUI path traces live via AgentRunRegistry instead. Never raises."""
+    from visvoai.cli.agent import chunk_text
 
     try:
-        trace_dir = trace_dir_fn() if trace_dir_fn else None
-        if trace_dir is not None:
-            trace_dir = Path(trace_dir)
-            trace_dir.mkdir(parents=True, exist_ok=True)
-            path = trace_dir / f"{spec.name}_{dispatch_id[:12]}.jsonl"
-            lines = [json.dumps({"kind": "meta", "agent": spec.name,
-                                 "dispatch_id": dispatch_id, "model": dep_id,
-                                 "tools": spec.tools, "task": task[:2000]})]
-            lines += [json.dumps(r, ensure_ascii=False) for r in records]
-            lines.append(json.dumps({
-                "kind": "summary", "error": error, "rounds": rounds,
-                "input_tokens": tin, "output_tokens": tout,
-                "cost_usd": round(cost, 6), "duration_s": round(duration_s, 1)}))
-            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        lines = [json.dumps({"kind": "meta", "agent": spec.name,
+                             "dispatch_id": dispatch_id, "model": dep_id,
+                             "tools": spec.tools, "task": task[:2000]})]
+        for m in messages:
+            kind = m.__class__.__name__
+            if kind == "AIMessage":
+                rec = {"kind": "ai", "text": chunk_text(m)[:4000]}
+                if getattr(m, "tool_calls", None):
+                    rec["tool_calls"] = [{"name": t.get("name"),
+                                          "args": {k: str(v)[:500] for k, v in
+                                                   (t.get("args") or {}).items()}}
+                                         for t in m.tool_calls]
+                lines.append(json.dumps(rec, ensure_ascii=False))
+            elif kind == "ToolMessage":
+                lines.append(json.dumps({"kind": "tool",
+                                         "name": getattr(m, "name", None),
+                                         "output": chunk_text(m)[:4000]},
+                                        ensure_ascii=False))
+        lines.append(json.dumps({"kind": "summary", "summary": summary}))
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception as e:
         logger.warning("agents: trace write failed (ignored): %s", e)
-    return trailer
 
 
 def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
                          level: str | None = None, extra_tools=None,
-                         trace_dir_fn=None):
+                         trace_dir_fn=None, process_registry=None,
+                         run_registry=None):
     """The `run_agent(agent, task)` tool bound to this session's roster.
 
     Rebuilt every turn (like the rest of the graph) so file edits to agent
@@ -452,7 +455,13 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
 
     trace_dir_fn: () -> Path|None, resolved AT DISPATCH TIME (the conversation
     id doesn't exist yet when the graph is built on a fresh conversation).
-    Every dispatch persists its full transcript there (_write_trace).
+
+    run_registry: the app's AgentRunRegistry. The TOOL owns the run lifecycle —
+    it registers the run (it alone knows the real dispatch id, the task, and
+    holds the cancellable asyncio task) and finishes it; the turn worker only
+    feeds live steps. A /runs stop cancels the task here; the caller gets a
+    plain 'stopped by user' result and the main turn survives. None (headless/
+    tests) → the run executes identically, just untracked live.
     """
     from langchain_core.tools import StructuredTool
 
@@ -488,7 +497,7 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
         except Exception as e:
             return f"ERROR: agent '{agent}' model '{dep_id}' unavailable: {e}"
 
-        tools = _tools_for_spec(spec, cwd, approve, extra_tools)
+        tools = _tools_for_spec(spec, cwd, approve, extra_tools, process_registry)
         # A definition's prompt may name tools that aren't connected THIS
         # session (live incident: a prompt hardcoding chrome__* MCP tools made
         # the subagent call names it didn't have — prompt-following beats
@@ -508,15 +517,49 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
             all_tools_map={t.name: t for t in tools},
             system_prompt=prompt,
         )
+        # The run is a first-class citizen: registered before the first model
+        # call, cancellable individually (a /runs stop cancels ONLY this task),
+        # trace appended live by the registry as steps complete.
+        import asyncio
+
+        trace_path = None
         try:
-            result = await graph.ainvoke(
-                {"messages": [HumanMessage(content=task[:MAX_TASK_CHARS])]},
-                config={"recursion_limit": 100,
-                        "tags": [f"{SUBAGENT_TAG_PREFIX}{spec.name}:{dispatch_id}"]},
-            )
+            trace_dir = trace_dir_fn() if trace_dir_fn else None
+            if trace_dir is not None:
+                trace_path = Path(trace_dir) / f"{spec.name}_{dispatch_id[:12]}.jsonl"
+        except Exception:
+            trace_path = None
+
+        invoke_task = asyncio.ensure_future(graph.ainvoke(
+            {"messages": [HumanMessage(content=task[:MAX_TASK_CHARS])]},
+            config={"recursion_limit": 100,
+                    "tags": [f"{SUBAGENT_TAG_PREFIX}{spec.name}:{dispatch_id}"]},
+        ))
+        run = None
+        if run_registry is not None:
+            run = run_registry.register(dispatch_id, spec.name, task,
+                                        trace_path=trace_path,
+                                        cancel=invoke_task.cancel)
+        try:
+            result = await invoke_task
+        except asyncio.CancelledError:
+            # Awaiting a SEPARATE task means our own cancellation (Esc on the
+            # turn) does NOT cancel it — without this the subagent graph keeps
+            # running orphaned in the background (spending tokens, mutating
+            # files after the user stopped the turn).
+            invoke_task.cancel()
+            if run is not None and run.user_stopped:
+                run_registry.finish(dispatch_id, ok=False, summary="stopped by user")
+                return (f"Agent '{agent}' was STOPPED BY THE USER before "
+                        "finishing. Treat this as an instruction: don't retry "
+                        "the same dispatch — ask what to do instead.")
+            if run_registry is not None:
+                run_registry.finish(dispatch_id, ok=False,
+                                    summary="turn stopped (esc)")
+            raise   # whole-turn cancellation — propagate
         except Exception as e:
-            _write_trace(trace_dir_fn, spec, dispatch_id, task, dep_id, [],
-                         error=str(e), duration_s=_time.monotonic() - started)
+            if run_registry is not None:
+                run_registry.finish(dispatch_id, ok=False, summary=str(e)[:200])
             return f"ERROR: agent '{agent}' failed: {e}"
 
         messages = result.get("messages", [])
@@ -528,8 +571,13 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
                 if final:
                     break
         duration = _time.monotonic() - started
-        summary = _write_trace(trace_dir_fn, spec, dispatch_id, task, dep_id,
-                               messages, error=None, duration_s=duration)
+        summary = _telemetry_trailer(spec, dep_id, messages, duration)
+        if run_registry is not None:
+            run_registry.finish(dispatch_id, ok=bool(final), summary=summary,
+                                final=final)
+        elif trace_path is not None:
+            _write_headless_trace(trace_path, spec, dispatch_id, task, dep_id,
+                                  messages, summary)
         if not final:
             return f"ERROR: agent '{agent}' produced no final answer."
         return cap_lines(final, AGENT_RESULT_LINE_CAP) + "\n" + summary

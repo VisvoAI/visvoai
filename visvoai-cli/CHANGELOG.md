@@ -3,6 +3,70 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.13.0] — 2026-07
+
+### Changed
+- **An agent run is now a first-class agent conversation.** Rebuilt around one
+  principle: a run is the same thing as a main turn, minus the human — so it
+  gets the same treatment everywhere.
+  - **Same rendering**: run activity is structured steps rendered with the
+    conversation's own ToolRow widgets (verb + consequence color, spinner,
+    ✓/✗ + duration on the rail) in both the side panel and /runs — no more
+    timestamped log lines. A step's row transitions in place when it
+    completes, exactly like a chat tool row.
+  - **Same durability**: the trace file is appended live — meta at dispatch,
+    each step as it completes, summary at the end. A hung or killed run
+    leaves its partial transcript on disk, like a crashed main turn keeps its
+    persisted messages.
+  - **Same interruptibility**: stop ONE running agent from /runs (enter). The
+    dispatch task is cancelled, the caller gets a plain "stopped by user"
+    result, and the main turn survives and adapts.
+  - The run_agent tool now owns the run lifecycle (register/cancel/finish) —
+    it alone knows the dispatch id and holds the task; the turn worker only
+    feeds steps. The name-aliasing workaround is gone.
+  - **Esc no longer orphans subagents.** Cancelling the turn now explicitly
+    cancels every in-flight dispatch task (awaiting a separate task does not
+    propagate cancellation) — previously the subagent graph kept running in
+    the background after a stop, spending tokens and mutating files, with the
+    run stuck at "running".
+- **Layout**: the live split is now 60% conversation / 40% agents; /runs uses
+  the full terminal width (list 30% · selected run's log 70%).
+
+## [0.12.1] — 2026-07
+
+### Fixed
+- **Subagent steps no longer vanish (panel stuck at "starting…").** The run
+  was registered under the agent's NAME (its tool_call_id isn't knowable at
+  registration), while live steps arrived keyed by the real id from the event
+  tag — the resolver compared the id against names, matched nothing, and
+  dropped every step. Resolution now binds the real id to the name-keyed run
+  on first contact (aliasing); ambiguous matches (two parallel same-name
+  runs) are dropped rather than misattributed.
+- **Subagents get the background-process tools.** A definition listing
+  start/check/stop_process silently lost them (they were main-graph-only), so
+  an agent needing a dev server blocked its synchronous shell until timeout —
+  a hung dispatch with no way to make progress. Full-tier and explicit-list
+  subagents now get them (same self-gating, same /ps visibility, killed on
+  app exit); read-only never.
+
+## [0.12.0] — 2026-07
+
+### Added
+- **Live agent side panel.** While subagents run (and the terminal is ≥110
+  cols), the main screen splits: conversation left, up to 4 running agents
+  right — each pane a header (`⏵ name · 1m 42s · 9 steps`) plus the tail of
+  its step log, soft dividers between agents, ticking every second. Collapses
+  automatically when the last agent finishes; narrow terminals skip the split.
+- **Footer agents chip.** `⏵ 2 agents /runs` appears while dispatches run;
+  click it to open /runs.
+- **/runs screen** — every dispatch this session, side by side: run list left
+  (30%), the SELECTED run's timestamped step log right, tailing live; ↑/↓ or
+  click to switch. Finished and failed runs stay reviewable.
+- **First-class dispatch rows.** run_agent renders as `Agent <name> — <task>`
+  (no more raw args dump); on completion the telemetry trailer becomes the
+  rail (`14 tool calls · 82.3k tokens · $0.0210 · 192s`) with the agent's
+  report in a collapsible body.
+
 ## [0.11.0] — 2026-07
 
 ### Added

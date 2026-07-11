@@ -43,6 +43,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("compact", "Summarize older turns to free up context"),
     ("mcp", "MCP servers — connection status & project-server approval"),
     ("agents", "Agents — specialists the AI can delegate tasks to"),
+    ("runs", "Agent runs — live logs of delegated work"),
     ("ps", "Background processes — see & stop what the agent left running"),
     ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
     ("commit", "Review changes & make a git commit"),
@@ -56,7 +57,7 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
     ("Chat", ["model", "login", "mode", "compact", "clear"]),
     ("Time travel — your work is checkpointed every turn",
      ["rewind", "branch", "fork", "log", "export"]),
-    ("Project", ["resume", "commit", "mcp", "agents", "ps", "theme", "quit"]),
+    ("Project", ["resume", "commit", "mcp", "agents", "runs", "ps", "theme", "quit"]),
 ]
 
 def _compaction_cut(messages: list, keep_turns: int) -> int | None:
@@ -362,6 +363,15 @@ class CommandsMixin:
                     f"{'s' if len(to_trust) != 1 else ''} trusted — "
                     "available from your next message.")
 
+    async def _runs_flow(self) -> None:
+        """`/runs` — live view of subagent dispatches (AgentRunsScreen): switch
+        between running agents, tail the selected one's step log. Works mid-turn
+        (the screen reads the registry the turn worker feeds)."""
+        from visvoai.cli.screens import AgentRunsScreen
+
+        state.record_used("runs")
+        await self.push_screen_wait(AgentRunsScreen(self._agent_runs))
+
     async def on_text_area_changed(self, event) -> None:
         prompt = self.query_one("#prompt", PromptArea)
         if event.text_area is not prompt:
@@ -536,6 +546,8 @@ class CommandsMixin:
             self.run_worker(self._mcp_flow())
         elif name == "agents":
             self.run_worker(self._agents_flow())
+        elif name == "runs":
+            self.run_worker(self._runs_flow())
         elif name == "ps":
             self.run_worker(self._ps_flow())
         elif name == "mode":

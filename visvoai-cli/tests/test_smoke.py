@@ -33,8 +33,10 @@ async def test_top_level_widgets_present():
         kinds = [type(w).__name__ for w in app.screen.children]
         assert "Header" not in kinds
         assert "Footer" not in kinds
-        assert "VerticalScroll" in kinds
+        # The log lives inside the #main-split Horizontal (agent side panel split).
+        assert "Horizontal" in kinds
         assert "Vertical" in kinds
+        assert app.screen.query_one("#log") is not None
         bottom = app.screen.query_one("#bottom", Vertical)
         prompt = bottom.query_one("#prompt", PromptArea)
         assert "@mention a file" in prompt.placeholder   # action-oriented dev placeholder

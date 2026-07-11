@@ -70,7 +70,11 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
        borderless + transparent so that one background shows through. */
     Screen { border: none; padding: 0; }
 
+    /* The split: conversation left, live-agent panel right (panel shows itself
+       only while agents run AND the terminal is wide enough). */
+    #main-split { height: 1fr; }
     #log {
+        width: 1fr;
         height: 1fr;
         padding: 1 0;
         scrollbar-size: 0 0;   /* hidden bar; mouse-wheel / PgUp still scroll */
@@ -179,6 +183,8 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # closed CLI never leaves a server squatting on a port.
         from visvoai.cli.processes import ProcessRegistry
         self._processes = ProcessRegistry()
+        from visvoai.cli.agent_runs import AgentRunRegistry
+        self._agent_runs = AgentRunRegistry()   # subagent dispatches (/runs)
         # Git-structured history (cli-git-structure): a shadow repo snapshots the work
         # tree per tool-batch + turn-end, linked to the thread by message index so code
         # and conversation rewind together. All lazy + best-effort — never breaks a turn.
@@ -218,8 +224,11 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
 
     # ── layout ──────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="log"):
-            yield WelcomeBanner(self._welcome_left, self._welcome_right)
+        from visvoai.cli.widgets.agent_panel import AgentPanel
+        with Horizontal(id="main-split"):
+            with VerticalScroll(id="log"):
+                yield WelcomeBanner(self._welcome_left, self._welcome_right)
+            yield AgentPanel(self._agent_runs)
         with Vertical(id="bottom"):
             # Active plan/todo, pinned just above the input so it never scrolls away.
             yield Vertical(id="pinned")
@@ -265,6 +274,7 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         # Background-process chip: poll cheaply so the footer reflects processes the
         # agent starts/stops mid-turn (and ones that exit on their own).
         self.set_interval(2.0, self._refresh_process_chip)
+        self.set_interval(1.0, self._sync_agent_panel)
         self.set_tab_title(None)   # brand-only until a conversation has a title
         self.query_one("#prompt", PromptArea).focus()
         for msg in self._startup_notices:
@@ -277,6 +287,23 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         self._maybe_mount_changelog_panel()
         self._maybe_launch_scan()
         self._notify_pending_agents()
+
+    def _sync_agent_panel(self) -> None:
+        """Show the live-agent side panel while dispatches run and the terminal
+        is wide enough for a split; collapse it otherwise. /runs is the full
+        view — this is ambient visibility, never at the cost of the chat."""
+        from visvoai.cli.widgets.agent_panel import MIN_APP_WIDTH, AgentPanel
+        try:
+            panel = self.query_one(AgentPanel)
+        except Exception:
+            return   # teardown / tests without the main screen
+        count = self._agent_runs.running_count()
+        want = count > 0 and self.size.width >= MIN_APP_WIDTH
+        if want != panel.has_class("visible"):
+            panel.set_class(want, "visible")
+        sb = self._status_bar()
+        if sb is not None:
+            sb.set_agents(count)
 
     def _notify_pending_agents(self, before: set[str] | None = None) -> None:
         """Deterministic surfacing of project agents awaiting trust — the SYSTEM's
@@ -415,6 +442,11 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
     def on_status_bar_procs_chip_clicked(self, _msg) -> None:
         """Mouse parity: clicking the ⏵ processes chip opens /ps."""
         self.run_worker(self._ps_flow())
+
+    def on_status_bar_agents_chip_clicked(self, _msg) -> None:
+        """Mouse parity: clicking the agents chip opens /runs (pick a run,
+        watch its log)."""
+        self.run_worker(self._runs_flow())
 
     def action_cycle_hitl_mode(self) -> None:
         """Shift+Tab (and /mode) — cycle the approval mode: normal → auto-edit →

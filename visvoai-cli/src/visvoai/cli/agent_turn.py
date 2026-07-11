@@ -17,7 +17,7 @@ from textual.containers import VerticalScroll
 import time
 
 from visvoai.cli import agent, store
-from visvoai.cli.agents import subagent_name_from_tags
+from visvoai.cli.agents import subagent_key_from_tags
 from visvoai.cli import state as ui_state   # aliased: `state` is a local (graph input) below
 from visvoai.cli.widgets import (
     Assistant, CleanDiff, ErrorBlock, Plan, SystemNote, Thinking, ToolOutput,
@@ -215,7 +215,8 @@ class AgentTurnMixin:
             graph = agent.build_agent_graph(
                 self._model, self._cwd, approve=self._approve, level=self._thinking,
                 extra_tools=mcp_tools, process_registry=self._processes,
-                agent_trace_dir_fn=_agent_trace_dir)
+                agent_trace_dir_fn=_agent_trace_dir,
+                agent_run_registry=self._agent_runs)
         except Exception as e:  # missing key / integration / unknown model — surface it
             await self._mount_block(log, SystemNote(f"model error: {e}", kind="error"), "note")
             self._set_status(None)
@@ -270,14 +271,31 @@ class AgentTurnMixin:
                 # conversation (they'd read as the main agent's own actions).
                 # Filter them; show only a status pulse so the run_agent row's
                 # wait is legible. Token usage still counts — it's real spend.
-                sub_name = subagent_name_from_tags(event.get("tags"))
-                if sub_name is not None:
+                sub_key = subagent_key_from_tags(event.get("tags"))
+                if sub_key is not None:
+                    # Structured steps, paired start↔end by the event run_id —
+                    # the SAME shape a main-turn tool row carries, so the panel
+                    # and /runs render them with the same ToolRow widgets.
+                    sub_name, sub_dispatch = sub_key
                     if kind == "on_chat_model_stream":
                         u = agent.usage_of(data.get("chunk"))
                         turn_in += u["input"]; turn_out += u["output"]
                     elif kind == "on_tool_start":
-                        self._set_status(
-                            f"agent {sub_name}: {event.get('name', 'tool')}…")
+                        tname = event.get("name", "tool")
+                        self._set_status(f"agent {sub_name}: {tname}…")
+                        self._agent_runs.step_start(
+                            sub_dispatch, event.get("run_id", ""), tname,
+                            agent.fmt_args(data.get("input") or {})[:200])
+                    elif kind == "on_tool_end":
+                        out = agent.tool_output_text(data.get("output"))
+                        first = next((l for l in out.splitlines() if l.strip()), "")
+                        failed = first.startswith("ERROR") or "[exit: -1]" in out
+                        self._agent_runs.step_end(
+                            sub_dispatch, event.get("run_id", ""), first, not failed)
+                    elif kind == "on_tool_error":
+                        self._agent_runs.step_end(
+                            sub_dispatch, event.get("run_id", ""),
+                            str(data.get("error") or "tool error")[:200], False)
                     continue
 
                 if kind == "on_chat_model_stream":
@@ -323,7 +341,17 @@ class AgentTurnMixin:
                         thinking = None
                     name = event.get("name", "tool")
                     args = data.get("input") or {}
-                    node = await self._tool_node(log, name, agent.fmt_args(args))
+                    if name == "run_agent" and isinstance(args, dict):
+                        # First-class dispatch row: agent name + task excerpt, not
+                        # a raw args dump. The run itself is registered by the
+                        # run_agent tool (it owns the lifecycle + cancel handle).
+                        a_name = str(args.get("agent", "?"))
+                        a_task = str(args.get("task", ""))
+                        target = a_name + (f" — {a_task[:80]}…" if len(a_task) > 80
+                                           else f" — {a_task}" if a_task else "")
+                        node = await self._tool_node(log, name, target)
+                    else:
+                        node = await self._tool_node(log, name, agent.fmt_args(args))
                     node.set_status("running")
                     nodes[event.get("run_id")] = (node, name, args)
                     self._set_status(f"running {name}…")
@@ -614,6 +642,23 @@ class AgentTurnMixin:
             lines = (args.get("content", "") or "").splitlines() or [""]
             node.set_rail(f"{len(lines)} lines")
             await node.set_body(ToolOutput(lines), collapsed=True)
+            node.set_status("complete")
+            return
+
+        if name == "run_agent":
+            # Lifecycle (registry finish) is the run_agent tool's job — this is
+            # pure rendering: trailer → rail, report → collapsed body.
+            a_name = str(args.get("agent", "?"))
+            if output.startswith("ERROR"):
+                node.set_rail("failed"); self._turn_had_error = True
+                await node.set_failure("", output)
+                return
+            lines = output.splitlines()
+            trailer = lines[-1] if lines and lines[-1].startswith("[agent:") else ""
+            body_lines = lines[:-1] if trailer else lines
+            rail = trailer.strip("[]").removeprefix(f"agent: {a_name} · ") if trailer else ""
+            node.set_rail(rail or f"{len(body_lines)} lines")
+            await node.set_body(ToolOutput(body_lines or [""]), collapsed=True)
             node.set_status("complete")
             return
 

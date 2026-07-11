@@ -39,10 +39,14 @@ class StatusBar(Horizontal):
     class ProcsChipClicked(Message):
         pass
 
+    class AgentsChipClicked(Message):
+        pass
+
     DEFAULT_CSS = """
     StatusBar { height: 1; padding: 0 1; }
     StatusBar > #sb-mode { width: auto; }
     StatusBar > #sb-left { width: 1fr; }
+    StatusBar > #sb-agents { width: auto; }
     StatusBar > #sb-procs { width: auto; }
     StatusBar > #sb-right { width: auto; content-align: right middle; }
     """
@@ -58,10 +62,12 @@ class StatusBar(Horizontal):
         self._cost: float = 0.0               # cumulative conversation cost (USD)
         self._mode: str | None = None  # None | "plan" | "read-only" — a left chip
         self._processes: int = 0       # running background processes (0 → chip hidden)
+        self._agents: int = 0          # running subagent dispatches (0 → chip hidden)
 
     def compose(self) -> ComposeResult:
         yield _ModeChip(id="sb-mode")
         yield Static(id="sb-left")
+        yield _AgentsChip(id="sb-agents")
         yield _ProcsChip(id="sb-procs")
         yield Static(id="sb-right")
 
@@ -122,6 +128,12 @@ class StatusBar(Horizontal):
         self._cost = usd
         self._render_bar()
 
+    def set_agents(self, count: int) -> None:
+        """Number of running subagent dispatches; a right-rail chip when > 0 —
+        clicking it opens /runs (pick a run, watch its log)."""
+        self._agents = max(0, count)
+        self._render_bar()
+
     def set_processes(self, count: int) -> None:
         """Number of running background processes; a right-rail chip when > 0 so
         the user always knows something is running (and can /ps to manage it)."""
@@ -158,6 +170,7 @@ class StatusBar(Horizontal):
         try:
             mode_cell = self.query_one("#sb-mode", Static)
             left_cell = self.query_one("#sb-left", Static)
+            agents_cell = self.query_one("#sb-agents", Static)
             procs_cell = self.query_one("#sb-procs", Static)
             right_cell = self.query_one("#sb-right", Static)
         except NoMatches:
@@ -175,6 +188,13 @@ class StatusBar(Horizontal):
         else:
             left.append_text(self._model_text(tv))
         left_cell.update(left)
+        agents = Text()
+        if self._agents > 0:
+            agents.append(f"⏵ {self._agents} agent{'s' if self._agents != 1 else ''}",
+                          style=tv["primary"])
+            agents.append(" /runs", style=f"dim {tv['muted']}")
+            agents.append("   ", style=tv["muted"])
+        agents_cell.update(agents)
         procs = Text()
         if self._processes > 0:
             procs.append(f"⏵ {self._processes} proc{'s' if self._processes != 1 else ''}",
@@ -206,3 +226,8 @@ class _ModeChip(Static):
 class _ProcsChip(Static):
     def on_click(self) -> None:
         self.post_message(StatusBar.ProcsChipClicked())
+
+
+class _AgentsChip(Static):
+    def on_click(self) -> None:
+        self.post_message(StatusBar.AgentsChipClicked())

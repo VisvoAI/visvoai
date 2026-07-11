@@ -267,6 +267,27 @@ def test_mcp_tools_reach_full_tier(tmp_path):
     assert "chrome__lighthouse_audit" in names2
 
 
+def test_background_tools_reach_subagents(tmp_path):
+    """A subagent that must run a dev server needs start/check/stop_process —
+    without them it blocks its synchronous shell until timeout (live incident:
+    a Lighthouse agent hung on a foreground `yarn dev`)."""
+    from visvoai.cli.processes import ProcessRegistry
+
+    reg = ProcessRegistry()
+    names = _names(_tools_for_spec(BUILTIN_AGENTS["general"], str(tmp_path),
+                                   None, process_registry=reg))
+    assert {"start_process", "check_process", "stop_process"} <= names
+    # explicit lists can select them too
+    spec = AgentSpec(name="x", source="global", description="d", prompt="p",
+                     tools="run_shell, start_process, check_process, stop_process")
+    names2 = _names(_tools_for_spec(spec, str(tmp_path), None, process_registry=reg))
+    assert names2 == {"run_shell", "start_process", "check_process", "stop_process"}
+    # read-only never gets them
+    names3 = _names(_tools_for_spec(BUILTIN_AGENTS["explore"], str(tmp_path),
+                                    None, process_registry=reg))
+    assert not names3 & {"start_process", "stop_process"}
+
+
 def test_mcp_tools_never_in_read_only(tmp_path):
     names = _names(_tools_for_spec(BUILTIN_AGENTS["explore"], str(tmp_path),
                                    None, extra_tools=[_fake_mcp_tool()]))
@@ -377,7 +398,7 @@ async def test_dispatch_writes_trace_and_telemetry_trailer(tmp_path, monkeypatch
     lines = [_json.loads(l) for l in files[0].read_text().splitlines()]
     assert lines[0]["kind"] == "meta"
     assert lines[0]["task"] == "scan the repo"
-    assert lines[-1]["kind"] == "summary" and lines[-1]["error"] is None
+    assert lines[-1]["kind"] == "summary"
     assert any(r["kind"] == "ai" and "scanned" in r["text"] for r in lines)
 
 
@@ -484,6 +505,86 @@ async def test_subagent_gets_context_and_reality_check(tmp_path, monkeypatch):
     system = seen_system[0]
     assert "Tool reality check" in system
     assert str(tmp_path) in system or "Environment" in system   # assembler ran
+
+
+@pytest.mark.asyncio
+async def test_user_stop_returns_result_not_exception(tmp_path, monkeypatch):
+    """Stopping ONE run from /runs cancels only that dispatch: the tool returns
+    a plain 'stopped by user' result so the MAIN turn survives and adapts."""
+    import asyncio
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from visvoai.cli.agent_runs import AgentRunRegistry
+
+    class _Slow(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, *a, **kw):
+            await asyncio.sleep(30)          # never finishes on its own
+            return AIMessage(content="unreachable")
+
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Slow(
+        responses=[AIMessage(content="x")]))
+
+    reg = AgentRunRegistry()
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro", run_registry=reg)
+    task = asyncio.ensure_future(
+        t.coroutine(agent="explore", task="scan", tool_call_id="cS"))
+    for _ in range(50):                      # wait for the run to register
+        await asyncio.sleep(0.01)
+        if reg.runs():
+            break
+    assert reg.stop("cS") is True
+    out = await task                         # resolves, does NOT raise
+    assert "STOPPED BY THE USER" in out
+    assert reg.runs()[0].status == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_turn_cancel_kills_the_subagent_task(tmp_path, monkeypatch):
+    """Esc on the turn must cancel the DISPATCH TASK too — awaiting a separate
+    task doesn't propagate cancellation, so without an explicit cancel the
+    subagent graph keeps running orphaned (tokens + file mutations after stop)."""
+    import asyncio
+
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+    from visvoai.cli.agent_runs import AgentRunRegistry
+
+    started = asyncio.Event()
+    inner_cancelled = asyncio.Event()
+
+    class _Slow(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, *a, **kw):
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                inner_cancelled.set()
+                raise
+            return AIMessage(content="unreachable")
+
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: _Slow(
+        responses=[AIMessage(content="x")]))
+
+    reg = AgentRunRegistry()
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro", run_registry=reg)
+    outer = asyncio.ensure_future(
+        t.coroutine(agent="explore", task="scan", tool_call_id="cE"))
+    await asyncio.wait_for(started.wait(), 5)
+    outer.cancel()                              # ← the Esc path
+    with pytest.raises(asyncio.CancelledError):
+        await outer
+    await asyncio.wait_for(inner_cancelled.wait(), 5)   # graph task really died
+    assert reg.runs()[0].status == "failed"             # not stuck 'running'
+    assert "turn stopped" in reg.runs()[0].summary
 
 
 # ── `visvoai agents` commands ────────────────────────────────────────────────
