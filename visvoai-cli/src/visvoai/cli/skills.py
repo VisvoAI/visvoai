@@ -174,9 +174,43 @@ def _load_dir(root: Path, source: str) -> dict[str, SkillSpec]:
     return out
 
 
+def _extra_dirs(config_path: Path, base: Path) -> list[Path]:
+    """`[skills] extra_dirs = [...]` from one config file — external skill
+    folders (another CLI's ~/.claude/skills, a repo's skills/ tree, shared
+    dotfiles) so one library serves every tool. Relative entries resolve
+    against the config file's project root; `~` expands."""
+    if not config_path.exists():
+        return []
+    try:
+        data = tomllib.loads(config_path.read_text())
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        logger.warning("skills: unreadable config %s: %s", config_path, e)
+        return []
+    dirs = (data.get("skills") or {}).get("extra_dirs") or []
+    out: list[Path] = []
+    for d in dirs:
+        if not isinstance(d, str):
+            continue
+        p = Path(d).expanduser()
+        out.append(p if p.is_absolute() else (base / p).resolve())
+    return out
+
+
 def load_skill_specs(cwd: str) -> dict[str, SkillSpec]:
-    """Merged roster: global ∪ project (project wins on name)."""
+    """Merged roster, later wins on name:
+    global dir → global extra_dirs (list order) → project dir → project
+    extra_dirs. TRUST FOLLOWS THE DECLARING CONFIG, not the dir's location: a
+    dir listed in ~/.visvoai/config.toml is user-chosen ("global", implicitly
+    trusted); one listed in the project's config is repo-controlled
+    ("project", one-time approval) — who controls the BYTES decides the tier."""
+    from visvoai.cli.keys import global_config_path
+    from visvoai.cli.store import project_root
+
     merged = _load_dir(_skills_dir_global(), "global")
+    home = _skills_dir_global().parent
+    for d in _extra_dirs(global_config_path(), home):
+        merged.update(_load_dir(d, "global"))
+
     proj = _skills_dir_project(cwd)
     # Outside any project, project_root() can resolve to $HOME (the global
     # ~/.visvoai/config.toml matches its anchor walk) — the "project" layer
@@ -184,6 +218,14 @@ def load_skill_specs(cwd: str) -> dict[str, SkillSpec]:
     # project-defined (spurious trust prompts). Same file twice ≠ two layers.
     if proj != _skills_dir_global():
         merged.update(_load_dir(proj, "project"))
+        try:
+            proot = project_root(cwd)
+        except Exception:
+            proot = Path(cwd)
+        proj_cfg = proot / ".visvoai" / "config.toml"
+        if proj_cfg.resolve() != global_config_path().resolve():
+            for d in _extra_dirs(proj_cfg, proot):
+                merged.update(_load_dir(d, "project"))
     return merged
 
 
@@ -280,6 +322,9 @@ def _index_description(specs: dict[str, SkillSpec]) -> str:
         "Load a SKILL — reusable step-by-step instructions for a known workflow "
         "— then FOLLOW those instructions with your own tools. Read a skill "
         "BEFORE improvising whenever the user's request matches one below.",
+        "This tool is the ONLY way to load a skill: never search the filesystem "
+        "for skill files (a repo's own skills/ folders are NOT this roster) — "
+        "one call by name replaces all of that and fills in the arguments.",
         "",
         "Available skills:",
     ]

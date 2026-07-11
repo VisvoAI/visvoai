@@ -24,6 +24,15 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
   toasts cover skills exactly like agents.
 - **`visvoai skills list/show/create/remove`** — manage skills headlessly;
   `create` is an interactive wizard. Or ask the agent to write one.
+- **External skill libraries (`extra_dirs`).** Point the CLI at skill folders
+  you already have — another CLI's `~/.claude/skills`, a repo's `skills/`
+  tree, shared dotfiles — via `[skills] extra_dirs = [...]` in
+  `~/.visvoai/config.toml` (personal) or the project's
+  `.visvoai/config.toml` (shareable). Trust follows the DECLARING config:
+  user-config dirs load as global (implicitly trusted), project-config dirs
+  load as project (one-time approval). Precedence: global dir → global
+  extras → project dir → project extras; later wins on name. Foreign
+  frontmatter (Claude Code's name/description keys) parses as-is.
 
 ### Fixed
 - **Global definitions no longer reload as "project" outside a project.**

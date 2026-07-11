@@ -212,6 +212,75 @@ def test_global_layer_never_doubles_as_project_layer(tmp_path, monkeypatch):
     assert aroster["helper"].source == "global"
 
 
+# ── extra_dirs (external skill libraries) ────────────────────────────────────
+
+def _write_cfg(path, dirs):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[skills]\nextra_dirs = ["
+                    + ", ".join(f'"{d}"' for d in dirs) + "]\n")
+
+
+def test_global_extra_dirs_load_as_trusted_global(tmp_path):
+    """A dir listed in the USER's config is user-chosen → global tier, no
+    trust prompt — even though it lives outside ~/.visvoai/skills (e.g.
+    another CLI's ~/.claude/skills)."""
+    from visvoai.cli.keys import global_config_path
+
+    ext = tmp_path / "claude-skills"
+    _make_skill(ext, name="from-claude",
+                source_body="---\nname: from-claude\ndescription: foreign\n---\nSteps.")
+    _write_cfg(global_config_path(), [str(ext)])
+
+    roster = load_skill_specs(str(tmp_path / "proj"))
+    assert roster["from-claude"].source == "global"
+    assert untrusted_skills(str(tmp_path / "proj")) == []
+
+
+def test_project_extra_dirs_need_trust(tmp_path):
+    """A dir listed in the PROJECT's config is repo-controlled → project tier,
+    one-time approval. Relative entries resolve against the project root."""
+    proj = tmp_path / "repo"
+    _make_skill(proj / "team-skills", name="deploy-runbook",
+                source_body="---\ndescription: team runbook\n---\nSteps.")
+    _write_cfg(proj / ".visvoai" / "config.toml", ["./team-skills"])
+
+    roster = load_skill_specs(str(proj))
+    spec = roster["deploy-runbook"]
+    assert spec.source == "project"
+    assert not is_trusted(str(proj), spec)
+    trust_skill(str(proj), spec)
+    assert is_trusted(str(proj), spec)
+
+
+def test_precedence_project_extras_win_last(tmp_path):
+    """global dir → global extras → project dir → project extras; later wins."""
+    from visvoai.cli.keys import global_config_path
+
+    _make_skill(skills._skills_dir_global(),
+                source_body="---\ndescription: native\n---\nnative body")
+    ext = tmp_path / "ext"
+    _make_skill(ext, source_body="---\ndescription: extra\n---\nextra body")
+    _write_cfg(global_config_path(), [str(ext)])
+
+    proj = tmp_path / "repo"
+    (proj / ".visvoai").mkdir(parents=True)
+    roster = load_skill_specs(str(proj))
+    assert roster["release-notes"].body == "extra body"   # extras beat the dir
+
+    _make_skill(proj / ".visvoai" / "skills",
+                source_body="---\ndescription: proj\n---\nproject body")
+    roster = load_skill_specs(str(proj))
+    assert roster["release-notes"].body == "project body"  # project beats global
+
+
+def test_bad_extra_dir_config_ignored(tmp_path):
+    from visvoai.cli.keys import global_config_path
+
+    global_config_path().parent.mkdir(parents=True, exist_ok=True)
+    global_config_path().write_text("not [ valid toml")
+    assert isinstance(load_skill_specs(str(tmp_path)), dict)   # never raises
+
+
 # ── `visvoai skills` commands ────────────────────────────────────────────────
 
 def test_cli_skills_list_show_remove(tmp_path, monkeypatch):
