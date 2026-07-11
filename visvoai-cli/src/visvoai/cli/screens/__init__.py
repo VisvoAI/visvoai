@@ -9,6 +9,8 @@ from visvoai.cli.screens.model_view import ModelScreen
 from visvoai.cli.screens.process_view import ProcessScreen
 from visvoai.cli.screens.rewind_view import RewindScreen
 from visvoai.cli.screens.sessions import SessionsScreen
+from visvoai.cli.screens.skills_view import SkillsScreen
 
 __all__ = ["AgentRunsScreen", "AgentsScreen", "BranchScreen", "GitScreen", "MCPScreen",
-           "ModelScreen", "ProcessScreen", "RewindScreen", "SessionsScreen"]
+           "ModelScreen", "ProcessScreen", "RewindScreen", "SessionsScreen",
+           "SkillsScreen"]

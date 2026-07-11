@@ -221,6 +221,9 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     if process_registry is not None:
         from visvoai.cli.tools.background import build_background_tools
         tools += build_background_tools(process_registry, cwd=cwd, approve=approve)
+    # Skills: read-only progressive-disclosure instructions — never gated.
+    from visvoai.cli.skills import build_read_skill_tool
+    tools.append(build_read_skill_tool(cwd))
     if enable_agents:
         from visvoai.cli.agents import build_run_agent_tool
         tools.append(build_run_agent_tool(cwd=cwd, deployment_id=deployment_id,

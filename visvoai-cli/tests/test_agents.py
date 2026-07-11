@@ -340,10 +340,10 @@ async def test_pending_agent_surfaced_by_app_not_model(tmp_path, monkeypatch):
 
         # Turn-end path: only NEW pending agents notify (no re-nag for 'auditor').
         seen.clear()
-        app._notify_pending_agents(before={"auditor"})
+        app._notify_pending_agents(before={"agent:auditor"})
         assert seen == []
         (d / "fresh.md").write_text("New one.")
-        app._notify_pending_agents(before={"auditor"})
+        app._notify_pending_agents(before={"agent:auditor"})
         assert any("fresh" in m for m in seen)
         assert not any("auditor" in m for m in seen)
 
@@ -585,6 +585,35 @@ async def test_turn_cancel_kills_the_subagent_task(tmp_path, monkeypatch):
     await asyncio.wait_for(inner_cancelled.wait(), 5)   # graph task really died
     assert reg.runs()[0].status == "failed"             # not stuck 'running'
     assert "turn stopped" in reg.runs()[0].summary
+
+
+@pytest.mark.asyncio
+async def test_stalled_run_is_an_error_not_stale_narration(tmp_path, monkeypatch):
+    """Only the TERMINAL message is the answer. A run whose last message is
+    empty (provider stall after a mid-run narration message) must return an
+    explicit stall ERROR — not resurrect earlier narration as 'the answer'
+    (live incident: MiniMax garbled a tool call; stale text masked the stall)."""
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langchain_core.messages import AIMessage
+
+    class _Fake(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+    fake = _Fake(responses=[
+        AIMessage(content="Mid-run narration: port 3000 is Docker…",
+                  tool_calls=[{"name": "run_shell", "id": "t1",
+                               "args": {"command": "echo hi"}}]),
+        AIMessage(content=""),                    # the stall: empty terminal msg
+    ])
+    import visvoai.ai as vai
+    monkeypatch.setattr(vai, "build_chat_model", lambda dep, level=None: fake)
+
+    t = build_run_agent_tool(str(tmp_path), "gemini:gemini-3-pro")
+    out = await t.coroutine(agent="general", task="audit")
+    assert out.startswith("ERROR")
+    assert "stalled" in out and "1 tool call" in out
+    assert "narration" not in out                 # stale text NOT returned
 
 
 # ── `visvoai agents` commands ────────────────────────────────────────────────

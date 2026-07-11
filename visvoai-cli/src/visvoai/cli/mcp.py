@@ -128,7 +128,12 @@ def load_mcp_servers(cwd: str) -> dict[str, MCPServerSpec]:
         proj_cfg = project_root(cwd) / ".visvoai" / "config.toml"
     except Exception:
         proj_cfg = Path(cwd) / ".visvoai" / "config.toml"
-    merged.update(_parse_section(proj_cfg, "project"))
+    # Outside any project, project_root() can resolve to $HOME (its anchor walk
+    # matches ~/.visvoai/config.toml) — the "project" layer would then be the
+    # global file itself, reclassifying global servers as project-defined
+    # (spurious trust prompts). Same file twice ≠ two layers.
+    if proj_cfg.resolve() != global_config_path().resolve():
+        merged.update(_parse_section(proj_cfg, "project"))
     return merged
 
 

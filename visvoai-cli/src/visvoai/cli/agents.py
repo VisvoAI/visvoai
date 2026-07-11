@@ -230,7 +230,12 @@ def load_agent_specs(cwd: str) -> dict[str, AgentSpec]:
     """Merged roster: built-ins ∪ global ∪ project (later wins on name)."""
     merged = dict(BUILTIN_AGENTS)
     merged.update(_load_dir(_agents_dir_global(), "global"))
-    merged.update(_load_dir(_agents_dir_project(cwd), "project"))
+    proj = _agents_dir_project(cwd)
+    # Outside any project, project_root() can resolve to $HOME (its anchor walk
+    # matches the global ~/.visvoai/config.toml) — skipping keeps global agents
+    # from being reclassified as project-defined (spurious trust prompts).
+    if proj != _agents_dir_global():
+        merged.update(_load_dir(proj, "project"))
     return merged
 
 
@@ -316,15 +321,18 @@ def _tools_for_spec(spec: AgentSpec, cwd: str, approve, extra_tools=None,
     from visvoai.cli.gated_tools import build_gated_tools, build_readonly_shell, gate_tool
     from visvoai.cli.tools import build_cli_tools, list_files, list_tree, read_file, web_fetch, web_search
 
+    from visvoai.cli.skills import build_read_skill_tool
+
     tier = spec.tools.strip().lower()
     if tier == "read-only":
         return [read_file, list_files, list_tree, web_search, web_fetch,
-                build_readonly_shell()]
+                build_readonly_shell(), build_read_skill_tool(cwd)]
     if approve is not None:
         full = build_gated_tools(cwd=cwd, approve=approve)
         full += [gate_tool(t, approve) for t in (extra_tools or [])]
     else:
         full = build_cli_tools(cwd=cwd) + list(extra_tools or [])
+    full.append(build_read_skill_tool(cwd))   # skills: read-only, every tier
     if process_registry is not None:
         # Background tools (start/check/stop_process, self-gating) — without
         # them a subagent has NO way to run a dev server except blocking its
@@ -563,13 +571,18 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
             return f"ERROR: agent '{agent}' failed: {e}"
 
         messages = result.get("messages", [])
+        # The contract: the TERMINAL message is the return value. Only the last
+        # AIMessage counts — walking back to earlier text fabricates an answer
+        # from mid-run narration and masks a stalled run as success (live
+        # incident: a provider emitted a malformed tool call, the loop ended on
+        # an empty message, and stale narration was returned as "the answer").
+        from visvoai.cli.agent import chunk_text
         final = ""
         for m in reversed(messages):
             if m.__class__.__name__ == "AIMessage":
-                from visvoai.cli.agent import chunk_text
                 final = chunk_text(m).strip()
-                if final:
-                    break
+                break
+        rounds = sum(1 for m in messages if m.__class__.__name__ == "ToolMessage")
         duration = _time.monotonic() - started
         summary = _telemetry_trailer(spec, dep_id, messages, duration)
         if run_registry is not None:
@@ -579,7 +592,10 @@ def build_run_agent_tool(cwd: str, deployment_id: str, approve=None,
             _write_headless_trace(trace_path, spec, dispatch_id, task, dep_id,
                                   messages, summary)
         if not final:
-            return f"ERROR: agent '{agent}' produced no final answer."
+            return (f"ERROR: agent '{agent}' stalled without a final answer "
+                    f"({rounds} tool call{'s' if rounds != 1 else ''} completed "
+                    "— see /runs for its steps). Its work may be partial; "
+                    "verify state before retrying or taking over.")
         return cap_lines(final, AGENT_RESULT_LINE_CAP) + "\n" + summary
 
     return StructuredTool.from_function(

@@ -44,6 +44,7 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("mcp", "MCP servers — connection status & project-server approval"),
     ("agents", "Agents — specialists the AI can delegate tasks to"),
     ("runs", "Agent runs — live logs of delegated work"),
+    ("skills", "Skills — reusable workflows the AI follows on demand"),
     ("ps", "Background processes — see & stop what the agent left running"),
     ("mode", "Change when I ask before editing (normal/auto-edit/accept-all)"),
     ("commit", "Review changes & make a git commit"),
@@ -57,7 +58,8 @@ _HELP_GROUPS: list[tuple[str, list[str]]] = [
     ("Chat", ["model", "login", "mode", "compact", "clear"]),
     ("Time travel — your work is checkpointed every turn",
      ["rewind", "branch", "fork", "log", "export"]),
-    ("Project", ["resume", "commit", "mcp", "agents", "runs", "ps", "theme", "quit"]),
+    ("Project", ["resume", "commit", "mcp", "agents", "runs", "skills", "ps",
+                 "theme", "quit"]),
 ]
 
 def _compaction_cut(messages: list, keep_turns: int) -> int | None:
@@ -372,6 +374,28 @@ class CommandsMixin:
         state.record_used("runs")
         await self.push_screen_wait(AgentRunsScreen(self._agent_runs))
 
+    async def _skills_flow(self) -> None:
+        """`/skills` — full-screen skill roster (SkillsScreen): what the AI can
+        load, args/resources per skill, and first-use trust approval for
+        project-defined skills. Trust applies from the next turn."""
+        from visvoai.cli import skills
+        from visvoai.cli.screens import SkillsScreen
+
+        state.record_used("skills")
+        specs = skills.load_skill_specs(self._cwd)
+        trusted = {n: skills.is_trusted(self._cwd, s) for n, s in specs.items()}
+        to_trust = await self.push_screen_wait(
+            SkillsScreen(list(specs.values()), trusted))
+        if not to_trust:
+            return
+        for name in to_trust:
+            spec = specs.get(name)
+            if spec is not None:
+                skills.trust_skill(self._cwd, spec)
+        self.notify(f"Skills: {len(to_trust)} project skill"
+                    f"{'s' if len(to_trust) != 1 else ''} trusted — "
+                    "available from your next message.")
+
     async def on_text_area_changed(self, event) -> None:
         prompt = self.query_one("#prompt", PromptArea)
         if event.text_area is not prompt:
@@ -548,6 +572,8 @@ class CommandsMixin:
             self.run_worker(self._agents_flow())
         elif name == "runs":
             self.run_worker(self._runs_flow())
+        elif name == "skills":
+            self.run_worker(self._skills_flow())
         elif name == "ps":
             self.run_worker(self._ps_flow())
         elif name == "mode":

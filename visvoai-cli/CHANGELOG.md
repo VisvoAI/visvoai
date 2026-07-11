@@ -3,6 +3,43 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.14.0] — 2026-07
+
+### Added
+- **Skills — reusable workflows the AI loads on demand.** A skill is a
+  directory: `~/.visvoai/skills/<name>/SKILL.md` (personal) or
+  `.visvoai/skills/<name>/SKILL.md` (project, shareable; project wins on
+  name; a flat `<name>.md` also works). Frontmatter: `description:` (the
+  index line) + optional `args:` block of named `$placeholders`; the body is
+  the instructions. The AI sees a compact index in its `read_skill` tool and
+  loads a skill's full instructions only when a request matches — supporting
+  reference files next to SKILL.md are read lazily via `resource=`, never
+  speculatively (progressive disclosure, same model as the platform).
+  A skill grants KNOWLEDGE, not capability: the AI follows the instructions
+  with its own tools, and mutations still ask you. Skills are available to
+  subagents too (every tier — read-only included).
+- **/skills screen** — the roster with args/resources per skill, plus
+  one-time trust approval for project-defined skills (a repo-controlled body
+  still steers this machine's tools; any edit re-prompts). Pending-approval
+  toasts cover skills exactly like agents.
+- **`visvoai skills list/show/create/remove`** — manage skills headlessly;
+  `create` is an interactive wizard. Or ask the agent to write one.
+
+### Fixed
+- **Global definitions no longer reload as "project" outside a project.**
+  project_root() walks up looking for `.visvoai/config.toml` — and the GLOBAL
+  `~/.visvoai/config.toml` matches, so from any directory without its own
+  project anchor the "project" layer resolved to the global dir itself,
+  reclassifying global skills/agents/MCP servers as project-defined and
+  demanding trust approval for things the user wrote. The project layer is
+  now skipped when it coincides with the global one (all three loaders).
+- **A stalled agent run no longer masquerades as success.** run_agent
+  returned the last NON-EMPTY message as the "final answer" — so a provider
+  stall after mid-run narration (live incident: a garbled MiniMax tool call
+  ended the loop on an empty message) surfaced stale narration as the
+  result, marked done. Only the terminal message counts now; a stall returns
+  an explicit ERROR with the completed-step count and a pointer to /runs.
+
 ## [0.13.0] — 2026-07
 
 ### Changed

@@ -196,13 +196,9 @@ class AgentTurnMixin:
         from visvoai.cli.mcp import get_mcp_tools
         _mcp_statuses, mcp_tools = await get_mcp_tools(self._cwd)
 
-        # Snapshot pending-trust agents so the turn's end can surface only the ones
-        # THIS turn created (e.g. the model wrote a .visvoai/agents/*.md file).
-        from visvoai.cli.agents import untrusted_agents
-        try:
-            pre_untrusted = {s.name for s in untrusted_agents(self._cwd)}
-        except Exception:
-            pre_untrusted = set()
+        # Snapshot pending-trust agents/skills so the turn's end can surface only
+        # the ones THIS turn created (e.g. the model wrote a definition file).
+        pre_untrusted = self._pending_trust()
 
         def _agent_trace_dir():
             # Resolved at dispatch time: by then _persist_turn has assigned the

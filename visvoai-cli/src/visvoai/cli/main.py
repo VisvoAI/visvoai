@@ -559,5 +559,143 @@ def agents_remove(name: str, cwd: str) -> None:
         sys.exit(1)
 
 
+# ── `visvoai skills …` — manage skills ───────────────────────────────────────
+
+def _skills_dir(project: bool, cwd: str):
+    from visvoai.cli.skills import _skills_dir_global, _skills_dir_project
+    return _skills_dir_project(os.path.abspath(cwd)) if project else _skills_dir_global()
+
+
+@cli.group("skills")
+def skills_group() -> None:
+    """Manage skills (reusable workflow instructions the AI loads on demand).
+
+    \b
+    visvoai skills list                  merged roster (global + project)
+    visvoai skills create release-notes  interactive: description, args, steps
+    visvoai skills show release-notes    print a definition
+    visvoai skills remove release-notes
+
+    A skill is a directory: ~/.visvoai/skills/<name>/SKILL.md (global) or
+    .visvoai/skills/<name>/SKILL.md (project, shareable via the repo;
+    teammates approve it once in /skills). Supporting reference files live
+    next to SKILL.md and are loaded only when the instructions call for them.
+    """
+
+
+@skills_group.command("list")
+@click.option("--cwd", default=".", help="Project directory to resolve skills for.")
+def skills_list(cwd: str) -> None:
+    """List the merged skill roster."""
+    from visvoai.cli.skills import is_trusted, load_skill_specs
+
+    abs_cwd = os.path.abspath(cwd)
+    specs = load_skill_specs(abs_cwd)
+    if not specs:
+        click.echo("No skills defined.\n"
+                   "Create one:  visvoai skills create <name>   |   "
+                   "write ~/.visvoai/skills/<name>/SKILL.md")
+        return
+    for s in specs.values():
+        flags = []
+        if s.source == "project" and not is_trusted(abs_cwd, s):
+            flags.append("awaiting approval (/skills in the TUI)")
+        suffix = f"  [{', '.join(flags)}]" if flags else ""
+        args = (" (args: " + ", ".join(f"${a}" for a in s.args) + ")") if s.args else ""
+        click.echo(f"{s.name:<20} {s.source:<8} {s.description}{args}{suffix}")
+
+
+@skills_group.command("show")
+@click.argument("name")
+@click.option("--cwd", default=".", help="Project directory to resolve skills for.")
+def skills_show(name: str, cwd: str) -> None:
+    """Print a skill's full definition (instructions included)."""
+    from visvoai.cli.skills import load_skill_specs
+
+    spec = load_skill_specs(os.path.abspath(cwd)).get(name)
+    if spec is None:
+        click.echo(f"No skill named '{name}'.", err=True)
+        sys.exit(1)
+    click.echo(f"name:        {spec.name}")
+    click.echo(f"source:      {spec.source}" + (f"  ({spec.path})" if spec.path else ""))
+    click.echo(f"description: {spec.description}")
+    if spec.args:
+        click.echo("args:        " + ", ".join(f"${k} ({v})" for k, v in spec.args.items()))
+    res = spec.resource_names()
+    if res:
+        click.echo("resources:   " + ", ".join(res))
+    click.echo("\n--- instructions ---")
+    click.echo(spec.body)
+
+
+@skills_group.command("create")
+@click.argument("name")
+@click.option("--project", is_flag=True,
+              help="Write to this project's .visvoai/skills/ (shareable via the "
+                   "repo; teammates approve it once) instead of ~/.visvoai/skills/.")
+@click.option("--cwd", default=".", help="Project directory (with --project).")
+def skills_create(name: str, project: bool, cwd: str) -> None:
+    """Create a skill interactively (description → args → instructions)."""
+    from visvoai.cli.skills import write_skill_file
+
+    path = _skills_dir(project, cwd) / name / "SKILL.md"
+    if path.exists() and not click.confirm(f"{path} exists — overwrite?"):
+        return
+    description = click.prompt("Description (one line — the AI reads this to "
+                               "decide when to load the skill)")
+    args: dict = {}
+    while True:
+        arg = click.prompt("Add an arg? name (empty = done)", default="",
+                           show_default=False).strip()
+        if not arg:
+            break
+        args[arg] = click.prompt(f"  ${arg} description")
+    click.echo("Instructions (the steps to follow; use $arg placeholders; "
+               "end with an empty line):")
+    lines: list[str] = []
+    while True:
+        line = input()
+        if not line and lines:
+            break
+        lines.append(line)
+    try:
+        out = write_skill_file(_skills_dir(project, cwd), name,
+                               description=description, args=args,
+                               body="\n".join(lines).strip())
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    click.echo(f"\nCreated skill '{name}' → {out}")
+    click.echo("Add supporting reference files next to SKILL.md; edit the file "
+               "to refine — changes apply on the next turn.")
+    if project:
+        click.echo("Project-defined skill: the TUI asks for one-time approval (/skills).")
+
+
+@skills_group.command("remove")
+@click.argument("name")
+@click.option("--cwd", default=".", help="Project directory to resolve skills for.")
+def skills_remove(name: str, cwd: str) -> None:
+    """Remove a skill definition (directory or flat file)."""
+    import shutil
+
+    removed = []
+    for project in (False, True):
+        root = _skills_dir(project, cwd)
+        d = root / name
+        f = root / f"{name}.md"
+        if d.is_dir():
+            shutil.rmtree(d)
+            removed.append(str(d))
+        elif f.exists():
+            f.unlink()
+            removed.append(str(f))
+    if removed:
+        for p in removed:
+            click.echo(f"Removed {p}")
+    else:
+        click.echo(f"No skill named '{name}' found.", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
