@@ -1,0 +1,14 @@
+# ~/.visvoai/config.toml — the pieces most people want on day one.
+
+# MCP servers (or use: visvoai mcp add <name> -- <command...>)
+[mcp_servers.chrome]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest"]
+
+[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+headers = { Authorization = "Bearer ${LINEAR_API_KEY}" }   # ${VAR} from env — never paste tokens
+
+# Skill libraries you already have, loaded as your own (trusted) skills:
+[skills]
+extra_dirs = ["~/.claude/skills"]

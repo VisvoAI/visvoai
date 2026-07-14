@@ -1,0 +1,3 @@
+- Lead each entry with the user-visible outcome, not the implementation.
+- One line per change; link PRs as (#123) when the hash message names one.
+- Breaking changes go first, under **Breaking**, with a migration hint.
