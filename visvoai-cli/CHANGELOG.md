@@ -3,6 +3,20 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.14.2] — 2026-07
+
+### Changed
+- **Internal: the turn loop untangled (pure move, zero behavior change).**
+  agent_turn.py's braid split by job: `turn_events.py` sorts whose event each
+  announcement is (sub-agent events feed the registry, never the chat),
+  `tool_render.py` paints finished tool calls (new tool kinds add a branch
+  there, never inside the loop), and the conductor keeps only ordering +
+  persistence + checkpoints. Session-wide truths (running agents, pending
+  approvals, chips, toasts) moved to `session_state.py` — shared helpers with
+  reach, not app-private methods. Guarded by new ordering-invariant pin tests
+  written against the pre-split code (crash-safety save order, checkpoint-
+  before-batch, persistence mirrors conversation order).
+
 ## [0.14.1] — 2026-07
 
 ### Added

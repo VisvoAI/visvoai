@@ -17,7 +17,7 @@ from textual.containers import VerticalScroll
 import time
 
 from visvoai.cli import agent, store
-from visvoai.cli.agents import subagent_key_from_tags
+from visvoai.cli.turn_events import route_subagent_event
 from visvoai.cli import state as ui_state   # aliased: `state` is a local (graph input) below
 from visvoai.cli.widgets import (
     Assistant, CleanDiff, ErrorBlock, Plan, SystemNote, Thinking, ToolOutput,
@@ -267,31 +267,12 @@ class AgentTurnMixin:
                 # conversation (they'd read as the main agent's own actions).
                 # Filter them; show only a status pulse so the run_agent row's
                 # wait is legible. Token usage still counts — it's real spend.
-                sub_key = subagent_key_from_tags(event.get("tags"))
-                if sub_key is not None:
-                    # Structured steps, paired start↔end by the event run_id —
-                    # the SAME shape a main-turn tool row carries, so the panel
-                    # and /runs render them with the same ToolRow widgets.
-                    sub_name, sub_dispatch = sub_key
-                    if kind == "on_chat_model_stream":
-                        u = agent.usage_of(data.get("chunk"))
-                        turn_in += u["input"]; turn_out += u["output"]
-                    elif kind == "on_tool_start":
-                        tname = event.get("name", "tool")
-                        self._set_status(f"agent {sub_name}: {tname}…")
-                        self._agent_runs.step_start(
-                            sub_dispatch, event.get("run_id", ""), tname,
-                            agent.fmt_args(data.get("input") or {})[:200])
-                    elif kind == "on_tool_end":
-                        out = agent.tool_output_text(data.get("output"))
-                        first = next((l for l in out.splitlines() if l.strip()), "")
-                        failed = first.startswith("ERROR") or "[exit: -1]" in out
-                        self._agent_runs.step_end(
-                            sub_dispatch, event.get("run_id", ""), first, not failed)
-                    elif kind == "on_tool_error":
-                        self._agent_runs.step_end(
-                            sub_dispatch, event.get("run_id", ""),
-                            str(data.get("error") or "tool error")[:200], False)
+                # THE SORTER (turn_events.py): sub-agent events are absorbed
+                # there (registry steps, status pulse) — only their token spend
+                # returns; main events fall through to the conductor below.
+                routed = route_subagent_event(self, event, kind, data)
+                if routed is not None:
+                    turn_in += routed[0]; turn_out += routed[1]
                     continue
 
                 if kind == "on_chat_model_stream":
@@ -610,73 +591,9 @@ class AgentTurnMixin:
             return idx == 0
 
     async def _render_tool_result(self, node, name: str, args, output: str) -> None:
-        """Render a finished tool call into the right Style-B body, by tool type:
-        edit→diff, write→created content, shell→output/exit (failure on non-zero),
-        read/list→plain output. edit/write bodies come from the INPUT args (the
-        tools return only a confirmation string)."""
-        args = args if isinstance(args, dict) else {}
-
-        if name == "edit_file":
-            if output.startswith("ERROR"):
-                node.set_rail("failed"); self._turn_had_error = True
-                await node.set_failure("", output)
-                return
-            changes = ([("del", ln) for ln in args.get("old_string", "").splitlines()]
-                       + [("add", ln) for ln in args.get("new_string", "").splitlines()])
-            adds = sum(1 for k, _ in changes if k == "add")
-            dels = sum(1 for k, _ in changes if k == "del")
-            node.set_rail(f"+{adds} −{dels}")
-            await node.set_body(CleanDiff(args.get("path", ""), changes), collapsed=True)
-            node.set_status("complete")
-            return
-
-        if name == "write_file":
-            if output.startswith("ERROR"):
-                node.set_rail("failed"); self._turn_had_error = True
-                await node.set_failure("", output)
-                return
-            lines = (args.get("content", "") or "").splitlines() or [""]
-            node.set_rail(f"{len(lines)} lines")
-            await node.set_body(ToolOutput(lines), collapsed=True)
-            node.set_status("complete")
-            return
-
-        if name == "run_agent":
-            # Lifecycle (registry finish) is the run_agent tool's job — this is
-            # pure rendering: trailer → rail, report → collapsed body.
-            a_name = str(args.get("agent", "?"))
-            if output.startswith("ERROR"):
-                node.set_rail("failed"); self._turn_had_error = True
-                await node.set_failure("", output)
-                return
-            lines = output.splitlines()
-            trailer = lines[-1] if lines and lines[-1].startswith("[agent:") else ""
-            body_lines = lines[:-1] if trailer else lines
-            rail = trailer.strip("[]").removeprefix(f"agent: {a_name} · ") if trailer else ""
-            node.set_rail(rail or f"{len(body_lines)} lines")
-            await node.set_body(ToolOutput(body_lines or [""]), collapsed=True)
-            node.set_status("complete")
-            return
-
-        if name == "run_shell":
-            m = re.search(r"\[exit:\s*(-?\d+)\]", output)
-            exit_code = int(m.group(1)) if m else 0
-            if exit_code != 0:
-                node.set_rail(f"exit {exit_code}")
-                await node.set_failure(output, f"exit {exit_code}")
-                return
-            node.set_rail("exit 0")
-            await node.set_body(ToolOutput(output.splitlines() or [""]), collapsed=True)
-            node.set_status("complete")
-            return
-
-        # read_file / list_files / unknown → plain output (or a reported error)
-        if output.startswith("ERROR"):
-            node.set_rail("failed")
-            await node.set_failure("", output)
-            return
-        lines = output.splitlines() or [""]
-        noun = {"list_files": "items", "list_tree": "entries"}.get(name, "lines")
-        node.set_rail(f"{len(lines)} {noun}")
-        await node.set_body(ToolOutput(lines), collapsed=True)   # collapsed; click to expand
-        node.set_status("complete")
+        """Delegate to THE PAINTER (tool_render.py) — appearance lives there;
+        the conductor only tracks whether the result was a failure."""
+        from visvoai.cli.tool_render import render_tool_result
+        failed = await render_tool_result(node, name, args, output)
+        if failed:
+            self._turn_had_error = True
