@@ -145,6 +145,12 @@ context gauge that warns before you hit the wall.
 uv tool install --editable path/to/visvoai-cli
 ```
 
+## Examples
+
+Copy-paste configuration in [`examples/`](./examples/) — a reviewer agent, a
+simple and a complex skill, plugin tools in all three shapes, and a
+config.toml with MCP + external skill libraries.
+
 ## License
 
 MIT

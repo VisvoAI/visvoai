@@ -85,6 +85,12 @@ the same seam. If you only need "call one model I already chose," a raw SDK is
 fine; this earns its keep the moment you support *choice* — multiple
 providers, visible costs, or reasoning controls.
 
+## Examples
+
+Runnable, live-verified examples in [`examples/`](./examples/) — one-line
+model access, registry choose-and-meter (keyless), OpenAI-compatible
+endpoints and custom providers.
+
 ## License
 
 MIT

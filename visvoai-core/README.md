@@ -112,6 +112,12 @@ when you're building a *product* on the loop and want the sharp edges
 (recursion deaths, runaway rounds, tool sprawl, lifecycle plumbing) already
 filed down.
 
+## Examples
+
+Six runnable, live-verified examples in [`examples/`](./examples/) — from a
+20-line agent to every tool-creation style, retrieval at fleet scale, and a
+real SQLite persistence implementation. Three run with no API key.
+
 ## License
 
 MIT

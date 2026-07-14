@@ -92,9 +92,11 @@ graph = AgentRuntime().build_graph(
 # graph is a LangGraph app: .ainvoke / .astream_events as usual
 ```
 
-See [visvoai-core/README.md](./visvoai-core/README.md) for the extension seams
-and [visvoai-ai/README.md](./visvoai-ai/README.md) for providers and the model
-catalog.
+Every package ships runnable, live-verified examples:
+[cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config) ·
+[core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
+persistence; three keyless) · [ai](./visvoai-ai/examples/) (models, registry,
+custom providers). Full docs: each package's README.
 
 ## License
 

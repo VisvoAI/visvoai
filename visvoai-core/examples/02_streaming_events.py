@@ -31,7 +31,7 @@ async def main() -> None:
         system_prompt="You are a code assistant.",
     )
     async for ev in graph.astream_events(
-            {"messages": [("user", "How long is 03_minimal_agent.py?")]},
+            {"messages": [("user", "How long is 01_minimal_agent.py?")]},
             version="v2"):
         kind = ev["event"]
         if kind == "on_chat_model_stream":
