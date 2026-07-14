@@ -2,6 +2,8 @@
 
 **A terminal coding agent that takes permissions seriously.**
 
+![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./docs/hero.gif)
+
 A full-screen TUI agent (built on [Textual](https://textual.textualize.io/))
 that reads, edits, and runs code in your repo — with a permission model
 enforced by the OS, not by politeness; delegatable subagents with live logs;

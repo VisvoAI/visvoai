@@ -19,6 +19,8 @@ published as they're used.
 
 ## The CLI
 
+![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./visvoai-cli/docs/hero.gif)
+
 ```bash
 pip install visvoai-cli
 export GEMINI_API_KEY=...        # or Anthropic, OpenAI, any OpenAI-compatible
