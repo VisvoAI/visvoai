@@ -34,10 +34,14 @@ async def test_esc_interrupts_streaming_turn():
         p.focus()
         # Wait for compose (#pinned) before driving the demo turn — _run_turn pins
         # a plan immediately, which races mount otherwise.
-        for _ in range(20):
+        import asyncio
+        for _ in range(200):
             await pilot.pause()
-            if app.query("#pinned"):
+            if app.query("#pinned") and app.query("#log"):
                 break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("app never finished composing (#pinned/#log missing)")
         app._turn_worker = app.run_worker(app._run_turn("hi"), exclusive=True)
         for _ in range(200):
             await pilot.pause()

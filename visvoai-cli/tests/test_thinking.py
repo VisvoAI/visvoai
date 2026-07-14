@@ -16,10 +16,16 @@ async def _run_turn_to_selection(app, pilot):
     app._pace = 0.04  # run the demo fast in tests
     # Wait for the app to finish composing (#pinned exists) before driving the
     # demo turn — _run_turn pins a plan immediately, which races mount otherwise.
-    for _ in range(20):
+    # Unbounded-ish with a REAL clock (CI runners can take >20 ticks to
+    # compose) and loud on failure — silently proceeding is how this raced.
+    import asyncio
+    for _ in range(200):
         await pilot.pause()
-        if app.query("#pinned"):
+        if app.query("#pinned") and app.query("#log"):
             break
+        await asyncio.sleep(0.02)
+    else:
+        raise AssertionError("app never finished composing (#pinned/#log missing)")
     app._turn_worker = app.run_worker(app._run_turn("hi"), exclusive=True)
     for _ in range(400):
         await pilot.pause()
