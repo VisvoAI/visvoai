@@ -499,9 +499,9 @@ _DAY = 86400
 # `_sort` (epoch seconds) drives recency grouping in SessionsScreen; computed from now so
 # the demo always shows a realistic Today / Yesterday / Last 7 days / Last month / Older spread.
 SESSIONS: list[dict] = [
-    # Minutes ago, not hours — an hours offset crosses midnight in a late-night
-    # run and "Today" vanishes from the recency grouping (calendar-day buckets).
-    {"id": "a1c3", "title": "Add Anthropic provider to config", "when": "2h ago", "msgs": 14, "_sort": _NOW - 300},
+    # NOW exactly — ANY offset can cross midnight in a just-past-00:00 run and
+    # "Today" vanishes from the recency grouping (calendar-day buckets).
+    {"id": "a1c3", "title": "Add Anthropic provider to config", "when": "2h ago", "msgs": 14, "_sort": _NOW},
     {"id": "b2d4", "title": "Fix the failing auth test", "when": "yesterday", "msgs": 31, "_sort": _NOW - 1 * _DAY},
     {"id": "c3e5", "title": "Investigate slow cold-start", "when": "3d ago", "msgs": 8, "_sort": _NOW - 3 * _DAY},
     {"id": "d4f6", "title": "Refactor the streaming pipeline", "when": "6d ago", "msgs": 52, "_sort": _NOW - 6 * _DAY},

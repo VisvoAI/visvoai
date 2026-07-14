@@ -340,8 +340,12 @@ class ToolGroup(Vertical):
 
     async def add(self, item):
         self._items.append(item)
-        await self.mount(item)
-        self._rewire()
+        # Teardown race: if this group never mounted (app exiting while the
+        # turn worker was mid-cluster), mounting a row into it raises from
+        # inside the dying worker — skip; the row still works detached.
+        if self.is_mounted:
+            await self.mount(item)
+            self._rewire()
         return item
 
     def _rewire(self) -> None:

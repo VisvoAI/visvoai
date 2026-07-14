@@ -705,6 +705,14 @@ class VisvoApp(DemoMixin, AgentTurnMixin, SessionsMixin, CommandsMixin, RewindMi
         CATEGORY changes — except a run of consecutive tool calls, which stay flush
         as a cluster. This is the readable-but-compact rhythm: tight within a group,
         one breath between groups (COT vs answer vs tool cluster vs plan vs …)."""
+        # Teardown race (same class as _status_bar): a worker cancelled by app
+        # exit may still render its epilogue (the "stopped" note, a final tool
+        # state) after the tree started unmounting. Mounting into a dead tree
+        # raises MountError from inside the dying worker; there is nothing to
+        # display anymore, so skip — callers may keep using the returned widget
+        # harmlessly (refresh on an unmounted widget is a no-op).
+        if not log.is_mounted:
+            return widget
         last = getattr(self, "_last_kind", None)
         if last is not None and not (kind == "tool" and last == "tool"):
             widget.add_class("blk-gap")
