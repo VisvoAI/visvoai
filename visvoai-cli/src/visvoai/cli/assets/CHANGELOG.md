@@ -17,6 +17,12 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
   tool paths will build on.
 
 ### Changed
+- **Seams hardened.** langchain/langgraph imports are now confined to a
+  declared allowlist by a guard test (widgets/screens/app code stays LC-free
+  with no exceptions) — the mechanical form of the keep-LC-but-keep-the-door-
+  open decision. New thread.jsonl files carry a format-version marker line
+  (old files are implicitly v1) so the persistence format has a migration
+  path.
 - **Internal: one spec store instead of three.** The layered-loading + trust
   machinery that mcp.py, agents.py and skills.py each hand-copied (merge
   precedence, the coincident-layer guard, `<kind>_trust.toml` read/write/

@@ -281,6 +281,13 @@ def copy_branch(project_id: str, conv_id: str, src: str, dst: str) -> None:
     shutil.copytree(s, d)
 
 
+
+# thread.jsonl format marker — first line of every NEW thread file. The message
+# rows themselves are langchain's serialization (the persistence seam); this
+# stamp is the migration door if that format ever has to change. Old files
+# without a marker are implicitly v1; the loader skips marker rows either way.
+THREAD_FORMAT_MARKER = {"__visvoai_format__": 1}
+
 # ── branch thread ────────────────────────────────────────────────────────────
 def _branch_thread_path(project_id: str, conv_id: str, branch: str) -> Path:
     return _branch_dir(project_id, conv_id, branch) / "thread.jsonl"
@@ -294,7 +301,10 @@ def append_branch_messages(project_id: str, conv_id: str, branch: str,
         return
     p = _branch_thread_path(project_id, conv_id, branch)
     p.parent.mkdir(parents=True, exist_ok=True)
+    fresh = not p.exists()
     with p.open("a", encoding="utf-8") as f:
+        if fresh:
+            f.write(json.dumps(THREAD_FORMAT_MARKER) + "\n")
         for d in messages_to_dict(messages):
             f.write(json.dumps(d, ensure_ascii=False) + "\n")
 
@@ -304,7 +314,8 @@ def write_branch_thread(project_id: str, conv_id: str, branch: str,
     """Overwrite a branch's thread (used to truncate on rewind / seed a fork)."""
     p = _branch_thread_path(project_id, conv_id, branch)
     p.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_lines(p, (json.dumps(d, ensure_ascii=False) for d in messages_to_dict(messages)))
+    _atomic_lines(p, ([json.dumps(THREAD_FORMAT_MARKER)]
+                      + [json.dumps(d, ensure_ascii=False) for d in messages_to_dict(messages)]))
 
 
 def load_branch_thread(project_id: str, conv_id: str, branch: str) -> List[BaseMessage]:
@@ -312,7 +323,8 @@ def load_branch_thread(project_id: str, conv_id: str, branch: str) -> List[BaseM
     if not p.exists():
         return []
     try:
-        return messages_from_dict(_read_jsonl(p))
+        rows = [r for r in _read_jsonl(p) if "__visvoai_format__" not in r]
+        return messages_from_dict(rows)
     except (json.JSONDecodeError, OSError):
         return []
 
@@ -468,7 +480,8 @@ def _summary(project_id: str, conv_id: str) -> dict:
     msgs = meta.get("msg_count")
     if title is None or msgs is None:
         try:
-            dicts = _read_jsonl(thread_file)
+            dicts = [r for r in _read_jsonl(thread_file)
+                     if "__visvoai_format__" not in r]
         except (json.JSONDecodeError, OSError):
             dicts = []
         title = title or _title_from_dicts(dicts)
