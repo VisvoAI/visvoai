@@ -48,6 +48,11 @@ async def test_thinking_persists_after_answer_streams():
         assert len(app.query(Assistant)) >= 1  # answer is a separate block
 
         app.query(Selection).first()._resolve((0, ""))
+        # Stop the demo worker BEFORE teardown — it keeps mounting widgets
+        # after the resolve, and run_test exit unmounts the tree under it
+        # (CI-only WorkerFailed/MountError; local runners never hit the window).
+        app._turn_worker.cancel()
+        await pilot.pause()
         await pilot.pause()
 
 
@@ -66,6 +71,11 @@ async def test_thinking_collapsed_by_default_with_duration():
         assert t._buf.split(" ")[0] not in rendered
 
         app.query(Selection).first()._resolve((0, ""))
+        # Stop the demo worker BEFORE teardown — it keeps mounting widgets
+        # after the resolve, and run_test exit unmounts the tree under it
+        # (CI-only WorkerFailed/MountError; local runners never hit the window).
+        app._turn_worker.cancel()
+        await pilot.pause()
         await pilot.pause()
 
 
@@ -85,6 +95,11 @@ async def test_thinking_expands_on_click():
         assert t._expanded is False
 
         app.query(Selection).first()._resolve((0, ""))
+        # Stop the demo worker BEFORE teardown — it keeps mounting widgets
+        # after the resolve, and run_test exit unmounts the tree under it
+        # (CI-only WorkerFailed/MountError; local runners never hit the window).
+        app._turn_worker.cancel()
+        await pilot.pause()
         await pilot.pause()
 
 
