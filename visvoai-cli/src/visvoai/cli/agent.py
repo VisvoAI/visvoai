@@ -224,6 +224,10 @@ def build_agent_graph(deployment_id: str, cwd: str, approve=None, level: str | N
     # Skills: read-only progressive-disclosure instructions — never gated.
     from visvoai.cli.skills import build_read_skill_tool
     tools.append(build_read_skill_tool(cwd))
+    # User plugin tools (~/.visvoai/tools/*.py, global-only) — gated per their
+    # DECLARED gate metadata, not per tribal knowledge.
+    from visvoai.cli.toolkit import apply_gates, load_user_tools
+    tools += apply_gates(load_user_tools(), approve)
     if enable_agents:
         from visvoai.cli.agents import build_run_agent_tool
         tools.append(build_run_agent_tool(cwd=cwd, deployment_id=deployment_id,

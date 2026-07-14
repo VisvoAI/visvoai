@@ -5,6 +5,17 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
 ## [0.14.1] — 2026-07
 
+### Added
+- **Plugin tools (`~/.visvoai/tools/*.py`).** Drop a Python file exporting
+  `TOOLS = [make_cli_tool(fn, gate="approve")]` and the functions become
+  model-callable tools next session — schema from type hints, description
+  from the docstring, output capped, exceptions returned as data, and the
+  gate DECLARED on the tool (approve-gated by default). Global-only by
+  design: importing a .py is code execution, so only user-authored files are
+  ever loaded — a cloned repo can never execute at startup. `toolkit.py` is
+  the public contract future declarative (TOML) and project-safe (MCP-runner)
+  tool paths will build on.
+
 ### Changed
 - **Internal: one spec store instead of three.** The layered-loading + trust
   machinery that mcp.py, agents.py and skills.py each hand-copied (merge
