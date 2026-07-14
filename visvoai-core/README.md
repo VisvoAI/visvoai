@@ -11,9 +11,9 @@ dependencies. You subclass and inject what you need.
 pip install visvoai-core
 ```
 
-This pulls `visvoai-ai` (the LLM provider layer), `langgraph`, and
-`langchain-core`. Install a provider extra to actually talk to a model, e.g.
-`pip install "visvoai-ai[gemini]"`.
+This pulls `langgraph` and `langchain-core` only — core is provider-agnostic
+(it takes any LangChain `BaseChatModel`). To talk to a model, add the LLM
+layer: `pip install "visvoai-ai[gemini]"` (or bring your own chat model).
 
 ## Usage
 
