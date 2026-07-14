@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.14.1] — 2026-07
+
+### Changed
+- **Internal: one spec store instead of three.** The layered-loading + trust
+  machinery that mcp.py, agents.py and skills.py each hand-copied (merge
+  precedence, the coincident-layer guard, `<kind>_trust.toml` read/write/
+  check) now lives once in `specstore.py` (`LayeredSpecStore`). No behavior
+  change — existing trust files keep working; the coincident-layer bug class
+  is now structurally impossible rather than patched per module. Layers are
+  pluggable providers, sized so a future artifacts store (or a DB-backed
+  layer) is a consumer, not a copy.
+
 ## [0.14.0] — 2026-07
 
 ### Added

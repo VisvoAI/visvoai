@@ -196,74 +196,53 @@ def _extra_dirs(config_path: Path, base: Path) -> list[Path]:
     return out
 
 
-def load_skill_specs(cwd: str) -> dict[str, SkillSpec]:
-    """Merged roster, later wins on name:
-    global dir → global extra_dirs (list order) → project dir → project
-    extra_dirs. TRUST FOLLOWS THE DECLARING CONFIG, not the dir's location: a
-    dir listed in ~/.visvoai/config.toml is user-chosen ("global", implicitly
-    trusted); one listed in the project's config is repo-controlled
-    ("project", one-time approval) — who controls the BYTES decides the tier."""
+def _store(cwd: str) -> "LayeredSpecStore":
+    """Layer order (later wins): global dir → global extra_dirs (list order) →
+    project dir → project extra_dirs. TRUST FOLLOWS THE DECLARING CONFIG, not
+    the dir's location: a dir listed in ~/.visvoai/config.toml is user-chosen
+    ("global", implicitly trusted); one listed in the project's config is
+    repo-controlled ("project", one-time approval) — who controls the BYTES
+    decides the tier. Coincident-layer dedupe is the store's job."""
     from visvoai.cli.keys import global_config_path
+    from visvoai.cli.specstore import Layer, LayeredSpecStore
     from visvoai.cli.store import project_root
 
-    merged = _load_dir(_skills_dir_global(), "global")
+    def dir_layer(d: Path, tier: str) -> Layer:
+        return Layer(source=tier, trusted=(tier == "global"), identity=d,
+                     load=lambda d=d, t=tier: _load_dir(d, t))
+
     home = _skills_dir_global().parent
-    for d in _extra_dirs(global_config_path(), home):
-        merged.update(_load_dir(d, "global"))
-
-    proj = _skills_dir_project(cwd)
-    # Outside any project, project_root() can resolve to $HOME (the global
-    # ~/.visvoai/config.toml matches its anchor walk) — the "project" layer
-    # would then be the global dir itself, reclassifying global skills as
-    # project-defined (spurious trust prompts). Same file twice ≠ two layers.
-    if proj != _skills_dir_global():
-        merged.update(_load_dir(proj, "project"))
-        try:
-            proot = project_root(cwd)
-        except Exception:
-            proot = Path(cwd)
-        proj_cfg = proot / ".visvoai" / "config.toml"
-        if proj_cfg.resolve() != global_config_path().resolve():
-            for d in _extra_dirs(proj_cfg, proot):
-                merged.update(_load_dir(d, "project"))
-    return merged
-
-
-# ── Trust (project skills only — same model as project agents/MCP) ──────────
-
-def _trust_path(cwd: str) -> Path:
-    from visvoai.cli.store import resolve_project_id, visvoai_home
-    return visvoai_home() / "projects" / resolve_project_id(cwd) / "skill_trust.toml"
-
-
-def _read_trust(cwd: str) -> dict[str, str]:
-    path = _trust_path(cwd)
-    if not path.exists():
-        return {}
+    layers = [dir_layer(_skills_dir_global(), "global")]
+    layers += [dir_layer(d, "global")
+               for d in _extra_dirs(global_config_path(), home)]
+    layers.append(dir_layer(_skills_dir_project(cwd), "project"))
     try:
-        return {k: v for k, v in (tomllib.loads(path.read_text()).get("trusted") or {}).items()
-                if isinstance(v, str)}
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
+        proot = project_root(cwd)
+    except Exception:
+        proot = Path(cwd)
+    proj_cfg = proot / ".visvoai" / "config.toml"
+    if proj_cfg.resolve() != global_config_path().resolve():
+        layers += [dir_layer(d, "project") for d in _extra_dirs(proj_cfg, proot)]
+    return LayeredSpecStore("skill", cwd, layers)
 
+
+def load_skill_specs(cwd: str) -> dict[str, SkillSpec]:
+    """Merged roster — see _store() for layering and trust tiers."""
+    return _store(cwd).load()
+
+
+# ── Trust (generic mechanics live in specstore; kind="skill") ────────────────
 
 def is_trusted(cwd: str, spec: SkillSpec) -> bool:
-    if spec.source != "project":
-        return True
-    return _read_trust(cwd).get(spec.name) == spec.spec_hash()
+    return _store(cwd).is_trusted(spec)
 
 
 def trust_skill(cwd: str, spec: SkillSpec) -> None:
-    trusted = _read_trust(cwd)
-    trusted[spec.name] = spec.spec_hash()
-    path = _trust_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[trusted]"] + [f'{name} = "{h}"' for name, h in sorted(trusted.items())]
-    path.write_text("\n".join(lines) + "\n")
+    _store(cwd).trust(spec)
 
 
 def untrusted_skills(cwd: str) -> list[SkillSpec]:
-    return [s for s in load_skill_specs(cwd).values() if not is_trusted(cwd, s)]
+    return _store(cwd).untrusted()
 
 
 # ── Substitution ──────────────────────────────────────────────────────────────

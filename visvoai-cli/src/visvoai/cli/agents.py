@@ -42,7 +42,6 @@ import hashlib
 import json
 import logging
 import re
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated
@@ -226,54 +225,38 @@ def stray_definition_files(cwd: str) -> list[Path]:
     return strays
 
 
+def _store(cwd: str) -> "LayeredSpecStore":
+    """built-ins ∪ global ∪ project, later wins; coincident-layer dedupe and
+    trust mechanics are the store's job (kind='agent' → agent_trust.toml)."""
+    from visvoai.cli.specstore import Layer, LayeredSpecStore
+
+    return LayeredSpecStore("agent", cwd, [
+        Layer("builtin", trusted=True, identity=None,
+              load=lambda: dict(BUILTIN_AGENTS)),
+        Layer("global", trusted=True, identity=_agents_dir_global(),
+              load=lambda: _load_dir(_agents_dir_global(), "global")),
+        Layer("project", trusted=False, identity=_agents_dir_project(cwd),
+              load=lambda: _load_dir(_agents_dir_project(cwd), "project")),
+    ])
+
+
 def load_agent_specs(cwd: str) -> dict[str, AgentSpec]:
     """Merged roster: built-ins ∪ global ∪ project (later wins on name)."""
-    merged = dict(BUILTIN_AGENTS)
-    merged.update(_load_dir(_agents_dir_global(), "global"))
-    proj = _agents_dir_project(cwd)
-    # Outside any project, project_root() can resolve to $HOME (its anchor walk
-    # matches the global ~/.visvoai/config.toml) — skipping keeps global agents
-    # from being reclassified as project-defined (spurious trust prompts).
-    if proj != _agents_dir_global():
-        merged.update(_load_dir(proj, "project"))
-    return merged
+    return _store(cwd).load()
 
 
-# ── Trust (project agents only — same model as project MCP servers) ─────────
-
-def _trust_path(cwd: str) -> Path:
-    from visvoai.cli.store import resolve_project_id, visvoai_home
-    return visvoai_home() / "projects" / resolve_project_id(cwd) / "agent_trust.toml"
-
-
-def _read_trust(cwd: str) -> dict[str, str]:
-    path = _trust_path(cwd)
-    if not path.exists():
-        return {}
-    try:
-        return {k: v for k, v in (tomllib.loads(path.read_text()).get("trusted") or {}).items()
-                if isinstance(v, str)}
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-
+# ── Trust (generic mechanics live in specstore; kind="agent") ────────────────
 
 def is_trusted(cwd: str, spec: AgentSpec) -> bool:
-    if spec.source != "project":
-        return True
-    return _read_trust(cwd).get(spec.name) == spec.spec_hash()
+    return _store(cwd).is_trusted(spec)
 
 
 def trust_agent(cwd: str, spec: AgentSpec) -> None:
-    trusted = _read_trust(cwd)
-    trusted[spec.name] = spec.spec_hash()
-    path = _trust_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[trusted]"] + [f'{name} = "{h}"' for name, h in sorted(trusted.items())]
-    path.write_text("\n".join(lines) + "\n")
+    _store(cwd).trust(spec)
 
 
 def untrusted_agents(cwd: str) -> list[AgentSpec]:
-    return [s for s in load_agent_specs(cwd).values() if not is_trusted(cwd, s)]
+    return _store(cwd).untrusted()
 
 
 # ── Definition writing (`visvoai agents create` + the /agents flow) ─────────

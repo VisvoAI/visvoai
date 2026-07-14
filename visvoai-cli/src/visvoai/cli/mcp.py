@@ -118,70 +118,47 @@ def _parse_section(path: Path, source: str) -> dict[str, MCPServerSpec]:
     return out
 
 
-def load_mcp_servers(cwd: str) -> dict[str, MCPServerSpec]:
-    """Merged server specs: global ∪ project, project overriding on name."""
+def _store(cwd: str) -> "LayeredSpecStore":
+    """global config ∪ project config, project wins; coincident-layer dedupe
+    and trust mechanics are the store's job (kind='mcp' → mcp_trust.toml)."""
     from visvoai.cli.keys import global_config_path
+    from visvoai.cli.specstore import Layer, LayeredSpecStore
     from visvoai.cli.store import project_root
 
-    merged = _parse_section(global_config_path(), "global")
     try:
         proj_cfg = project_root(cwd) / ".visvoai" / "config.toml"
     except Exception:
         proj_cfg = Path(cwd) / ".visvoai" / "config.toml"
-    # Outside any project, project_root() can resolve to $HOME (its anchor walk
-    # matches ~/.visvoai/config.toml) — the "project" layer would then be the
-    # global file itself, reclassifying global servers as project-defined
-    # (spurious trust prompts). Same file twice ≠ two layers.
-    if proj_cfg.resolve() != global_config_path().resolve():
-        merged.update(_parse_section(proj_cfg, "project"))
-    return merged
+    return LayeredSpecStore("mcp", cwd, [
+        Layer("global", trusted=True, identity=global_config_path(),
+              load=lambda: _parse_section(global_config_path(), "global")),
+        Layer("project", trusted=False, identity=proj_cfg,
+              load=lambda: _parse_section(proj_cfg, "project")),
+    ])
 
 
-# ── Trust ─────────────────────────────────────────────────────────────────────
-
-def _trust_path(cwd: str) -> Path:
-    from visvoai.cli.store import resolve_project_id, visvoai_home
-    return visvoai_home() / "projects" / resolve_project_id(cwd) / "mcp_trust.toml"
+def load_mcp_servers(cwd: str) -> dict[str, MCPServerSpec]:
+    """Merged server specs: global ∪ project, project overriding on name."""
+    return _store(cwd).load()
 
 
-def _read_trust(cwd: str) -> dict[str, str]:
-    path = _trust_path(cwd)
-    if not path.exists():
-        return {}
-    try:
-        return {
-            k: v for k, v in (tomllib.loads(path.read_text()).get("trusted") or {}).items()
-            if isinstance(v, str)
-        }
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-
+# ── Trust (generic mechanics live in specstore; kind="mcp") ──────────────────
 
 def is_trusted(cwd: str, spec: MCPServerSpec) -> bool:
     """Global servers are implicitly trusted; project servers need a recorded
     approval matching the current spec hash."""
-    if spec.source == "global":
-        return True
-    return _read_trust(cwd).get(spec.name) == spec.spec_hash()
+    return _store(cwd).is_trusted(spec)
 
 
 def trust_server(cwd: str, spec: MCPServerSpec) -> None:
     """Record approval for a project-defined server (stored outside the repo)."""
-    trusted = _read_trust(cwd)
-    trusted[spec.name] = spec.spec_hash()
-    path = _trust_path(cwd)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["[trusted]"] + [f'{name} = "{h}"' for name, h in sorted(trusted.items())]
-    path.write_text("\n".join(lines) + "\n")
+    _store(cwd).trust(spec)
     invalidate_cache()
 
 
 def untrusted_servers(cwd: str) -> list[MCPServerSpec]:
     """Enabled project-defined servers awaiting first-use approval."""
-    return [
-        s for s in load_mcp_servers(cwd).values()
-        if s.enabled and not is_trusted(cwd, s)
-    ]
+    return [s for s in _store(cwd).untrusted() if s.enabled]
 
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
