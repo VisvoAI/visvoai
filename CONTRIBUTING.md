@@ -12,6 +12,17 @@ to the source monorepo (authorship preserved via `git am`/cherry-pick) and the
 next sync publishes them back out. Your commit lands with your name on it;
 there may be a short delay between merge and appearance.
 
+## Conduct
+
+Participation is governed by our [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+## Sign-off (DCO)
+
+Commits must carry a `Signed-off-by:` line (`git commit -s`) certifying the
+[Developer Certificate of Origin](https://developercertificate.org/) — you
+wrote the change or have the right to submit it under MIT. This is the
+lightweight alternative to a CLA and keeps future licensing options clean.
+
 ## Development setup
 
 Each package is self-contained (uv or plain pip):

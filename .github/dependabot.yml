@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories:
+      - /visvoai-ai
+      - /visvoai-core
+      - /visvoai-cli
+    schedule:
+      interval: weekly
+    groups:
+      all-deps:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
