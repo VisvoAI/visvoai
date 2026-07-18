@@ -23,6 +23,11 @@ dependencies = [
     "langchain-core>=0.2",
 ]
 
+[project.urls]
+Homepage = "https://visvoai.com"
+Repository = "https://github.com/VisvoAI/visvoai"
+Changelog = "https://github.com/VisvoAI/visvoai/blob/main/visvoai-ai/CHANGELOG.md"
+
 [project.optional-dependencies]
 # Per-provider extras pull only the LangChain integration you actually use.
 # Each provider's chat model is imported lazily, so the base install stays light.
