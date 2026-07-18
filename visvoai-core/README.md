@@ -33,8 +33,7 @@ def read_file(path: str) -> str:
 tools = [read_file]
 graph = AgentRuntime().build_graph(
     model=build_chat_model("gemini:gemini-2.5-flash"),
-    core_tools=tools,
-    all_tools_map={t.name: t for t in tools},
+    core_tools=tools,                      # all_tools_map now optional
     system_prompt="You are a code assistant.",
 )
 
@@ -56,10 +55,26 @@ print(result["messages"][-1].content)
 - **A tool lifecycle, not just functions** — declare config, write
   `_execute()`, and registration/validation/persistence hooks come free.
 
-## Writing a tool
+## Defining tools — four ways, pick per tool
 
-Plain LangChain `@tool` functions work as-is. For tools that want the
-lifecycle (config, registration, persistence), subclass:
+`build_graph` takes them all, mixed freely; normalization to the loop's
+internal currency happens once at the boundary, never in your files.
+
+**1 · A plain typed function** — schema from type hints, description from
+the docstring. No framework imports; async works the same way.
+
+```python
+def word_count(text: str) -> int:
+    """Count the words in a piece of text."""
+    return len(text.split())
+
+graph = AgentRuntime().build_graph(model=model, core_tools=[word_count],
+                                   system_prompt="You are ...")
+```
+
+**2 · The lifecycle class** — for tools that want declared config,
+auto-registration, and persistence hooks (start→complete/error recorded in
+*your* datastore via `ToolPersistence`; the default is a no-op):
 
 ```python
 from pydantic import BaseModel
@@ -79,10 +94,26 @@ class EchoTool(BaseAgentTool):
         return ToolResult.success(self.name, kwargs["text"])
 ```
 
-Tools auto-register at class-definition time. `execute()` ships a default
-start→run→complete/error lifecycle; inject a `ToolPersistence` implementation
-to record those events in *your* datastore — the default is a no-op, so tools
-run standalone.
+Pass the class (or an instance) straight into `core_tools` — execution runs
+through the full lifecycle. This is the same pattern the CLI and a hosted
+platform build their internal tools on.
+
+**3 · Anything LangChain** — already have `@tool` functions or
+`StructuredTool`s? They pass through untouched, and every LangChain
+integration ever written is usable as-is.
+
+**4 · MCP servers** — out-of-process tools in any language; connect them at
+the consumer layer (the CLI ships this: `visvoai mcp add ...`).
+
+Mix them in one list; `as_tool` / `as_tools_map` are exported if you need
+the normalization yourself:
+
+```python
+from visvoai.core import as_tools_map
+tools = [word_count, EchoTool, some_langchain_tool]
+graph = AgentRuntime().build_graph(model=model, core_tools=tools,
+                                   system_prompt="You are ...")
+```
 
 ## The extension seams
 

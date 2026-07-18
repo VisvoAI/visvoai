@@ -64,11 +64,17 @@ lifecycle with pluggable persistence, and subclass-and-inject extension
 seams proven by two shipping consumers — this CLI and a hosted platform.
 
 ```python
+def word_count(text: str) -> int:
+    """Count the words in a piece of text."""     # ← a tool. That's all.
+    return len(text.split())
+
 from visvoai.core.runtime import AgentRuntime
-graph = AgentRuntime().build_graph(model=model, core_tools=tools,
-                                   all_tools_map={t.name: t for t in tools},
+graph = AgentRuntime().build_graph(model=model, core_tools=[word_count],
                                    system_prompt="You are ...")
 ```
+
+Tools are plain typed functions, lifecycle classes with persistence hooks,
+existing LangChain tools, or MCP servers — mixed freely in one list.
 
 Honest positioning: not a framework and doesn't want to be — if you need a
 hundred integrations, use LangChain directly; if you need the loop done

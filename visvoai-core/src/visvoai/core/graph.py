@@ -20,6 +20,8 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from visvoai.core.adapt import ToolLike, as_tool, as_tools
+
 from visvoai.core.state import AgentState
 
 logger = logging.getLogger(__name__)
@@ -84,9 +86,9 @@ def _rounds_this_turn(messages: Sequence[BaseMessage]) -> int:
 
 def build_graph(
     model: BaseChatModel,
-    core_tools: List[BaseTool],
-    all_tools_map: Dict[str, BaseTool],
-    system_prompt: str,
+    core_tools: List["ToolLike"],
+    all_tools_map: Optional[Dict[str, "ToolLike"]] = None,
+    system_prompt: str = "",
     checkpointer: Optional[BaseCheckpointSaver] = None,
     tool_configs: Optional[Dict[str, Any]] = None,
     lean_prompt: bool = False,
@@ -120,6 +122,11 @@ def build_graph(
                           DEFAULT_MAX_AGENT_STEPS; None disables the guard.
         _runtime:         AgentRuntime instance — hooks are invoked when set.
     """
+
+    core_tools = as_tools(core_tools)
+    all_tools_map = ({k: as_tool(v) for k, v in all_tools_map.items()}
+                     if all_tools_map is not None
+                     else {t.name: t for t in core_tools})
     tool_configs = tool_configs or {}
 
     core_tool_objs = list(core_tools) if core_tools else []

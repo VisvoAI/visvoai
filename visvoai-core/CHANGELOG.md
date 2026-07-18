@@ -3,6 +3,16 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new
 capability or breaking changes, PATCH for fixes.
 
+## [0.3.0] — 2026-07
+
+### Added
+- **Tool intake normalization** (`visvoai.core.adapt`): `build_graph` now
+  accepts plain typed Python functions (sync or async — schema from type
+  hints, description from the docstring), `BaseAgentTool` classes/instances
+  (executed through the persistence lifecycle), and LangChain `BaseTool`s,
+  mixed freely in one list. `as_tool` / `as_tools` / `as_tools_map` exported.
+- `all_tools_map` is now optional — derived from `core_tools` when omitted.
+
 ## [0.2.0] — 2026-07
 
 ### Added
