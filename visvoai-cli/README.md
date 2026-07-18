@@ -4,8 +4,10 @@
 
 ![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./docs/hero.gif)
 
-A full-screen TUI agent (built on [Textual](https://textual.textualize.io/))
-that reads, edits, and runs code in your repo — with a permission model
+Most coding agents hold real power over your machine, gated by nothing
+stronger than a system prompt. This one is different: a full-screen TUI agent
+(built on [Textual](https://textual.textualize.io/)) that reads, edits, and
+runs code in your repo — with a permission model
 enforced by the OS, not by politeness; delegatable subagents with live logs;
 teachable skills; MCP; and per-turn time-travel across both your files and the
 conversation.

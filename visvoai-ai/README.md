@@ -2,8 +2,10 @@
 
 **One line to any model — with the model *facts* included.** *(VisvoAI™)*
 
-Unified multi-provider LLM access for Python: a streaming, LangChain-compatible
-chat model for whichever provider you name, plus the thing most facades skip —
+Every provider has its own SDK, its own model names, its own pricing page,
+and its own spelling of "reasoning" — and your app ends up hardcoding all of
+it. `visvoai-ai` is the antidote: a streaming, LangChain-compatible chat
+model for whichever provider you name, plus the thing most facades skip —
 a live model registry that knows each model's pricing, context window,
 capabilities, and reasoning ("thinking") levels, so your app can *choose* and
 *meter* models, not just call them.

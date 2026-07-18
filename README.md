@@ -17,6 +17,22 @@ Dependencies point one way only. Nothing here depends on any private or hosted
 infrastructure — these packages *are* the runtime under a commercial platform,
 published as they're used.
 
+## Why this exists
+
+Coding agents are the most capable tools ever handed a shell — and most run
+on politeness: a prompt that says "please ask before deleting things." We
+think the boundaries should be real. That conviction, applied three times:
+
+- **An agent's permissions should be enforced by the OS, not the prompt** —
+  so the CLI classifies shell commands and runs reads inside a kernel
+  no-write sandbox; a disguised write *fails*, not "should have asked."
+- **Anything a repo defines must not silently arm itself** — so agents,
+  skills, and MCP servers a repo ships need your one-time, hash-pinned
+  approval.
+- **The loop under an agent product is always the same ~1k lines, and
+  everyone writes them badly once** — so the runtime beneath this CLI (and a
+  hosted platform) is published for the next person building their own.
+
 ## The CLI
 
 ![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./visvoai-cli/docs/hero.gif)
