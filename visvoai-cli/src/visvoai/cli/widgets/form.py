@@ -75,8 +75,11 @@ class Form(Vertical):
     """Inline multi-field prompt; await `.ask()` for `{key: value} | None`."""
 
     DEFAULT_CSS = """
+    /* Class-6 identity: the warning rail — a blocking ask must read as one at
+       a glance (see Selection for the full rationale). */
     Form {
-        background: transparent;
+        background: $warning 8%;
+        border-left: outer $warning 70%;
         padding: 0 1;
         margin: 0;
         height: auto;

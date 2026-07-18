@@ -3,6 +3,15 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.14.3] — 2026-07
+
+### Changed
+- **Blocking asks now look like blocking asks.** The three HITL widgets
+  (Selection, FreeText, Form) carry their class-6 identity again: a
+  warning-tinted left rail + a faint warning wash — instantly
+  distinguishable from content while still sitting flush under their diff.
+  The 9-class system named this rule; the implementation had dropped it.
+
 ## [0.14.2] — 2026-07
 
 ### Changed

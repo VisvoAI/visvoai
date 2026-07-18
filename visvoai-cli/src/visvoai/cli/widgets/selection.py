@@ -130,11 +130,14 @@ class Selection(Vertical):
     can_focus = True
 
     DEFAULT_CSS = """
-    /* No borders: identity comes from the bold prompt + the ❯ option markers. This
-       lets a tool-approval Selection sit FLUSH under its diff (one connected group)
-       instead of being walled off by a divider. */
+    /* Class-6 identity (the 9-class system): the WARNING RAIL — this is the only
+       block that stops the turn and waits on the human, so it must be
+       distinguishable from content at a glance. A warning-tinted left rail + a
+       faint warning wash (the same grammar as the user-input's primary wash),
+       no full border — the block still sits flush under its diff as one group. */
     Selection {
-        background: transparent;
+        background: $warning 8%;
+        border-left: outer $warning 70%;
         padding: 0 1;
         margin: 0;
         height: auto;

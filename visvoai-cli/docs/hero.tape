@@ -24,21 +24,27 @@ Type "add a --version flag to taskly.py that prints 'taskly 1.0' and exits"
 Sleep 1s
 Enter
 
-# stream + approvals: spaced Enters approve whenever a prompt appears
-# (an Enter on the empty input is a no-op)
-Sleep 15s
+# stream, then approve whenever a prompt appears (Enter on the empty
+# input is a no-op) — tight cadence so waits never read as stalls
+Sleep 12s
 Enter
-Sleep 8s
+Sleep 3s
 Enter
-Sleep 8s
+Sleep 3s
 Enter
-Sleep 8s
+Sleep 3s
 Enter
-Sleep 8s
+Sleep 3s
 Enter
-Sleep 8s
+Sleep 3s
 Enter
-Sleep 14s
+Sleep 3s
+Enter
+Sleep 3s
+Enter
+Sleep 3s
+Enter
+Sleep 10s
 
 Screenshot hero_final.png
 Sleep 3s
