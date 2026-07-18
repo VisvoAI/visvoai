@@ -38,11 +38,6 @@ dependencies = [
     "langchain-mcp-adapters>=0.3",
 ]
 
-[project.urls]
-Homepage = "https://visvoai.com"
-Repository = "https://github.com/VisvoAI/visvoai"
-Changelog = "https://github.com/VisvoAI/visvoai/blob/main/visvoai-cli/CHANGELOG.md"
-
 [project.scripts]
 visvoai = "visvoai.cli.main:cli"
 

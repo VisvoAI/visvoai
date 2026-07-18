@@ -141,6 +141,16 @@ design — a repo can never inject Python into your session.
 Costs and context are always visible: per-turn tokens/cost in the footer, a
 context gauge that warns before you hit the wall.
 
+## Gallery
+
+| | |
+|---|---|
+| ![Parallel agents with live logs](./docs/still_agents_split.svg) | ![/runs — every dispatch, live](./docs/still_runs.svg) |
+| ![The permission gate — diff before approval](./docs/still_approval.svg) | ![Project skill awaiting one-time trust](./docs/still_trust.svg) |
+
+Stills are generated, not staged by hand — `docs/make_stills.py` renders real
+widgets to SVG in one command, so they can't drift from the UI.
+
 ## From source
 
 ```bash
