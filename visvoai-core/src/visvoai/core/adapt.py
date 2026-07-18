@@ -58,7 +58,13 @@ def _callable_to_base_tool(fn: Callable[..., Any]) -> BaseTool:
             f"Tool function '{name}' needs a docstring — it becomes the "
             "description the model routes on."
         )
-    kwargs: Dict[str, Any] = dict(name=name, description=fn.__doc__.strip())
+    # parse_docstring: a Google-style Args: section becomes per-argument
+    # descriptions in the schema the model sees; tolerated when absent.
+    # No explicit description: parse_docstring derives it (short description
+    # only — an Args: section becomes per-argument schema descriptions
+    # instead of noise in the tool description).
+    kwargs: Dict[str, Any] = dict(name=name, parse_docstring=True,
+                                  error_on_invalid_docstring=False)
     if inspect.iscoroutinefunction(fn):
         return StructuredTool.from_function(coroutine=fn, **kwargs)
     return StructuredTool.from_function(func=fn, **kwargs)

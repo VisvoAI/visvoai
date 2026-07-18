@@ -61,12 +61,23 @@ print(result["messages"][-1].content)
 internal currency happens once at the boundary, never in your files.
 
 **1 · A plain typed function** — schema from type hints, description from
-the docstring. No framework imports; async works the same way.
+the docstring; a Google-style `Args:` section becomes per-argument
+descriptions in the schema the model sees. No framework imports; async
+works the same way.
 
 ```python
 def word_count(text: str) -> int:
     """Count the words in a piece of text."""
     return len(text.split())
+
+def fetch_status(url: str, timeout: int = 10) -> str:
+    """Check whether a URL is up.
+
+    Args:
+        url: The full URL to probe, including scheme.
+        timeout: Seconds to wait before giving up.
+    """
+    ...
 
 graph = AgentRuntime().build_graph(model=model, core_tools=[word_count],
                                    system_prompt="You are ...")

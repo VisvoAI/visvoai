@@ -92,3 +92,29 @@ def test_as_tools_map_mixes_shapes():
 def test_not_a_tool_rejected():
     with pytest.raises(TypeError, match="Not a tool"):
         as_tool(42)
+
+
+def test_args_section_becomes_per_arg_descriptions():
+    def fetch(url: str, timeout: int = 10) -> str:
+        """Check whether a URL is up.
+
+        Args:
+            url: The full URL to probe, including scheme.
+            timeout: Seconds to wait before giving up.
+        """
+        return url
+
+    t = as_tool(fetch)
+    props = t.args_schema.model_json_schema()["properties"]
+    assert props["url"]["description"] == "The full URL to probe, including scheme."
+    assert props["timeout"]["description"] == "Seconds to wait before giving up."
+    assert "Args:" not in t.description          # section consumed, not repeated
+
+
+def test_plain_docstring_still_fine():
+    def simple(x: int) -> int:
+        """Double a number."""
+        return x * 2
+
+    t = as_tool(simple)
+    assert t.invoke({"x": 2}) == 4
