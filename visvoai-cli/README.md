@@ -165,11 +165,11 @@ context gauge that warns before you hit the wall.
 
 | | |
 |---|---|
-| ![Parallel agents with live logs](./docs/still_agents_split.svg) | ![/runs — every dispatch, live](./docs/still_runs.svg) |
-| ![The permission gate — diff before approval](./docs/still_approval.svg) | ![Project skill awaiting one-time trust](./docs/still_trust.svg) |
+| ![Parallel agents with live logs](./docs/still_agents_split.png) | ![/runs — every dispatch, live](./docs/still_runs.png) |
+| ![The permission gate — diff before approval](./docs/still_approval.png) | ![Project skill awaiting one-time trust](./docs/still_trust.png) |
 
 Stills are generated, not staged by hand — `docs/make_stills.py` renders real
-widgets to SVG in one command, so they can't drift from the UI.
+widgets and converts to PNG in one command, so they can't drift from the UI.
 
 ## From source
 

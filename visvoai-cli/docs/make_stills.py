@@ -181,6 +181,25 @@ async def scene_model_picker() -> None:
             app.save_screenshot(str(DOCS / "still_model.svg"))
 
 
+def _svg_to_png() -> None:
+    """READMEs use PNG: GitHub's image proxy blocks the SVGs' CDN @font-face
+    (blank cells). rsvg needs Fira Code installed (brew install font-fira-code)
+    and xml:space (it ignores the stylesheet's white-space: pre)."""
+    import shutil
+    import subprocess
+    if not shutil.which("rsvg-convert"):
+        print("! rsvg-convert missing (brew install librsvg) — PNGs not refreshed")
+        return
+    for f in sorted(DOCS.glob("still_*.svg")):
+        patched = f.read_text().replace("<text ", '<text xml:space="preserve" ')
+        tmp = f.with_suffix(".tmp.svg")
+        tmp.write_text(patched)
+        subprocess.run(["rsvg-convert", "-w", "1600", str(tmp),
+                        "-o", str(f.with_suffix(".png"))], check=True)
+        tmp.unlink()
+        print(f"✓ {f.with_suffix('.png').name}")
+
+
 async def main() -> None:
     for scene in (scene_agents_split, scene_runs, scene_trust,
                   scene_approval, scene_model_picker):
@@ -189,6 +208,7 @@ async def main() -> None:
             print(f"✓ {scene.__name__}")
         except Exception as e:
             print(f"✗ {scene.__name__}: {e}")
+    _svg_to_png()
 
 
 if __name__ == "__main__":

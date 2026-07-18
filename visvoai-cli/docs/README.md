@@ -6,4 +6,4 @@ drift from the UI:
 | Asset | Regenerate with |
 |---|---|
 | `hero.gif` — the README recording (real model, unscripted agent behavior; only the keystrokes are staged) | `vhs hero.tape` (stage a small demo repo first — see the tape's header comment) |
-| `still_*.svg` — the gallery (real widgets, no network/keys) | `../.venv/bin/python make_stills.py` |
+| `still_*.png` + `.svg` — the gallery (real widgets, no network/keys; PNG for GitHub — its image proxy blanks the SVGs' CDN fonts — SVG kept for the website) | `../.venv/bin/python make_stills.py` |
