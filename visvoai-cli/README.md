@@ -1,6 +1,6 @@
 # visvoai-cli
 
-**A terminal coding agent that takes permissions seriously.**
+**A terminal coding agent that takes permissions seriously.** *(VisvoAI™)*
 
 ![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./docs/hero.gif)
 

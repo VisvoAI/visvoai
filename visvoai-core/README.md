@@ -1,6 +1,6 @@
 # visvoai-core
 
-**The agent↔tools loop on LangGraph, done right — the ~1k lines every agent
+**The VisvoAI™ agent↔tools loop on LangGraph, done right — the ~1k lines every agent
 product ends up writing, already hardened by two real consumers.**
 
 `visvoai-core` is deliberately not a framework. It's a thin, opinionated

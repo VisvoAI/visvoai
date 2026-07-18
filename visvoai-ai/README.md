@@ -1,6 +1,6 @@
 # visvoai-ai
 
-**One line to any model — with the model *facts* included.**
+**One line to any model — with the model *facts* included.** *(VisvoAI™)*
 
 Unified multi-provider LLM access for Python: a streaming, LangChain-compatible
 chat model for whichever provider you name, plus the thing most facades skip —

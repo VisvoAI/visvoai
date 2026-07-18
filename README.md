@@ -1,4 +1,4 @@
-# VisvoAI
+# VisvoAI™
 
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
 
