@@ -102,7 +102,9 @@ model = build_chat_model("anthropic:claude-sonnet-4-5", level="high")
 
 ## Examples
 
-Every package ships runnable, live-verified examples:
+Start with the capstone: **[a whole product in 180 lines](./visvoai-core/examples/07_everything_together.py)**
+— an ops assistant with tool retrieval, memory, and an audit trail, runnable
+with **no API key**. Then each package's examples go one idea at a time:
 [cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config) ·
 [core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
 persistence → a full capstone product; four keyless) · [ai](./visvoai-ai/examples/) (models, registry,

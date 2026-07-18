@@ -160,9 +160,11 @@ filed down.
 
 ## Examples
 
-Six runnable, live-verified examples in [`examples/`](./examples/) — from a
-20-line agent to every tool-creation style, retrieval at fleet scale, and a
-real SQLite persistence implementation. Three run with no API key.
+**[`examples/07_everything_together.py`](./examples/07_everything_together.py)**
+is a whole product in 180 lines — retrieval choosing tools, memory resolving
+"restart *it*", an audit row appearing in SQLite — and it runs with **no API
+key**. The [examples ladder](./examples/) then takes each idea one file at a
+time, four of them keyless.
 
 ## License
 
