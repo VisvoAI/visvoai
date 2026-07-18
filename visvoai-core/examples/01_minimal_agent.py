@@ -6,23 +6,21 @@
 
 What core adds over wiring LangGraph yourself: a soft step cap that forces one
 clean final answer (never a GraphRecursionError in your user's face), and
-duplicate tool-call blocking. Plain LangChain @tool functions work as-is.
+duplicate tool-call blocking. Tools are plain Python functions — the type
+hints become the schema, the docstring becomes the description. No imports.
 """
 import asyncio
 from pathlib import Path
 
-from langchain_core.tools import tool
 from visvoai.ai import build_chat_model
 from visvoai.core.runtime import AgentRuntime
 
 
-@tool
 def list_dir(path: str = ".") -> str:
     """List the files in a directory."""
     return "\n".join(sorted(p.name for p in Path(path).iterdir()))
 
 
-@tool
 def read_file(path: str) -> str:
     """Read a text file and return its contents (first 200 lines)."""
     return "\n".join(Path(path).read_text().splitlines()[:200])

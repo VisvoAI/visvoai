@@ -10,8 +10,10 @@ a live model registry that knows each model's pricing, context window,
 capabilities, and reasoning ("thinking") levels, so your app can *choose* and
 *meter* models, not just call them.
 
-No agent framework, no datastore, no web layer. Build a model, get out of the
-way.
+In plain words: you say `"anthropic:claude-sonnet-4-5"`, you get a working
+model — and you can ask it what it costs, how big its context is, and what it
+can do, before you spend a cent. No agent framework, no datastore, no web
+layer. Build a model, get out of the way.
 
 ## Install
 

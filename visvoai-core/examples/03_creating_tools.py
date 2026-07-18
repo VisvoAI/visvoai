@@ -1,56 +1,49 @@
-"""Every way to create a tool — and when to use which.
+"""The four ways to write a tool. All of them go into the same list.
 
     pip install visvoai-core
-    python 03_creating_tools.py            # runs with NO api key
+    python 03_creating_tools.py        # runs with NO api key
 
-The graph binds any LangChain `BaseTool`, so there are four honest ways in,
-from lightest to heaviest. Rule of thumb: start at 1; move down only when you
-need what the next level adds.
+  1. A plain function        — most tools. No imports. Type hints become the
+                               schema, the docstring becomes the description.
+  2. A function with Args:   — same, plus one help line per argument.
+                               The model reads it and picks arguments better.
+  3. An async function       — for network/disk work; the loop awaits it.
+  4. A lifecycle class       — for "serious" tools: declared schema, and
+                               hooks that record every run in your database.
 
-  1. @tool                — one function, schema from type hints. 95% of tools.
-  2. @tool + docstring    — same, but Google-style Args: sections become
-     args                   per-argument descriptions the model actually reads.
-  3. async def + @tool    — for I/O-bound work; the loop awaits it natively.
-  4. BaseAgentTool        — the LIFECYCLE class: declared config, auto-
-                            registration, persistence hooks (see
-                            06_sqlite_audit_trail.py). For products that must
-                            record/govern every call — this is the same seam a
-                            hosted multi-tenant platform runs on.
+You can also pass any existing LangChain tool — it works unchanged.
+`build_graph(core_tools=[...])` takes all of these, mixed in one list.
 """
 import asyncio
 
-from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-# ── 1 · the default: one typed function ──────────────────────────────────────
-@tool
+
+# ── 1 · a plain function — this is a complete tool ───────────────────────────
 def word_count(text: str) -> str:
-    """Count the words in a text."""
-    return str(len(text.split()))
+    """Count the words in a piece of text."""
+    return f"{len(text.split())} words"
 
 
-# ── 2 · richer schema: per-arg descriptions + constrained types ──────────────
-class SearchArgs(BaseModel):
-    query: str = Field(description="What to look for")
-    limit: int = Field(default=5, ge=1, le=50, description="Max results")
-
-
-@tool(args_schema=SearchArgs)
+# ── 2 · add an Args: section — one help line per argument ────────────────────
 def search_notes(query: str, limit: int = 5) -> str:
-    """Search my notes and return the top matches."""
-    return f"(pretend results for {query!r}, top {limit})"
+    """Search my notes and return the closest matches.
+
+    Args:
+        query: What to look for, in plain words.
+        limit: How many results to return at most.
+    """
+    return f"top {limit} notes matching {query!r}"
 
 
-# ── 3 · async: I/O-bound tools await on the loop, no threads ─────────────────
-@tool
+# ── 3 · async — the loop awaits it, no threads needed ────────────────────────
 async def fetch_status(service: str) -> str:
-    """Check a service's health endpoint."""
-    await asyncio.sleep(0.05)               # stands in for an HTTP call
+    """Check if a service is up and return its status."""
+    await asyncio.sleep(0)  # imagine a real network call here
     return f"{service}: ok"
 
 
-# ── 4 · the lifecycle class: config + registration + persistence hooks ───────
-from visvoai.core.results import ToolResult
+# ── 4 · the lifecycle class — schema + hooks that record every run ───────────
 from visvoai.core.tools import BaseAgentTool, tool_config
 
 
@@ -70,14 +63,23 @@ class SummarizeTool(BaseAgentTool):
 
 
 if __name__ == "__main__":
-    # All four are real and invokable right now:
-    print("1:", word_count.invoke({"text": "how many words is this"}))
-    print("2:", search_notes.invoke({"query": "quarterly numbers", "limit": 3}))
-    print("3:", asyncio.run(fetch_status.ainvoke({"service": "api"})))
+    # as_tool() is what build_graph runs on your list — used here to show
+    # each style is already a working tool:
+    from visvoai.core import as_tool
+
+    print("1:", as_tool(word_count).invoke({"text": "how many words is this"}))
+    print("2:", as_tool(search_notes).invoke({"query": "quarterly numbers",
+                                              "limit": 3}))
+    print("3:", asyncio.run(as_tool(fetch_status).ainvoke({"service": "api"})))
     print("4:", SummarizeTool().execute(tool_call_id="demo",
                                         text="Tools four ways.\nMore lines…")["output"])
 
-    # Styles 1–3 go straight into the graph (see 01_minimal_agent.py):
-    #   AgentRuntime().build_graph(model=…, core_tools=[word_count, …], …)
-    # Style 4 adds the lifecycle: inject a ToolPersistence and every call is
-    # recorded — run 06_sqlite_audit_trail.py to see that end to end.
+    # Proof the model sees your Args: help text (way 2):
+    schema = as_tool(search_notes).args_schema.model_json_schema()
+    print("   the model sees:", schema["properties"]["query"]["description"])
+
+    # All four go straight into the graph (see 01_minimal_agent.py):
+    #   AgentRuntime().build_graph(model=..., core_tools=[word_count,
+    #       search_notes, fetch_status, SummarizeTool], ...)
+    # The class (way 4) adds the lifecycle: inject a ToolPersistence and every
+    # call is recorded — run 06_sqlite_audit_trail.py to see it end to end.

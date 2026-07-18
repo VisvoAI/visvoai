@@ -3,12 +3,16 @@
 **The VisvoAI™ agent↔tools loop on LangGraph, done right — the ~1k lines every agent
 product ends up writing, already hardened by two real consumers.**
 
-`visvoai-core` is deliberately not a framework. It's a thin, opinionated
-runtime: the loop, a tool lifecycle, semantic tool retrieval, and extension
-seams that are proven — the same seams carry a full-featured terminal agent
+In plain words: an AI agent is a loop — the model thinks, calls a tool,
+reads the result, thinks again, and finally answers. Writing that loop well
+is surprisingly hard (endless loops, repeated calls, messy endings).
+`visvoai-core` is that loop, written once and written well, with clean hooks
+to plug in your own tools, storage, and rules.
+
+It is deliberately *not* a framework — no datastore, no web layer, no auth.
+The same code carries a full terminal agent
 ([`visvoai-cli`](https://pypi.org/project/visvoai-cli/)) and a hosted
-multi-tenant platform. No datastore, web, or auth dependencies; you subclass
-and inject what you need.
+platform, so the hooks you'd use are the hooks we use.
 
 ```bash
 pip install visvoai-core          # pulls langgraph + langchain-core only

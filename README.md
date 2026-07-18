@@ -4,6 +4,12 @@
 
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
 
+In plain words: `visvoai` is an AI assistant that lives in your terminal. It
+reads your code, edits files, and runs commands — but it must *ask you* before
+it changes anything, and the operating system itself blocks what you didn't
+approve. The engine under it is published here too, so you can build your own
+agent with the same pieces.
+
 ```
 visvoai-cli          the product: a TUI coding agent
      │               agents · skills · MCP · sandboxed shell · time-travel
@@ -25,15 +31,16 @@ Coding agents are the most capable tools ever handed a shell — and most run
 on politeness: a prompt that says "please ask before deleting things." We
 think the boundaries should be real. That conviction, applied three times:
 
-- **An agent's permissions should be enforced by the OS, not the prompt** —
-  so the CLI classifies shell commands and runs reads inside a kernel
-  no-write sandbox; a disguised write *fails*, not "should have asked."
-- **Anything a repo defines must not silently arm itself** — so agents,
-  skills, and MCP servers a repo ships need your one-time, hash-pinned
-  approval.
-- **The loop under an agent product is always the same ~1k lines, and
-  everyone writes them badly once** — so the runtime beneath this CLI (and a
-  hosted platform) is published for the next person building their own.
+- **The OS enforces the rules, not the prompt.** Commands that only *read*
+  run instantly — inside an operating-system sandbox that physically cannot
+  write to your disk. Commands that *change* things ask you first. Even if
+  the AI is tricked, the sandbox is not.
+- **Nothing from a downloaded repo turns itself on.** Agents, skills, and
+  tools that a repo defines stay off until you approve them once — and if
+  the file changes later, you are asked again.
+- **The engine is published, not hidden.** Every agent product needs the
+  same core loop, and most teams rebuild it badly once. Ours is here, tested
+  by two real products, for the next person building their own.
 
 ## What's in this repo
 

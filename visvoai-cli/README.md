@@ -29,24 +29,24 @@ single-shot turn without the TUI.
 
 ## Why this one
 
-**The shell is gated by the kernel, not the prompt.** Every shell command is
-classified read vs write. Reads (`ls`, `rg`, `git log`, …) run instantly —
-inside an OS no-write sandbox (macOS `sandbox-exec`, Linux `bwrap`), so a
-write disguised as a read fails with a kernel error instead of mutating your
-disk. Writes ask you first. The classifier only decides *prompting*; the
-sandbox is the boundary, so a misclassification is an inconvenience, never an
-incident.
+**The operating system enforces the rules, not the prompt.** Every shell
+command is sorted into *read* or *write*. Reads (`ls`, `rg`, `git log`, …)
+run instantly — inside an OS sandbox that cannot write to your disk (macOS
+`sandbox-exec`, Linux `bwrap`). So a write pretending to be a read simply
+fails; it cannot touch your files. Writes always ask you first. And if the
+sorting is ever wrong, the sandbox still holds — a mistake costs a prompt,
+never your data.
 
-**Everything repo-defined needs your one-time approval.** Project agents,
-skills, and MCP servers are files a repo controls — each is hashed and
-requires explicit trust before the model can use it; any edit re-prompts.
-What *you* define globally is implicitly yours. Cloning a repo can never
-silently arm anything.
+**Nothing from a downloaded repo turns itself on.** A repo can define
+agents, skills, and MCP servers — but each one stays off until you approve
+it once. If the file changes later, you are asked again (each file is
+fingerprinted). What *you* define in your home directory is trusted as
+yours. Cloning a repo can never silently give it power.
 
-**Time-travel that includes your files.** Every turn checkpoints the working
-tree in a shadow git repo. `/rewind` restores files + conversation together;
-timelines branch; `/fork` opens a checkpoint in a fresh directory to explore
-in parallel.
+**Undo that includes your files.** Every turn saves a snapshot of your
+working files. `/rewind` takes both the files *and* the conversation back to
+any earlier point; `/fork` opens a past snapshot in a fresh directory so you
+can try two ideas side by side.
 
 ## Agents & subagents
 

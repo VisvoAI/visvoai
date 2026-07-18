@@ -4,9 +4,9 @@ In order — each builds on the previous; three run with **no API key**.
 
 | File | Teaches | Needs a key? |
 |---|---|---|
-| [`01_minimal_agent.py`](./01_minimal_agent.py) | a working agent in ~20 lines: plain `@tool` functions + the core loop | yes |
+| [`01_minimal_agent.py`](./01_minimal_agent.py) | a working agent in ~20 lines: tools are plain Python functions | yes |
 | [`02_streaming_events.py`](./02_streaming_events.py) | the live-UI pattern: astream_events → text chunks, tool starts, results | yes |
-| [`03_creating_tools.py`](./03_creating_tools.py) | **every way to create a tool** — `@tool`, rich pydantic schemas, async, and the `BaseAgentTool` lifecycle class — and when to use which | **no** |
+| [`03_creating_tools.py`](./03_creating_tools.py) | **the four ways to write a tool** — plain function, `Args:` help text, async, and the lifecycle class — and when to use which | **no** |
 | [`04_extend_the_runtime.py`](./04_extend_the_runtime.py) | the extension seams: tool lifecycle, injected persistence, runtime hooks | **no** |
 | [`05_tool_retrieval.py`](./05_tool_retrieval.py) | the 300-tools problem: index a fleet, bind only the relevant slice per request | **no** |
 | [`06_sqlite_audit_trail.py`](./06_sqlite_audit_trail.py) | a real `ToolPersistence`: every call — including failures — audited into SQLite | **no** |
