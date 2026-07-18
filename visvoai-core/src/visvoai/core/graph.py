@@ -185,6 +185,14 @@ def build_graph(
         messages = state.get("messages", [])
         last = messages[-1] if messages else None
         if isinstance(last, AIMessage) and last.tool_calls:
+            # Past the cap the finalize round ran UNBOUND, so a well-formed
+            # model cannot emit tool calls here. A pathological one (hallucinated
+            # calls with no declarations — malformed providers exist) must still
+            # END, or it loops to the recursion limit the cap exists to prevent.
+            if max_agent_steps is not None and _rounds_this_turn(messages) > max_agent_steps:
+                logger.warning("[should_continue] tool calls past the step cap "
+                               "(unbound round) — forcing END")
+                return END
             return "tools"
         return END
 
@@ -212,7 +220,8 @@ def build_graph(
     else:
         _agent_fn, _agent_map = _agent_routing
 
-    workflow = StateGraph(AgentState)
+    state_cls = _runtime._get_state_class() if _runtime is not None else AgentState
+    workflow = StateGraph(state_cls)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tools_node)
 

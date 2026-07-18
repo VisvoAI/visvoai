@@ -95,7 +95,7 @@ Everything is subclass + inject; there is nothing to fork.
 | `AgentRuntime._get_checkpointer()` | durable graph state (any LangGraph checkpointer) |
 | `AgentRuntime._get_interrupt_nodes()` | human-in-the-loop interrupt points |
 | `RuntimeContext` (subclass) | your state carried to every tool — auth, sessions, registries |
-| `AgentState` (TypedDict inheritance) | your fields in the graph state |
+| `AgentState` (TypedDict inheritance) + `_get_state_class()` | your fields in the graph state |
 | `ToolPersistence` (implement) | tool-call records in your datastore |
 | `LLMPersistence` (implement) | per-call model usage/cost records |
 

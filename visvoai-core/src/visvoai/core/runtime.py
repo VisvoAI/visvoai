@@ -125,6 +125,13 @@ class AgentRuntime:
         """Return the checkpointer to use. Default: pass through the provided value."""
         return checkpointer
 
+    def _get_state_class(self) -> type:
+        """The graph's state schema. Override to extend AgentState (TypedDict
+        inheritance) with your own fields — they then flow through the graph
+        alongside messages, without overriding build_graph."""
+        from visvoai.core.state import AgentState
+        return AgentState
+
     def _get_interrupt_nodes(self) -> Optional[List[str]]:
         """Return interrupt_before node names. Default: None (no interrupts)."""
         return None
