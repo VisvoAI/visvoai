@@ -11,9 +11,11 @@ from textual.message import Message
 from textual.binding import Binding
 from textual.widgets import TextArea
 
+from visvoai.cli.widgets.textarea_guard import StyleRaceGuard
 
 
-class PromptArea(TextArea):
+
+class PromptArea(StyleRaceGuard, TextArea):
     """Auto-growing prompt composer. Posts `PromptArea.Submitted` on Enter."""
 
     # Editing parity on top of TextArea's stock set (which already covers

@@ -98,3 +98,22 @@ async def test_form_demo_action_runs():
         form._resolve(None)
         await pilot.pause()
         await task
+
+
+def test_style_race_guard_returns_blank_instead_of_raising():
+    """The mount/compositor race (textual#6208): a paint can query component
+    styles BEFORE CSS populated the registry — deterministically simulated by
+    clearing it. The guard must yield one blank frame, never a KeyError from
+    inside a timer callback (which kills the whole app)."""
+    from rich.style import Style
+
+    from visvoai.cli.widgets.form import FieldArea
+    field = FieldArea("k", "label")
+    field._component_styles.clear()          # the race window, made reliable
+    style = field.get_component_rich_style("text-area--gutter")
+    assert isinstance(style, Style)          # blank, not raised
+
+    from visvoai.cli.widgets.prompt import PromptArea
+    prompt = PromptArea()
+    prompt._component_styles.clear()
+    assert isinstance(prompt.get_component_rich_style("text-area--gutter"), Style)

@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.14.4] — 2026-07
+
+### Fixed
+- **A Textual mount/compositor race can no longer crash the app.** Under
+  load, a timer-driven paint can hit a freshly-mounted text area BEFORE its
+  component styles are registered from CSS — Textual then raises from inside
+  its own timer callback and takes the whole app down over one unpainted
+  frame (upstream textualize/textual#6208, closed as not-planned; surfaced
+  by CI runners, but reachable by real users on slower machines). The
+  prompt and form fields now guard that window: one blank-styled frame,
+  never a crash.
+
 ## [0.14.3] — 2026-07
 
 ### Changed

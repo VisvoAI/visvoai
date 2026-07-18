@@ -14,8 +14,10 @@ from textual.containers import Vertical
 from textual.message import Message
 from textual.widgets import Static, TextArea
 
+from visvoai.cli.widgets.textarea_guard import StyleRaceGuard
 
-class FieldArea(TextArea):
+
+class FieldArea(StyleRaceGuard, TextArea):
     """A multi-line form field. Enter advances (Form decides next/submit);
     Ctrl+J / Opt+Enter insert a newline."""
 

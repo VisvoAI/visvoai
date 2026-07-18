@@ -14,6 +14,7 @@ consistently wherever mounted. `__init__.py` is the re-export surface.
 - `plan.py`, `system_note.py`, `error.py`, `reconciliation.py`, `citation.py`, `structure_tree.py`, `file_creation.py` → notices / structured blocks.
 - `status.py` → `StatusBar` (model line + cumulative cost + context gauge with token label); `slash.py` → `SlashMenu`; `prompt.py` → `PromptArea` (paste-pill + slash/@ keys); `file_menu.py` → `FileMenu` (@-mention picker).
 - `mermaid_card.py` → `MermaidCard` — the clickable inline diagram card.
+- `textarea_guard.py` → `StyleRaceGuard` — mixin for EVERY TextArea subclass here: swallows the mount/compositor KeyError race (textual#6208) into one blank-styled frame instead of an app-killing timer crash.
 - `run_steps.py` → `RunStepsView` — a subagent run's structured Steps rendered as the SAME ToolRow wire the chat uses (rows transition in place; `tail=N` for the side panel, `show_final=True` for /runs). One widget, both surfaces.
 - `agent_panel.py` → `AgentPanel` (40% right split, auto show/hide by the app) + `_RunPane` (header + RunStepsView tail, soft `.ap-divider` keylines between agents). `MIN_APP_WIDTH` gates the split on narrow terminals.
 
