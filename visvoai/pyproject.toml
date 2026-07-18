@@ -12,5 +12,9 @@ authors = [{ name = "VisvoAI", email = "akshant.jain2@gmail.com" }]
 requires-python = ">=3.11"
 dependencies = ["visvoai-cli"]
 
+[project.urls]
+Homepage = "https://visvoai.com"
+Repository = "https://github.com/VisvoAI/visvoai"
+
 [tool.setuptools]
 packages = []
