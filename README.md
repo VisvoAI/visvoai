@@ -105,7 +105,7 @@ model = build_chat_model("anthropic:claude-sonnet-4-5", level="high")
 Every package ships runnable, live-verified examples:
 [cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config) ·
 [core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
-persistence; three keyless) · [ai](./visvoai-ai/examples/) (models, registry,
+persistence → a full capstone product; four keyless) · [ai](./visvoai-ai/examples/) (models, registry,
 custom providers). Full docs: each package's README.
 
 ## Finding your way around

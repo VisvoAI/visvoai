@@ -10,6 +10,7 @@ In order — each builds on the previous; three run with **no API key**.
 | [`04_extend_the_runtime.py`](./04_extend_the_runtime.py) | the extension seams: tool lifecycle, injected persistence, runtime hooks | **no** |
 | [`05_tool_retrieval.py`](./05_tool_retrieval.py) | the 300-tools problem: index a fleet, bind only the relevant slice per request | **no** |
 | [`06_sqlite_audit_trail.py`](./06_sqlite_audit_trail.py) | a real `ToolPersistence`: every call — including failures — audited into SQLite | **no** |
+| [`07_everything_together.py`](./07_everything_together.py) | **the capstone** — model picked by registry facts, tools in three shapes, SQLite audit, retrieval over a fleet, multi-turn memory: one small product | **no** (scripted model; live with a key) |
 
 ```bash
 pip install visvoai-core "visvoai-ai[gemini]"
