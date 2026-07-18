@@ -4,11 +4,11 @@
 
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
 
-In plain words: `visvoai` is an AI assistant that lives in your terminal. It
-reads your code, edits files, and runs commands — but it must *ask you* before
-it changes anything, and the operating system itself blocks what you didn't
-approve. The engine under it is published here too, so you can build your own
-agent with the same pieces.
+`visvoai` is an AI assistant that lives in your terminal. It reads your
+code, edits files, and runs commands — but it must *ask you* before it
+changes anything, and the operating system itself blocks what you didn't
+approve. The engine under it is published here too, so you can build your
+own agent with the same pieces.
 
 ```
 visvoai-cli          the product: a TUI coding agent

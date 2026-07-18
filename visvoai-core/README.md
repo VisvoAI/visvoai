@@ -3,11 +3,11 @@
 **The VisvoAI™ agent↔tools loop on LangGraph, done right — the ~1k lines every agent
 product ends up writing, already hardened by two real consumers.**
 
-In plain words: an AI agent is a loop — the model thinks, calls a tool,
-reads the result, thinks again, and finally answers. Writing that loop well
-is surprisingly hard (endless loops, repeated calls, messy endings).
-`visvoai-core` is that loop, written once and written well, with clean hooks
-to plug in your own tools, storage, and rules.
+An AI agent is a loop — the model thinks, calls a tool, reads the result,
+thinks again, and finally answers. Writing that loop well is surprisingly
+hard: endless loops, repeated calls, messy endings. `visvoai-core` is that
+loop, written once and written well, with clean hooks to plug in your own
+tools, storage, and rules.
 
 It is deliberately *not* a framework — no datastore, no web layer, no auth.
 The same code carries a full terminal agent
