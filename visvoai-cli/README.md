@@ -1,3 +1,5 @@
+<p align="center"><img src="../assets/logo-cli.svg" alt="VisvoAI CLI" width="300"></p>
+
 # visvoai-cli
 
 **A terminal coding agent that takes permissions seriously.** *(VisvoAI™)*

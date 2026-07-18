@@ -1,3 +1,5 @@
+<p align="center"><img src="./assets/logo.svg" alt="VisvoAI" width="280"></p>
+
 # VisvoAI™
 
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
