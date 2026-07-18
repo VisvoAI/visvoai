@@ -5,12 +5,16 @@ on:
   pull_request:
   schedule:
     - cron: "17 6 * * 2"
+  workflow_dispatch: {}
 jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # An explicit permissions block ZEROES everything unlisted — checkout
+    # needs contents:read or it fails with 'repository not found'.
     permissions:
       security-events: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: github/codeql-action/init@v3
