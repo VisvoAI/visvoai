@@ -100,6 +100,14 @@ Every package ships runnable, live-verified examples:
 persistence; three keyless) · [ai](./visvoai-ai/examples/) (models, registry,
 custom providers). Full docs: each package's README.
 
+## Finding your way around
+
+Every directory carries an `AGENTS.md` — a terse map of what the module does,
+its key files, conventions, and gotchas. They're written for AI coding tools
+(Claude Code, Cursor, …) and kept in sync with the code, which makes them the
+fastest orientation for humans too. Start at any package's root `AGENTS.md`
+and drill down.
+
 ## License
 
 MIT — all three packages.

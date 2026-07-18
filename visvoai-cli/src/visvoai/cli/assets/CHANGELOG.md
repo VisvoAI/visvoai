@@ -66,7 +66,7 @@ breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
   the instructions. The AI sees a compact index in its `read_skill` tool and
   loads a skill's full instructions only when a request matches — supporting
   reference files next to SKILL.md are read lazily via `resource=`, never
-  speculatively (progressive disclosure, same model as the platform).
+  speculatively (progressive disclosure).
   A skill grants KNOWLEDGE, not capability: the AI follows the instructions
   with its own tools, and mutations still ask you. Skills are available to
   subagents too (every tier — read-only included).
