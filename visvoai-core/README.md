@@ -14,7 +14,7 @@ and inject what you need.
 pip install visvoai-core          # pulls langgraph + langchain-core only
 ```
 
-Core is provider-agnostic — it takes any LangChain `BaseChatModel`. Pair it
+Core is provider-agnostic — it takes any LangChain `BaseChatModel` (core itself never needs an API key; the model you pass in carries its own — e.g. `GEMINI_API_KEY` via visvoai-ai). Pair it
 with [`visvoai-ai`](https://pypi.org/project/visvoai-ai/) for a unified
 provider layer, or bring your own model.
 

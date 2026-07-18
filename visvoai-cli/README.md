@@ -125,6 +125,22 @@ Schema from your type hints, description from the docstring, output capped,
 exceptions returned as data, approval-gated by declaration. Global-only by
 design — a repo can never inject Python into your session.
 
+## API keys
+
+Any of these, per provider — highest wins, nothing is ever committed:
+
+1. **Environment** — `export GEMINI_API_KEY=…` (or `ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY`, `GROQ_API_KEY`, … — the `{PROVIDER}_API_KEY` convention,
+   including anything a local `.env` provides).
+2. **Per-project** — `/login` in the TUI, or edit
+   `<project>/.visvoai/secrets.toml` (`[api_keys]`); written `0600` and
+   auto-added to the project's `.gitignore`.
+3. **Global default** — `~/.visvoai/config.toml` (`[api_keys]`), used
+   everywhere unless a project overrides it.
+
+You need exactly one key to start; add more providers any time and the
+`/model` picker lights them up.
+
 ## Living in it
 
 | | |
