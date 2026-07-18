@@ -24,6 +24,15 @@ from visvoai.cli import VisvoApp as _VisvoApp  # noqa: E402
 
 
 class VisvoApp(_VisvoApp):
+    """Staged like a real terminal: term_bg = the dark palette's background,
+    so widgets blend seamlessly (with no term_bg the screen falls back while
+    widgets keep theme surface colors — visible gray boxes, not how the CLI
+    actually looks)."""
+
+    def __init__(self, *a, **kw):
+        kw.setdefault("term_bg", "#09090b")   # palettes.default.dark.background
+        super().__init__(*a, **kw)
+
     def _maybe_mount_changelog_panel(self) -> None:
         pass
 
