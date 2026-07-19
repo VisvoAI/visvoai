@@ -9,7 +9,7 @@ Use **GitHub's private vulnerability reporting**: on the repo, open the
 **Security** tab → **Report a vulnerability**. The report is visible only to
 you and the maintainers — never a public issue. Include details and
 reproduction steps; you'll
-get an acknowledgment within 72 hours. Coordinated disclosure after a fix is
+get an acknowledgment within one week. Coordinated disclosure after a fix is
 the default; credit given unless you prefer otherwise.
 
 In scope, especially:
