@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question — "how do I…?"
+    url: https://github.com/VisvoAI/visvoai/discussions/categories/q-a
+    about: Usage questions belong in Discussions Q&A — you'll get an answer without the issue tracker filling up.
+  - name: Idea worth discussing first
+    url: https://github.com/VisvoAI/visvoai/discussions/categories/ideas
+    about: Not sure it's a concrete feature yet? Start in Ideas — we shape it together, then it graduates to an issue.
+  - name: Security vulnerability (private)
+    url: https://github.com/VisvoAI/visvoai/security/advisories/new
+    about: Never open a public issue for a vulnerability — this form is visible only to maintainers.

@@ -1,0 +1,21 @@
+title: "[Q] "
+labels: ["question"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The end goal in one or two sentences — often the fastest route to a good answer.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Commands, code, or docs you've already been through.
+      render: shell
+  - type: input
+    id: setup
+    attributes:
+      label: Setup
+      placeholder: "macOS · Python 3.12 · visvoai-cli 0.14.4"

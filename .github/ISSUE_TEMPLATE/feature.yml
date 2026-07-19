@@ -1,0 +1,33 @@
+name: Feature request
+description: Something the packages should do but don't
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Which package?
+      options: [visvoai-cli, visvoai-core, visvoai-ai, "cuts across"]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve for you?
+      description: >
+        Describe the situation you're in, not the solution — the situation
+        is what lets us judge fit and maybe find a better answer.
+      placeholder: |
+        When I ..., I have to ..., which means ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What do you do today instead?
+      description: Current workaround, if any — helps us judge urgency.

@@ -1,0 +1,21 @@
+title: "[Idea] "
+body:
+  - type: textarea
+    id: situation
+    attributes:
+      label: The situation
+      description: When does this come up for you? What does it cost you today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: Rough is fine — that's what this category is for.
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Where does it belong?
+      options: [visvoai-cli, visvoai-core, visvoai-ai, "no idea — that's part of the question"]

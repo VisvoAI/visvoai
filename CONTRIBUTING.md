@@ -3,6 +3,20 @@
 Thanks for looking under the hood. Ground rules first, because this repo has
 one unusual property worth knowing before you open a PR.
 
+## Where to say what
+
+| You have… | Go to |
+|---|---|
+| a usage question ("how do I…?") | [Discussions → Q&A](https://github.com/VisvoAI/visvoai/discussions/categories/q-a) |
+| a rough idea, not yet a concrete ask | [Discussions → Ideas](https://github.com/VisvoAI/visvoai/discussions/categories/ideas) |
+| a reproducible bug | [an Issue](https://github.com/VisvoAI/visvoai/issues/new/choose) (template asks for the repro) |
+| a concrete, shaped feature request | [an Issue](https://github.com/VisvoAI/visvoai/issues/new/choose) |
+| a security vulnerability | the [private form](https://github.com/VisvoAI/visvoai/security/advisories/new) — never a public issue |
+
+Ideas that firm up in Discussions graduate to Issues; Issues that turn out
+to be questions get converted back. Nothing is lost either way — this just
+keeps the tracker being a to-do list rather than a mailbox.
+
 ## How this repo is maintained
 
 This is the public half of an open-core monorepo. It is synced (one-way) from

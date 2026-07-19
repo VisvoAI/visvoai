@@ -1,0 +1,45 @@
+name: Bug report
+description: Something behaves wrongly, crashes, or doesn't match the docs
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Which package?
+      options: [visvoai-cli, visvoai-core, visvoai-ai, "not sure"]
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead.
+      placeholder: |
+        I ran ... expecting ... but instead ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest way to reproduce it
+      description: >
+        The exact commands or the smallest script that shows the problem.
+        If it only happens sometimes, say roughly how often.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, package version (`pip show visvoai-cli`), model/provider if relevant.
+      placeholder: |
+        macOS 15.2 · Python 3.12 · visvoai-cli 0.14.4 · gemini-2.5-flash
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output / logs
+      description: Paste the full traceback or error text if there is one.
+      render: text
