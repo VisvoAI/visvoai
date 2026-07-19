@@ -2,6 +2,8 @@
 
 # visvoai-cli
 
+[![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai-cli.svg)](https://pypi.org/project/visvoai-cli/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+
 **A terminal coding agent that takes permissions seriously.** *(VisvoAI™)*
 
 ![visvoai — a real turn: read, edit, self-correct, verify, with live cost](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/hero.gif)

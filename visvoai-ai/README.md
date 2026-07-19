@@ -1,5 +1,7 @@
 # visvoai-ai
 
+[![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai-ai.svg)](https://pypi.org/project/visvoai-ai/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+
 **One line to any model — with the model *facts* included.** *(VisvoAI™)*
 
 Every provider has its own SDK, its own model names, its own pricing page,

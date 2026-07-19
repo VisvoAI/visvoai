@@ -2,6 +2,8 @@
 
 # VisvoAI™
 
+[![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai.svg)](https://pypi.org/project/visvoai/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://github.com/VisvoAI/visvoai)
+
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
 
 `visvoai` is an AI assistant that lives in your terminal. It reads your

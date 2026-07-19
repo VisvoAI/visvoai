@@ -1,5 +1,7 @@
 # visvoai-core
 
+[![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai-core.svg)](https://pypi.org/project/visvoai-core/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
+
 **The VisvoAI™ agent↔tools loop on LangGraph, done right — the ~1k lines every agent
 product ends up writing, already hardened by two real consumers.**
 
