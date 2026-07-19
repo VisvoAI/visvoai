@@ -1,4 +1,5 @@
-<p align="center"><img src="./assets/logo.svg" alt="VisvoAI" width="280"></p>
+<p align="center"><img src="./assets/icon.png" alt="VisvoAI logo" width="110"></p>
+<p align="center"><img src="./assets/logo.svg" alt="VisvoAI" width="240"></p>
 
 # VisvoAI™
 
@@ -125,13 +126,14 @@ and drill down.
 
 ## License
 
-MIT — all three packages.
+MIT — all three packages. (Code only: the VisvoAI name and logo are
+[trademarks](./TRADEMARKS.md), not part of the license grant.)
 
 If VisvoAI ends up in something you build, ship, or write about, a mention —
 a link, a star, a "built on VisvoAI" line — is warmly appreciated. Never
 required (that's what MIT means), always noticed.
 
-[Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md)
+[Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md) · [Trademarks](./TRADEMARKS.md)
 
 <sub>agentic AI · AI coding agent · terminal AI assistant · LLM agent
 framework · LangGraph runtime · MCP client · multi-agent orchestration ·
