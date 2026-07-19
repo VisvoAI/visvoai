@@ -122,4 +122,8 @@ and drill down.
 
 MIT — all three packages.
 
+If VisvoAI ends up in something you build, ship, or write about, a mention —
+a link, a star, a "built on VisvoAI" line — is warmly appreciated. Never
+required (that's what MIT means), always noticed.
+
 [Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md)

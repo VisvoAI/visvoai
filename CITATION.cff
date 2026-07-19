@@ -1,0 +1,15 @@
+cff-version: 1.2.0
+message: "If VisvoAI is useful in your work, a citation or a mention is appreciated."
+title: "VisvoAI"
+type: software
+authors:
+  - family-names: "Jain"
+    given-names: "Akshant"
+repository-code: "https://github.com/VisvoAI/visvoai"
+url: "https://visvoai.com"
+license: MIT
+keywords:
+  - ai-agents
+  - coding-agent
+  - langgraph
+  - terminal
