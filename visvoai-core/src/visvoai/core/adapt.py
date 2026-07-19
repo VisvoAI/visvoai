@@ -85,3 +85,19 @@ def _agent_tool_to_base_tool(tool: BaseAgentTool) -> BaseTool:
         description=tool.description,
         args_schema=tool.llm_schema or tool.args_schema,
     )
+
+
+async def ask(graph: Any, text: str, thread_id: str | None = None) -> str:
+    """One turn against a built graph: text in, final answer out.
+
+    The graph's native contract is LangGraph state (a `messages` list of
+    LangChain message objects) — internal currency, same as tools. `ask`
+    is the text boundary over it: pass `thread_id` to give the conversation
+    memory (requires a checkpointer; same id = same conversation). For
+    streaming UIs, drop to `graph.astream_events(...)` — that surface is
+    documented in examples/02.
+    """
+    config = ({"configurable": {"thread_id": thread_id}}
+              if thread_id is not None else None)
+    out = await graph.ainvoke({"messages": [("user", text)]}, config)
+    return out["messages"][-1].content

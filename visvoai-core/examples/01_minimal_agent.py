@@ -13,6 +13,7 @@ import asyncio
 from pathlib import Path
 
 from visvoai.ai import build_chat_model
+from visvoai.core import ask
 from visvoai.core.runtime import AgentRuntime
 
 
@@ -27,16 +28,12 @@ def read_file(path: str) -> str:
 
 
 async def main() -> None:
-    tools = [list_dir, read_file]
     graph = AgentRuntime().build_graph(
         model=build_chat_model("gemini:gemini-2.5-flash"),
-        core_tools=tools,
-        all_tools_map={t.name: t for t in tools},
+        core_tools=[list_dir, read_file],
         system_prompt="You are a concise code assistant. Use your tools.",
     )
-    result = await graph.ainvoke(
-        {"messages": [("user", "What does this directory contain?")]})
-    print(result["messages"][-1].content)
+    print(await ask(graph, "What does this directory contain?"))
 
 
 asyncio.run(main())

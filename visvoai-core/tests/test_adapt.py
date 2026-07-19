@@ -118,3 +118,62 @@ def test_plain_docstring_still_fine():
 
     t = as_tool(simple)
     assert t.invoke({"x": 2}) == 4
+
+
+@pytest.mark.asyncio
+async def test_ask_text_boundary():
+    """ask(): text in, final answer out — no LangChain shapes in user code."""
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langchain_core.messages import AIMessage
+
+    from visvoai.core import ask
+    from visvoai.core.runtime import AgentRuntime
+
+    class M(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, m, *a, **kw):
+            return AIMessage(content="the answer")
+
+    def noop(x: str) -> str:
+        """No-op."""
+        return x
+
+    graph = AgentRuntime().build_graph(model=M(responses=[]),
+                                       core_tools=[noop],
+                                       system_prompt="test")
+    assert await ask(graph, "question?") == "the answer"
+
+
+@pytest.mark.asyncio
+async def test_ask_threads_memory():
+    from langchain_core.language_models.fake_chat_models import (
+        FakeMessagesListChatModel,
+    )
+    from langchain_core.messages import AIMessage
+    from langgraph.checkpoint.memory import MemorySaver
+
+    from visvoai.core import ask
+    from visvoai.core.runtime import AgentRuntime
+
+    class M(FakeMessagesListChatModel):
+        def bind_tools(self, tools):
+            return self
+
+        async def ainvoke(self, m, *a, **kw):
+            return AIMessage(content=f"seen {len(m)} messages")
+
+    def noop(x: str) -> str:
+        """No-op."""
+        return x
+
+    graph = AgentRuntime().build_graph(model=M(responses=[]),
+                                       core_tools=[noop], system_prompt="t",
+                                       checkpointer=MemorySaver())
+    a1 = await ask(graph, "one", thread_id="t1")
+    a2 = await ask(graph, "two", thread_id="t1")     # same thread: history grows
+    b1 = await ask(graph, "one", thread_id="t2")     # fresh thread: resets
+    assert a2 != a1 and b1 == a1

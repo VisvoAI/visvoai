@@ -136,7 +136,7 @@ def pick_model():
 async def main() -> None:
     from langgraph.checkpoint.memory import MemorySaver
 
-    from visvoai.core import as_tool, as_tools
+    from visvoai.core import as_tool, as_tools, ask
     from visvoai.core.retrieval import ToolCatalog
     from visvoai.core.runtime import AgentRuntime
 
@@ -166,12 +166,10 @@ async def main() -> None:
         checkpointer=MemorySaver(),
     )
 
-    thread = {"configurable": {"thread_id": "shift-42"}}
     for question in ("is the api healthy in eu-west? and how is our error budget?",
                      "restart it anyway, please"):        # "it" needs memory
         print(f"\n➤ {question}")
-        out = await graph.ainvoke({"messages": [("user", question)]}, thread)
-        print("  ", out["messages"][-1].content)
+        print("  ", await ask(graph, question, thread_id="shift-42"))
 
     rows = sqlite3.connect(audit_db).execute(
         "SELECT tool, status, ms FROM audit").fetchall()

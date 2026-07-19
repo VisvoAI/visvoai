@@ -5,7 +5,7 @@ Provides the AgentRuntime base class, RuntimeContext (surface-agnostic),
 ToolPersistence / LLMPersistence interfaces, the public AgentState TypedDict,
 and BaseAgentTool for building tools.
 """
-from visvoai.core.adapt import as_tool, as_tools, as_tools_map
+from visvoai.core.adapt import as_tool, as_tools, as_tools_map, ask
 from visvoai.core.context import RuntimeContext
 from visvoai.core.graph import GraphBuildContext
 from visvoai.core.persistence import LLMPersistence, ToolPersistence
@@ -20,6 +20,7 @@ from visvoai.core.retrieval import (
 )
 
 __all__ = [
+    "ask",
     "as_tool",
     "as_tools",
     "as_tools_map",

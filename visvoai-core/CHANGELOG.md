@@ -11,6 +11,9 @@ capability or breaking changes, PATCH for fixes.
   hints, description from the docstring), `BaseAgentTool` classes/instances
   (executed through the persistence lifecycle), and LangChain `BaseTool`s,
   mixed freely in one list. `as_tool` / `as_tools` / `as_tools_map` exported.
+- `ask(graph, text, thread_id=None)` — the text boundary over the graph's
+  invoke contract: LangGraph/LangChain message shapes stay internal for
+  request/response callers; `astream_events` remains the streaming surface.
 - `AgentRuntime.build_graph` matches the core builder: `all_tools_map`
   optional, `core_tools` accepts every tool shape (was still typed/required
   as LangChain-only at the runtime seam).

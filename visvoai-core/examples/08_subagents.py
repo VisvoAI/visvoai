@@ -24,14 +24,14 @@ def make_agent_tool(name, description, model, tools, system_prompt):
     """Wrap a whole agent as one callable tool. The caller's model sees a
     normal tool named `name`; invoking it runs a fresh, isolated conversation
     on its own graph and returns only the final answer."""
+    from visvoai.core import ask
     from visvoai.core.runtime import AgentRuntime
 
     graph = AgentRuntime().build_graph(
         model=model, core_tools=tools, system_prompt=system_prompt)
 
     async def agent_tool(task: str) -> str:
-        out = await graph.ainvoke({"messages": [("user", task)]})
-        return out["messages"][-1].content
+        return await ask(graph, task)
 
     agent_tool.__name__ = name
     agent_tool.__doc__ = description
@@ -89,9 +89,9 @@ async def main():
         system_prompt="You are the lead. Delegate research; synthesize answers.",
     )
 
-    out = await lead.ainvoke(
-        {"messages": [("user", "explain step caps — ask research if unsure")]})
-    print("lead's answer:", out["messages"][-1].content)
+    from visvoai.core import ask
+    print("lead's answer:",
+          await ask(lead, "explain step caps — ask research if unsure"))
 
 
 if __name__ == "__main__":

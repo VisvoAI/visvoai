@@ -51,6 +51,10 @@ async def on_slack_message(channel_thread: str, text: str):
             post_status(f"⚙ {ev['name']}…")
 ```
 
+For request/response surfaces (no streaming), skip the event loop entirely:
+`answer = await ask(graph, text, thread_id=channel_thread)` — text in, text
+out.
+
 The `thread_id` is the entire memory story: same id → the agent remembers
 the conversation; new id → fresh start. Swap `MemorySaver` for a Postgres or
 SQLite checkpointer when you need memory to survive restarts.

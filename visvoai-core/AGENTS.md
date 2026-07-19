@@ -6,7 +6,7 @@ building surfaces (CLI, server, IDE) on top of the agent loop.
 # Key Files
 - `BUILD-YOUR-OWN.md` → the adaptation guide: four decisions + hook table — the answer to "how do I fork/build on this"
 - `src/visvoai/core/__init__.py` → public API surface
-- `src/visvoai/core/adapt.py` → tool intake normalization (`as_tool`/`as_tools`/`as_tools_map`): plain functions / BaseAgentTool / LangChain BaseTool → the loop's currency, once, at the boundary; build_graph accepts all three mixed
+- `src/visvoai/core/adapt.py` → boundary layer: tool intake normalization + `ask()` text-in/text-out invoke (`as_tool`/`as_tools`/`as_tools_map`): plain functions / BaseAgentTool / LangChain BaseTool → the loop's currency, once, at the boundary; build_graph accepts all three mixed
 - `src/visvoai/core/graph.py` → lean core `build_graph()` (no extra nodes/deps)
 - `src/visvoai/core/runtime.py` → `AgentRuntime` base class with 4 hook methods
 - `src/visvoai/core/state.py` → public `AgentState` TypedDict (core fields only)

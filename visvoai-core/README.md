@@ -43,7 +43,8 @@ graph = AgentRuntime().build_graph(
 
 # a standard LangGraph app — invoke it, or stream events for a live UI
 # inside an async function (or asyncio.run(...) — see examples/01)
-result = await graph.ainvoke({"messages": [("user", "What's in pyproject.toml?")]})
+from visvoai.core import ask
+answer = await ask(graph, "What's in pyproject.toml?")
 print(result["messages"][-1].content)
 ```
 
