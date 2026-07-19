@@ -4,6 +4,9 @@
 
 [![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai.svg)](https://pypi.org/project/visvoai/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://github.com/VisvoAI/visvoai)
 
+**Works with:** Gemini · Claude · GPT · Groq · Together AI · OpenRouter · any
+OpenAI-compatible endpoint — one key of your choice to start.
+
 **A terminal coding agent with a trust model — and the Python runtime it's built on.**
 
 `visvoai` is an AI assistant that lives in your terminal. It reads your
@@ -129,3 +132,7 @@ a link, a star, a "built on VisvoAI" line — is warmly appreciated. Never
 required (that's what MIT means), always noticed.
 
 [Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md)
+
+<sub>agentic AI · AI coding agent · terminal AI assistant · LLM agent
+framework · LangGraph runtime · MCP client · multi-agent orchestration ·
+sandboxed code execution · human-in-the-loop approvals</sub>
