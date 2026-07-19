@@ -38,7 +38,10 @@ public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the maintainer at **akshant.jain2@gmail.com**. All complaints
+reported privately to the maintainer via **GitHub's private vulnerability
+reporting form** (Security tab → Report a vulnerability — it reaches only
+the maintainers and is not public, despite the name) or by direct message
+to [@Akshantjain](https://github.com/Akshantjain). All complaints
 will be reviewed promptly and fairly, and the reporter's privacy will be
 respected. Consequences scale with severity, from a private warning to a
 temporary or permanent ban from project spaces.

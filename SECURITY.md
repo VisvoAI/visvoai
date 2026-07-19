@@ -5,7 +5,10 @@ repo-defined agents/skills/MCP servers, no project-level code execution) is a
 core feature — reports that break it are the most valuable kind.
 
 **Please do not open public issues for vulnerabilities.**
-Email **akshant.jain2@gmail.com** with details and reproduction steps; you'll
+Use **GitHub's private vulnerability reporting**: on the repo, open the
+**Security** tab → **Report a vulnerability**. The report is visible only to
+you and the maintainers — never a public issue. Include details and
+reproduction steps; you'll
 get an acknowledgment within 72 hours. Coordinated disclosure after a fix is
 the default; credit given unless you prefer otherwise.
 
