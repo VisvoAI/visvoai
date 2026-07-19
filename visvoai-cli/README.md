@@ -1,10 +1,10 @@
-<p align="center"><img src="../assets/logo-cli.svg" alt="VisvoAI CLI" width="300"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/logo-cli.svg" alt="VisvoAI CLI" width="300"></p>
 
 # visvoai-cli
 
 **A terminal coding agent that takes permissions seriously.** *(VisvoAI™)*
 
-![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./docs/hero.gif)
+![visvoai — a real turn: read, edit, self-correct, verify, with live cost](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/hero.gif)
 
 Most coding agents hold real power over your machine, gated by nothing
 stronger than a system prompt. This one is different: a full-screen TUI agent
@@ -167,8 +167,8 @@ context gauge that warns before you hit the wall.
 
 | | |
 |---|---|
-| ![Parallel agents with live logs](./docs/still_agents_split.png) | ![/runs — every dispatch, live](./docs/still_runs.png) |
-| ![The permission gate — diff before approval](./docs/still_approval.png) | ![Project skill awaiting one-time trust](./docs/still_trust.png) |
+| ![Parallel agents with live logs](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/still_agents_split.png) | ![/runs — every dispatch, live](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/still_runs.png) |
+| ![The permission gate — diff before approval](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/still_approval.png) | ![Project skill awaiting one-time trust](https://raw.githubusercontent.com/VisvoAI/visvoai/main/visvoai-cli/docs/still_trust.png) |
 
 Stills are generated, not staged by hand — `docs/make_stills.py` renders real
 widgets and converts to PNG in one command, so they can't drift from the UI.
