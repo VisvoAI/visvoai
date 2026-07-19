@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/icon.png" alt="VisvoAI" width="90"></p>
+
 # visvoai
 
 *VisvoAI™*

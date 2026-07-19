@@ -1,3 +1,4 @@
+<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/icon.png" alt="VisvoAI" width="90"></p>
 <p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/logo-cli.svg" alt="VisvoAI CLI" width="300"></p>
 
 # visvoai-cli

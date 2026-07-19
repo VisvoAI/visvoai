@@ -1,3 +1,5 @@
+<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/icon.png" alt="VisvoAI" width="90"></p>
+
 # visvoai-core
 
 [![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai-core.svg)](https://pypi.org/project/visvoai-core/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../LICENSE)
