@@ -2,7 +2,7 @@
 
     pip install visvoai-core "visvoai-ai[gemini]"
     export GEMINI_API_KEY=...
-    python 03_minimal_agent.py
+    python 01_minimal_agent.py
 
 What core adds over wiring LangGraph yourself: a soft step cap that forces one
 clean final answer (never a GraphRecursionError in your user's face), and

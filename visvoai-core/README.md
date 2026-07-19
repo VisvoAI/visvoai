@@ -37,11 +37,12 @@ def read_file(path: str) -> str:
 tools = [read_file]
 graph = AgentRuntime().build_graph(
     model=build_chat_model("gemini:gemini-2.5-flash"),
-    core_tools=tools,                      # all_tools_map now optional
+    core_tools=tools,
     system_prompt="You are a code assistant.",
 )
 
 # a standard LangGraph app — invoke it, or stream events for a live UI
+# inside an async function (or asyncio.run(...) — see examples/01)
 result = await graph.ainvoke({"messages": [("user", "What's in pyproject.toml?")]})
 print(result["messages"][-1].content)
 ```
@@ -132,13 +133,16 @@ graph = AgentRuntime().build_graph(model=model, core_tools=tools,
 
 ## The extension seams
 
+Want approval gates? A Postgres audit trail? Your own state fields? Each
+is one override — these are the same hooks our CLI and platform use:
+
 Everything is subclass + inject; there is nothing to fork.
 
 | Seam | Override to get |
 |---|---|
 | `AgentRuntime._extend_graph()` | extra graph nodes — approval gates, background tasks, custom routers |
 | `AgentRuntime._build_agent_node()` | your own model-calling node (e.g. per-turn assembled system prompts) |
-| `AgentRuntime._get_checkpointer()` | durable graph state (any LangGraph checkpointer) |
+| `AgentRuntime._get_checkpointer()` | durable graph state — a checkpointer is LangGraph's saved-state store, what gives the agent memory across turns |
 | `AgentRuntime._get_interrupt_nodes()` | human-in-the-loop interrupt points |
 | `RuntimeContext` (subclass) | your state carried to every tool — auth, sessions, registries |
 | `AgentState` (TypedDict inheritance) + `_get_state_class()` | your fields in the graph state |

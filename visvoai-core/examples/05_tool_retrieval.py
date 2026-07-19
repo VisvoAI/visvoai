@@ -1,14 +1,15 @@
 """Semantic tool retrieval — bind 8 relevant tools, not 300.
 
     pip install visvoai-core
-    python 06_tool_retrieval.py            # runs with NO api key
+    python 05_tool_retrieval.py            # runs with NO api key
 
 THE PROBLEM this solves: connect a few MCP servers and you quickly hold
 hundreds of tools. Binding them all wrecks the model — context bloat, worse
 tool choice, higher cost. The fix is retrieval: index every tool once, then
 per request bind only the handful that match the user's intent.
 
-ToolCatalog is a BM25 index over (name, description) — add per-tool
+ToolCatalog is a BM25 index (a classic keyword-ranking algorithm — no
+embeddings needed) over (name, description) — add per-tool
 embeddings as a third tuple element and it becomes hybrid BM25 ∪ cosine.
 This is the mechanism behind `per_round_retrieve` in the core graph, where
 the bound tool set can be re-chosen every agent round.

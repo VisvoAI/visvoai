@@ -1,7 +1,7 @@
 """The extension seams: your persistence, your tool lifecycle, your runtime.
 
-    pip install visvoai-core "visvoai-ai[gemini]"
-    python 05_extend_the_runtime.py        # runs with NO api key — seams only
+    pip install visvoai-core
+    python 04_extend_the_runtime.py        # runs with NO api key — seams only
 
 Three seams in one file — the same ones a hosted multi-tenant platform and the
 visvoai-cli TUI build on (no forks, subclass + inject):
@@ -56,7 +56,7 @@ class MyRuntime(AgentRuntime):
         print(f"[runtime] _extend_graph — add your nodes to {type(workflow).__name__}")
 
     def _get_interrupt_nodes(self):
-        return None                          # e.g. ["approval_gate"] for HITL
+        return None                          # e.g. ["approval_gate"] for human-in-the-loop approval
 
 
 if __name__ == "__main__":

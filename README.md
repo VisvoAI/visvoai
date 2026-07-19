@@ -11,8 +11,8 @@ approve. The engine under it is published here too, so you can build your
 own agent with the same pieces.
 
 ```
-visvoai-cli          the product: a TUI coding agent
-     │               agents · skills · MCP · sandboxed shell · time-travel
+visvoai-cli          the product: a full-screen terminal coding agent
+     │               agents · skills · MCP tool servers · sandboxed shell · time-travel
      ▼
 visvoai-core         the runtime: the agent↔tools loop, done right
      │               tool lifecycle · retrieval · extension seams
@@ -107,7 +107,7 @@ Start with the capstone: **[a whole product in 180 lines](./visvoai-core/example
 with **no API key**. Then each package's examples go one idea at a time:
 [cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config) ·
 [core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
-persistence → a full capstone product; four keyless) · [ai](./visvoai-ai/examples/) (models, registry,
+persistence → a full capstone product; five keyless) · [ai](./visvoai-ai/examples/) (models, registry,
 custom providers). Full docs: each package's README.
 
 ## Finding your way around
@@ -121,3 +121,5 @@ and drill down.
 ## License
 
 MIT — all three packages.
+
+[Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md)

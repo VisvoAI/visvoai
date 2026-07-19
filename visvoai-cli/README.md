@@ -11,7 +11,7 @@ stronger than a system prompt. This one is different: a full-screen TUI agent
 (built on [Textual](https://textual.textualize.io/)) that reads, edits, and
 runs code in your repo — with a permission model
 enforced by the OS, not by politeness; delegatable subagents with live logs;
-teachable skills; MCP; and per-turn time-travel across both your files and the
+teachable skills; MCP tool servers (Model Context Protocol); and per-turn time-travel across both your files and the
 conversation.
 
 ```bash
@@ -143,7 +143,9 @@ Any of these, per provider — highest wins, nothing is ever committed:
    everywhere unless a project overrides it.
 
 You need exactly one key to start; add more providers any time and the
-`/model` picker lights them up.
+`/model` picker lights them up. One exception: web search and web fetch are
+Gemini-grounded, so those two tools need a `GEMINI_API_KEY` even when you
+chat through another provider.
 
 ## Living in it
 

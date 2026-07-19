@@ -1,9 +1,9 @@
 """A real ToolPersistence: every tool call audited into SQLite.
 
     pip install visvoai-core
-    python 07_sqlite_audit_trail.py        # runs with NO api key
+    python 06_sqlite_audit_trail.py        # runs with NO api key
 
-05_extend_the_runtime.py showed the persistence hooks firing; this shows why
+04_extend_the_runtime.py showed the persistence hooks firing; this shows why
 they're shaped the way they are — implement four methods and every tool call
 in your product lands in YOUR datastore with ids, inputs, status, duration.
 No middleware, no wrapping at call sites: inject once on the tool instance,

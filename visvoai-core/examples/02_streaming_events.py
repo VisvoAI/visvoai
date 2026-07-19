@@ -2,7 +2,7 @@
 
     pip install visvoai-core "visvoai-ai[gemini]"
     export GEMINI_API_KEY=...
-    python 04_streaming_events.py
+    python 02_streaming_events.py
 
 The graph is a standard LangGraph app, so astream_events(v2) gives you every
 step as it happens: model text chunks, tool starts, tool results. This ~30-line

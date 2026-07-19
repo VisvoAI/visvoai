@@ -1,10 +1,10 @@
 # visvoai-core examples
 
-Seven small files, in order. Four run with **no API key** — you can watch the
+Seven small files, in order. Five run with **no API key** — you can watch the
 machinery work before you spend anything:
 
 ```bash
-pip install visvoai-core "visvoai-ai[gemini]"
+pip install visvoai-core
 python examples/07_everything_together.py     # no key needed — start here
 ```
 
