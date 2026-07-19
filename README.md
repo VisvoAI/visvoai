@@ -85,7 +85,7 @@ existing LangChain tools, or MCP servers — mixed freely in one list.
 
 Honest positioning: not a framework and doesn't want to be — if you need a
 hundred integrations, use LangChain directly; if you need the loop done
-right, start here. **[Seams, examples, when-not-to-use → visvoai-core/README](./visvoai-core/README.md)**
+right, start here. **[Seams, examples, when-not-to-use → visvoai-core/README](./visvoai-core/README.md)** · **[Build your own product → BUILD-YOUR-OWN](./visvoai-core/BUILD-YOUR-OWN.md)**
 
 ### 🔌 `visvoai-ai` — the model layer
 

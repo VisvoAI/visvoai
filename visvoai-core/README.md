@@ -47,6 +47,10 @@ result = await graph.ainvoke({"messages": [("user", "What's in pyproject.toml?")
 print(result["messages"][-1].content)
 ```
 
+**Building a product on this?** [BUILD-YOUR-OWN.md](./BUILD-YOUR-OWN.md) is
+the whole recipe — the four decisions, a Slack-bot skeleton, and which hook
+to override when the defaults aren't enough.
+
 ## What the loop gives you that raw LangGraph doesn't
 
 - **A soft step cap with clean finalize** — at the budget, the model is
