@@ -53,9 +53,9 @@ class AgentRuntime:
     def build_graph(
         self,
         model: BaseChatModel,
-        core_tools: List[BaseTool],
-        all_tools_map: Dict[str, BaseTool],
-        system_prompt: str,
+        core_tools: List[Any],
+        all_tools_map: Optional[Dict[str, Any]] = None,
+        system_prompt: str = "",
         checkpointer: Optional[BaseCheckpointSaver] = None,
         tool_configs: Optional[Dict[str, Any]] = None,
         lean_prompt: bool = False,

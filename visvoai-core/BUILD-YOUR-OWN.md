@@ -79,6 +79,9 @@ These are not theoretical — our own terminal agent
   matches each request: [example 05](./examples/05_tool_retrieval.py).
 - **"I need to see everything my agent ever did"** — four persistence
   methods, injected once: [example 06](./examples/06_sqlite_audit_trail.py).
+- **"Can my agent call other agents?"** — yes: a subagent is a second graph
+  wrapped as a tool, ~25 lines, recursion made impossible by construction:
+  [example 08](./examples/08_subagents.py).
 - **"The model might loop forever"** — it can't: the step cap forces one
   clean, tool-free final answer. Built in, nothing to configure.
 

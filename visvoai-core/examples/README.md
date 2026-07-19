@@ -1,6 +1,6 @@
 # visvoai-core examples
 
-Seven small files, in order. Five run with **no API key** — you can watch the
+Eight small files, in order. Six run with **no API key** — you can watch the
 machinery work before you spend anything:
 
 ```bash
@@ -45,3 +45,9 @@ Index the fleet once, bind only the handful that match each request.
 call my agent ever made?** *(no key needed)* Implement four methods, inject
 once — every call including failures lands in your database. No wrappers at
 call sites.
+
+**[`08_subagents.py`](./08_subagents.py) — can my agent call other agents?**
+*(no key needed)* Yes, and there's no special API to learn: an agent is a
+graph, a tool is a function, so a subagent is a ~25-line helper that wraps a
+second graph as a callable tool. Includes the depth-cap trick that makes
+recursion impossible.
