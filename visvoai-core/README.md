@@ -1,4 +1,4 @@
-<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/icon.png" alt="VisvoAI" width="90"></p>
+<p align="center"><img src="https://raw.githubusercontent.com/VisvoAI/visvoai/main/assets/lockup-horizontal.svg" alt="Visvo AI" width="300"></p>
 
 # visvoai-core
 

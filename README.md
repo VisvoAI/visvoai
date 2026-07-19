@@ -1,14 +1,11 @@
-<p align="center"><img src="./assets/icon.png" alt="VisvoAI logo" width="110"></p>
-<p align="center"><img src="./assets/logo.svg" alt="VisvoAI" width="240"></p>
-
-# VisvoAI™
+<p align="center"><img src="./assets/lockup-horizontal.svg" alt="Visvo AI" width="330"></p>
 
 [![tests](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml/badge.svg)](https://github.com/VisvoAI/visvoai/actions/workflows/tests.yml) [![PyPI](https://img.shields.io/pypi/v/visvoai.svg)](https://pypi.org/project/visvoai/) [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://github.com/VisvoAI/visvoai)
 
 **Works with:** Gemini · Claude · GPT · Groq · Together AI · OpenRouter · any
 OpenAI-compatible endpoint — one key of your choice to start.
 
-**A terminal coding agent with a trust model — and the Python runtime it's built on.**
+**A terminal coding agent with a trust model — and the Python runtime it's built on.** *(VisvoAI™)*
 
 `visvoai` is an AI assistant that lives in your terminal. It reads your
 code, edits files, and runs commands — but it must *ask you* before it
