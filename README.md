@@ -65,8 +65,8 @@ conversation together. **[Full tour → visvoai-cli/README](./visvoai-cli/README
 ### ⚙️ `visvoai-core` — the agent runtime
 
 For building your *own* agent product on LangGraph: the loop with a soft
-step cap (clean final answers, never a recursion error), duplicate-call
-blocking, semantic tool retrieval for fleet-scale tool sets, a tool
+step cap (clean final answers, never a recursion error), semantic tool
+retrieval for fleet-scale tool sets, a tool
 lifecycle with pluggable persistence, and subclass-and-inject extension
 seams proven by two shipping consumers — this CLI and a hosted platform.
 

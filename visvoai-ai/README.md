@@ -15,6 +15,14 @@ can ask it what it costs, how big its context is, and what it can do, before
 you spend a cent. No agent framework, no datastore, no web layer. Build a
 model, get out of the way.
 
+## It's a real LangChain model — the ecosystem works
+
+`build_chat_model` returns a genuine LangChain `BaseChatModel`, so the
+patterns you already know apply unchanged: `.with_structured_output(Schema)`
+for JSON-schema-validated responses, `timeout=`/config for call limits,
+multimodal message parts for vision-capable models, and drop-in use anywhere
+LangChain or LangGraph expects a model.
+
 ## Install
 
 Base install is light; pull only the provider you use:
@@ -35,7 +43,7 @@ OpenAI-compatible providers (Together, Groq, OpenRouter, vLLM, …) ride the
 from visvoai.ai import build_chat_model
 
 model = build_chat_model("gemini:gemini-2.5-flash")          # a streaming BaseChatModel
-model = build_chat_model("anthropic:claude-sonnet-4-5", level="high")   # with thinking
+model = build_chat_model("gemini:gemini-2.5-flash", level="high")   # with thinking
 
 for chunk in model.stream("Explain attention in one sentence."):
     print(chunk.content, end="")

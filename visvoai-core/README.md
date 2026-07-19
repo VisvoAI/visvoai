@@ -159,6 +159,14 @@ agent node for per-turn context assembly; the hosted platform adds HITL and
 background-task nodes, a Postgres persistence pair, and an auth-carrying
 context — same runtime, no forks.
 
+## Migrating from LangChain
+
+Incremental, by design: your existing `@tool` functions and `StructuredTool`s
+pass into `build_graph(core_tools=[...])` untouched, and any `BaseChatModel`
+you already construct works as the model. Migrate the loop first (keep your
+tools), then simplify tools to plain functions at your own pace. Nothing to
+rewrite on day one.
+
 ## When *not* to use this
 
 If you want hundreds of integrations, chains, and a batteries ecosystem, use
