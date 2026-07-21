@@ -16,6 +16,11 @@ enforced by the OS, not by politeness; delegatable subagents with live logs;
 teachable skills; MCP tool servers (Model Context Protocol); and per-turn time-travel across both your files and the
 conversation.
 
+It runs on the published [`visvoai-core`](https://pypi.org/project/visvoai-core/)
+loop and [`visvoai-ai`](https://pypi.org/project/visvoai-ai/) model layer,
+unmodified — building your own agent product? This is the reference for how
+far those two go.
+
 ```bash
 pip install visvoai-cli
 export GEMINI_API_KEY=...     # or ANTHROPIC_API_KEY / OPENAI_API_KEY / any compatible

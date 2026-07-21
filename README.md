@@ -5,28 +5,49 @@
 **Works with:** Gemini · Claude · GPT · Groq · Together AI · OpenRouter · any
 OpenAI-compatible endpoint — one key of your choice to start.
 
-**A terminal coding agent with a trust model — and the Python runtime it's built on.** *(VisvoAI™)*
+**The Python toolkit for building AI agents — plus the coding agent built on
+it, as proof it holds up.** *(VisvoAI™)*
 
-`visvoai` is an AI assistant that lives in your terminal. It reads your
-code, edits files, and runs commands — but it must *ask you* before it
-changes anything, and the operating system itself blocks what you didn't
-approve. The engine under it is published here too, so you can build your
-own agent with the same pieces.
+Calling a provider's raw API is easy; turning that into a real *agent* —
+one that calls tools, remembers a conversation, knows what it costs, and
+doesn't loop forever — is a week of plumbing every team ends up rebuilding.
+VisvoAI is that plumbing, published: a model layer that speaks to any
+provider, an agent loop built on it, and — running on both, unmodified — a
+full terminal coding agent that proves the toolkit survives real use.
 
 ```
-visvoai-cli          the product: a full-screen terminal coding agent
-     │               agents · skills · MCP tool servers · sandboxed shell · time-travel
-     ▼
-visvoai-core         the runtime: the agent↔tools loop, done right
-     │               tool lifecycle · retrieval · extension seams
-     ▼
-visvoai-ai           the model layer: one interface, many providers
-                     registry · thinking levels · cost · live catalog
+visvoai-ai            the foundation: one interface, many providers
+     ▲                registry · thinking levels · cost · live catalog
+     │
+visvoai-core           the agent loop, built on it: done right, once
+     ▲                tool lifecycle · retrieval · extension seams
+     │
+visvoai-cli             the proof: a full product, running on both
+                       agents · skills · MCP · sandboxed shell · time-travel
 ```
+
+Start wherever your problem is: need a model, not an agent? `visvoai-ai`
+alone. Building your own agent product? `visvoai-core` is the loop, and
+`visvoai-cli`'s source is a working reference for how far it goes. Just
+want a coding agent right now? `pip install visvoai`.
 
 Dependencies point one way only. Nothing here depends on any private or hosted
 infrastructure — these packages *are* the runtime under a commercial platform,
 published as they're used.
+
+## What this actually gets you today
+
+Going from zero to a working, multi-provider agent — with a real trust
+model, not a toy — takes minutes, not the week of SDK-reading and
+plumbing that calling providers directly usually costs. That part is
+solved, and you can watch it happen with **no API key**: see
+[the capstone example](./visvoai-core/examples/07_everything_together.py).
+
+Honestly: production hardening — retries across providers, cost caps,
+shipped observability — is still yours to add today. It's the top of our
+[roadmap](https://github.com/VisvoAI/visvoai/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap),
+not a secret. We'd rather tell you what's next than let you find out the
+hard way.
 
 ## Why this exists
 
@@ -49,29 +70,26 @@ think the boundaries should be real. That conviction, applied three times:
 
 Three packages, one conviction each — use any layer on its own.
 
-### 🖥 `visvoai-cli` — the coding agent
+### 🔌 `visvoai-ai` — the foundation: one interface, many providers
 
-![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./visvoai-cli/docs/hero.gif)
+One line to any provider's streaming model, plus what most facades skip: a
+live registry of model *facts* (pricing, context, capabilities, normalized
+thinking levels) so your app can choose and meter models, not just call them.
 
-```bash
-pip install visvoai        # or: pip install visvoai-cli
-export GEMINI_API_KEY=...  # or Anthropic / OpenAI / any compatible
-visvoai
+```python
+from visvoai.ai import build_chat_model, cost_of, usage_from
+model = build_chat_model("anthropic:claude-sonnet-4-5", level="high")
 ```
 
-A full-terminal agent where the permission model is enforced by the OS, not
-the prompt: kernel-sandboxed shell reads, approval-gated writes, one-time
-trust for anything a repo defines (agents, skills, MCP servers), parallel
-subagents with live logs, teachable skills, and time-travel across files +
-conversation together. **[Full tour → visvoai-cli/README](./visvoai-cli/README.md)**
+**[Providers, registry, metering → visvoai-ai/README](./visvoai-ai/README.md)**
 
-### ⚙️ `visvoai-core` — the agent runtime
+### ⚙️ `visvoai-core` — the agent loop, built on it
 
-For building your *own* agent product on LangGraph: the loop with a soft
+For building your *own* agent product: the loop with a soft
 step cap (clean final answers, never a recursion error), semantic tool
 retrieval for fleet-scale tool sets, a tool
 lifecycle with pluggable persistence, and subclass-and-inject extension
-seams proven by two shipping consumers — this CLI and a hosted platform.
+seams proven by two shipping consumers — the CLI below and a hosted platform.
 
 ```python
 def word_count(text: str) -> int:
@@ -90,28 +108,33 @@ Honest positioning: not a framework and doesn't want to be — if you need a
 hundred integrations, use LangChain directly; if you need the loop done
 right, start here. **[Seams, examples, when-not-to-use → visvoai-core/README](./visvoai-core/README.md)** · **[Build your own product → BUILD-YOUR-OWN](./visvoai-core/BUILD-YOUR-OWN.md)**
 
-### 🔌 `visvoai-ai` — the model layer
+### 🖥 `visvoai-cli` — the proof: a full product, running on both
 
-One line to any provider's streaming model, plus what most facades skip: a
-live registry of model *facts* (pricing, context, capabilities, normalized
-thinking levels) so your app can choose and meter models, not just call them.
+![visvoai — a real turn: read, edit, self-correct, verify, with live cost](./visvoai-cli/docs/hero.gif)
 
-```python
-from visvoai.ai import build_chat_model, cost_of, usage_from
-model = build_chat_model("anthropic:claude-sonnet-4-5", level="high")
+```bash
+pip install visvoai        # or: pip install visvoai-cli
+export GEMINI_API_KEY=...  # or Anthropic / OpenAI / any compatible
+visvoai
 ```
 
-**[Providers, registry, metering → visvoai-ai/README](./visvoai-ai/README.md)**
+Not a demo of the toolkit — the same `visvoai-core` loop and `visvoai-ai`
+model layer, unmodified, under a full-terminal agent where the permission
+model is enforced by the OS, not the prompt: kernel-sandboxed shell reads,
+approval-gated writes, one-time trust for anything a repo defines, parallel
+subagents with live logs, teachable skills, and time-travel across files +
+conversation together. **[Full tour → visvoai-cli/README](./visvoai-cli/README.md)**
 
 ## Examples
 
 Start with the capstone: **[a whole product in 180 lines](./visvoai-core/examples/07_everything_together.py)**
 — an ops assistant with tool retrieval, memory, and an audit trail, runnable
 with **no API key**. Then each package's examples go one idea at a time:
-[cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config) ·
+[ai](./visvoai-ai/examples/) (models, registry, custom providers) ·
 [core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
-persistence → capstone → subagents; six keyless) · [ai](./visvoai-ai/examples/) (models, registry,
-custom providers). Full docs: each package's README.
+persistence → capstone → subagents; six keyless) ·
+[cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config —
+how the reference product is configured). Full docs: each package's README.
 
 ## Finding your way around
 
