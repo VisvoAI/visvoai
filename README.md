@@ -45,9 +45,8 @@ solved, and you can watch it happen with **no API key**: see
 
 Honestly: production hardening — retries across providers, cost caps,
 shipped observability — is still yours to add today. It's the top of our
-[roadmap](https://github.com/VisvoAI/visvoai/issues?q=is%3Aissue+is%3Aopen+label%3Aroadmap),
-not a secret. We'd rather tell you what's next than let you find out the
-hard way.
+[public roadmap](./ROADMAP.md), not a secret. We'd rather tell you what's
+next than let you find out the hard way.
 
 ## Why this exists
 
@@ -153,7 +152,7 @@ If VisvoAI ends up in something you build, ship, or write about, a mention —
 a link, a star, a "built on VisvoAI" line — is warmly appreciated. Never
 required (that's what MIT means), always noticed.
 
-[Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md) · [Trademarks](./TRADEMARKS.md)
+[Contributing](./CONTRIBUTING.md) · [Roadmap](./ROADMAP.md) · [Security](./SECURITY.md) · [Code of Conduct](./CODE_OF_CONDUCT.md) · [Trademarks](./TRADEMARKS.md)
 
 <sub>agentic AI · AI coding agent · terminal AI assistant · LLM agent
 framework · LangGraph runtime · MCP client · multi-agent orchestration ·
