@@ -19,7 +19,7 @@ jobs:
       matrix:
         package: [visvoai-ai, visvoai-core, visvoai-cli]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
       - name: Install
         working-directory: ${{ matrix.package }}
