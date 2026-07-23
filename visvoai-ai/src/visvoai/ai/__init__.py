@@ -18,7 +18,7 @@ from visvoai.ai.deployments import (
     default_deployment, install_catalog, set_default_registry, get_default_registry,
 )
 from visvoai.ai.catalog import CatalogSource, BakedSource, build_catalog
-from visvoai.ai.resolve import build_chat_model, cost_of
+from visvoai.ai.resolve import build_chat_model, chat, ask, cost_of
 from visvoai.ai.search import FetchError, SearchResult, SearchSource, fetch_url, run_search
 from visvoai.ai.usage import usage_from
 from visvoai.ai.providers.base import Provider, NotSupported, default_content_events
