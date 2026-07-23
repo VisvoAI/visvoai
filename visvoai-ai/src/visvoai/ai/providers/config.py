@@ -30,7 +30,12 @@ _PROVIDER_BASE_URL = {
     "together":   "https://api.together.xyz/v1",
     "groq":       "https://api.groq.com/openai/v1",
     "openrouter": "https://openrouter.ai/api/v1",
+    "ollama":     "http://localhost:11434/v1",
 }
+
+# Providers that run locally and need no API key. resolve_api_key skips the
+# KeyError for these — returns empty string when no key is configured.
+_KEYLESS_PROVIDERS = frozenset({"ollama"})
 
 
 def resolve_base_url(provider: str, base_url: Optional[str] = None) -> Optional[str]:
@@ -74,8 +79,11 @@ def resolve_api_key(provider: str, api_key: Optional[str] = None,
             key = _clean_key(os.environ.get(var))
             if key:
                 return key
-    expected = env_var or _ENV_KEY_MAP.get(provider.lower()) or provider.upper() + "_API_KEY"
-    raise KeyError(
+        # Local-only providers (Ollama etc.) need no API key.
+        if provider.lower() in _KEYLESS_PROVIDERS:
+            return ""
+        raise KeyError(
+            f"No API key for provider {provider!r}. "
         f"No API key found for provider '{provider}'. "
         f"Pass api_key= explicitly or set the {expected} environment variable."
     )
