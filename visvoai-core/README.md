@@ -63,8 +63,6 @@ to override when the defaults aren't enough.
 - **A soft step cap with clean finalize** — at the budget, the model is
   re-invoked *without* tools and instructed to answer. Your users get a
   coherent final message instead of a `GraphRecursionError`.
-- **Duplicate-call blocking** — the model can't burn rounds re-issuing the
-  identical tool call.
 - **Semantic tool retrieval** — when you have too many tools to bind at all
   (MCP fleets, plugin ecosystems), `find_tools` + per-round retrieval bind
   only what's relevant to the current request.
