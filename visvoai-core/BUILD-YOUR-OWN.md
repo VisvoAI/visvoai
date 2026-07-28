@@ -8,12 +8,12 @@ runnable example.
 
 Four decisions. Everything else is provided.
 
-| #   | Decision                            | Effort          | Where to look                                                                                                                                                                           |
-| --- | ----------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | **Which model**                     | one line        | `build_chat_model("gemini:gemini-2.5-flash")` — or pick by price/facts from the registry ([ai example 02](../visvoai-ai/examples/02_choose_and_meter.py))                               |
-| 2   | **Which tools**                     | plain functions | write Python functions with docstrings; mix in lifecycle classes or LangChain tools ([core example 03](./examples/03_creating_tools.py))                                                |
-| 3   | **How output reaches your users**   | one async loop  | `graph.astream_events(...)` yields text chunks, tool starts, tool results — print them, push them to Slack, stream them over SSE ([core example 02](./examples/02_streaming_events.py)) |
-| 4   | **What gets remembered / recorded** | optional        | a checkpointer for multi-turn memory, a `ToolPersistence` for an audit trail ([core example 06](./examples/06_sqlite_audit_trail.py))                                                   |
+| # | Decision | Effort | Where to look |
+|---|---|---|---|
+| 1 | **Which model** | one line | `build_chat_model("gemini:gemini-2.5-flash")` — or pick by price/facts from the registry ([ai example 02](../visvoai-ai/examples/02_choose_and_meter.py)) |
+| 2 | **Which tools** | plain functions | write Python functions with docstrings; mix in lifecycle classes or LangChain tools ([core example 03](./examples/03_creating_tools.py)) |
+| 3 | **How output reaches your users** | one async loop | `graph.astream_events(...)` yields text chunks, tool starts, tool results — print them, push them to Slack, stream them over SSE ([core example 02](./examples/02_streaming_events.py)) |
+| 4 | **What gets remembered / recorded** | optional | a checkpointer for multi-turn memory, a `ToolPersistence` for an audit trail ([core example 06](./examples/06_sqlite_audit_trail.py)) |
 
 Wire the four together and you have a product. [Example 07](./examples/07_everything_together.py)
 is exactly that wiring in 180 lines — copy it and replace the fake tools
@@ -59,9 +59,10 @@ The `thread_id` is the entire memory story: same id → the agent remembers
 the conversation; new id → fresh start. Swap `MemorySaver` for a Postgres or
 SQLite checkpointer when you need memory to survive restarts.
 
-A common production pattern is to pair a persistent checkpointer (such as SQLite or Postgres) with a stable `thread_id`. This allows an agent to resume
+A common production pattern is to pair a persistent checkpointer (such as
+SQLite or Postgres) with a stable `thread_id`. This allows an agent to resume
 conversations after the application exits or restarts. See
-[`examples/09_durable_pause_resume.py`](./examples/09_durable_pause_resume.py)
+[`examples/09_sqlite_durable_memory.py`](./examples/09_sqlite_durable_memory.py)
 for a complete runnable example using SQLite.
 
 ## When the defaults aren't enough
@@ -69,13 +70,13 @@ for a complete runnable example using SQLite.
 The loop itself is changeable — subclass `AgentRuntime` and override only
 what you need. Each hook is one method:
 
-| You want…                                    | Override                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------- |
-| an approval step before dangerous tools run  | `_extend_graph` (add a node) + `_get_interrupt_nodes` (pause there) |
-| your own routing after the agent thinks      | `_agent_routing`                                                    |
-| extra state fields flowing through the graph | `_get_state_class`                                                  |
-| a different agent or tools node entirely     | `_build_agent_node` / `_build_tools_node`                           |
-| memory stored your way                       | `_get_checkpointer`                                                 |
+| You want… | Override |
+|---|---|
+| an approval step before dangerous tools run | `_extend_graph` (add a node) + `_get_interrupt_nodes` (pause there) |
+| your own routing after the agent thinks | `_agent_routing` |
+| extra state fields flowing through the graph | `_get_state_class` |
+| a different agent or tools node entirely | `_build_agent_node` / `_build_tools_node` |
+| memory stored your way | `_get_checkpointer` |
 
 All seven hooks with working code: [example 04](./examples/04_extend_the_runtime.py).
 These are not theoretical — our own terminal agent
@@ -98,7 +99,7 @@ These are not theoretical — our own terminal agent
 
 MIT-licensed — forking is legitimate. Before you do: most "I need to change
 core" cases are covered by the hooks above, and staying a dependency means
-you keep receiving fixes. Fork when you need to change the loop's _shape_ in
+you keep receiving fixes. Fork when you need to change the loop's *shape* in
 ways the hooks don't reach — and if that's the case, we'd genuinely like to
 hear why in [an issue](https://github.com/VisvoAI/visvoai/issues/new/choose)
 first; it may be the next hook.

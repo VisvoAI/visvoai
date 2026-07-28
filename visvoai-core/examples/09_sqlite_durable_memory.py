@@ -1,11 +1,16 @@
 """
 Durable memory with AsyncSqliteSaver.
 
-This example demonstrates LangGraph's durable checkpointing. Unlike
-MemorySaver, AsyncSqliteSaver persists conversation state to disk, allowing
-an agent to resume after the process exits.
+This example requires additional dependencies:
 
-Run this script twice using the same database file and thread_id.
+    pip install aiosqlite langgraph-checkpoint-sqlite
+
+Run:
+
+    pip install visvoai-core
+    python examples/09_sqlite_durable_memory.py                 # runs with NO api key (scripted models)
+
+Run the script twice using the same database file and thread_id.
 
 First run:
     > remember that my favourite colour is teal
@@ -13,22 +18,21 @@ First run:
 Second run:
     > what's my favourite colour?
 
-The second run restores the previous conversation from SQLite, proving that
-conversation state survives a process restart.
+The second run restores the previous conversation from SQLite,
+demonstrating durable memory across process restarts.
 """
 
 import asyncio
+
 import aiosqlite
-
-from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-
-from visvoai.core import ask
-from visvoai.core.runtime import AgentRuntime
-
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
+from visvoai.core import ask
+from visvoai.core.runtime import AgentRuntime
 
 ROLE_NAMES = {
     "SystemMessage": "System",
@@ -49,14 +53,18 @@ class ScriptedModel(FakeMessagesListChatModel):
         return self
 
     async def ainvoke(self, messages, *args, **kwargs):
-        print("\nConversation restored from SQLite checkpoint:")
-        print("-" * 50)
+        # Ignore the system prompt and the current user message.
+        restored_history = messages[1:-1]
 
-        for message in messages:
-            role = ROLE_NAMES.get(type(message).__name__, type(message).__name__)
-            print(f"{role}: {message.content}")
+        if restored_history:
+            print("\nConversation restored from SQLite checkpoint:")
+            print("-" * 50)
 
-        print("-" * 50)
+            for message in messages:
+                role = ROLE_NAMES.get(type(message).__name__, type(message).__name__)
+                print(f"{role}: {message.content}")
+
+            print("-" * 50)
 
         # Find the latest user message.
         latest_human = next(
@@ -82,7 +90,7 @@ class ScriptedModel(FakeMessagesListChatModel):
                 isinstance(m, HumanMessage)
                 and "remember" in m.content.lower()
                 and "teal" in m.content.lower()
-                for m in messages[:-1]  # ignore the current question
+                for m in messages[:-1]
             )
 
             if remembered:
@@ -94,45 +102,47 @@ class ScriptedModel(FakeMessagesListChatModel):
 
 
 async def main():
-    # Store checkpoints in a local SQLite database so they survive process restarts.
+    # Store checkpoints in a local SQLite database so they survive process
+    # restarts.
     conn = await aiosqlite.connect("agent_state.db")
-    checkpointer = AsyncSqliteSaver(conn)
 
-    graph = AgentRuntime().build_graph(
-        model=ScriptedModel(responses=[]),
-        core_tools=[],
-        system_prompt="You are a helpful assistant.",
-        checkpointer=checkpointer,
-    )
+    try:
+        checkpointer = AsyncSqliteSaver(conn)
 
-    print("Durable Memory Demo")
-    print("=" * 50)
-    print("Run this script twice using the same database file.")
-    print()
-    print("First run:")
-    print("  > remember that my favourite colour is teal")
-    print()
-    print("Second run:")
-    print("  > what's my favourite colour?")
-    print()
-    print("Keep the same thread_id ('demo-thread') for both runs.")
-    print("=" * 50)
+        graph = AgentRuntime().build_graph(
+            model=ScriptedModel(responses=[]),
+            core_tools=[],
+            system_prompt="You are a helpful assistant.",
+            checkpointer=checkpointer,
+        )
 
-    question = input("\n> ")
+        print("Durable Memory Demo")
+        print("=" * 50)
+        print("Run this script twice using the same database file.")
+        print()
+        print("First run:")
+        print("  > remember that my favourite colour is teal")
+        print()
+        print("Second run:")
+        print("  > what's my favourite colour?")
+        print()
+        print("Keep the same thread_id ('demo-thread') for both runs.")
+        print("=" * 50)
 
-    # Reuse the same thread_id on every run.
-    # The thread_id uniquely identifies the conversation and allows
-    # LangGraph to restore it from the SQLite checkpoint.
+        question = input("\n> ")
 
-    response = await ask(
-        graph,
-        question,
-        thread_id="demo-thread",
-    )
+        # Reuse the same thread_id on every run.
+        # LangGraph restores the conversation from the SQLite checkpoint.
+        response = await ask(
+            graph,
+            question,
+            thread_id="demo-thread",
+        )
 
-    print(f"\nAssistant: {response}")
+        print(f"\nAssistant: {response}")
 
-    await conn.close()
+    finally:
+        await conn.close()
 
 
 if __name__ == "__main__":
