@@ -12,7 +12,7 @@ Four decisions. Everything else is provided.
 |---|---|---|---|
 | 1 | **Which model** | one line | `build_chat_model("gemini:gemini-2.5-flash")` — or pick by price/facts from the registry ([ai example 02](../visvoai-ai/examples/02_choose_and_meter.py)) |
 | 2 | **Which tools** | plain functions | write Python functions with docstrings; mix in lifecycle classes or LangChain tools ([core example 03](./examples/03_creating_tools.py)) |
-| 3 | **How output reaches your users** | one async loop | `graph.astream_events(...)` yields text chunks, tool starts, tool results — print them, push them to Slack, stream them over SSE ([core example 02](./examples/02_streaming_events.py)) |
+| 3 | **How output reaches your users** | one async loop | `graph.astream_events(...)` yields text chunks, tool starts, tool results — print them, push them to Slack, stream over SSE ([core example 02](./examples/02_streaming_events.py) & [example 10](./examples/10_fastapi_service.py)) |
 | 4 | **What gets remembered / recorded** | optional | a checkpointer for multi-turn memory, a `ToolPersistence` for an audit trail ([core example 06](./examples/06_sqlite_audit_trail.py)) |
 
 Wire the four together and you have a product. [Example 07](./examples/07_everything_together.py)
@@ -86,6 +86,8 @@ These are not theoretical — our own terminal agent
 - **"Can my agent call other agents?"** — yes: a subagent is a second graph
   wrapped as a tool, ~25 lines, recursion made impossible by construction:
   [example 08](./examples/08_subagents.py).
+- **"How do I put this behind a web API?"** — stream events over FastAPI SSE
+  with per-thread memory: [example 10](./examples/10_fastapi_service.py).
 - **"The model might loop forever"** — it can't: the step cap forces one
   clean, tool-free final answer. Built in, nothing to configure.
 
