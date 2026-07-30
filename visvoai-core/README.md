@@ -19,7 +19,9 @@ The same code carries a full terminal agent
 platform, so the hooks you'd use are the hooks we use.
 
 ```bash
-pip install visvoai-core          # pulls langgraph + langchain-core only
+pip install visvoai-core            # pulls langgraph + langchain-core only
+pip install "visvoai-core[sqlite]"  # + durable SQLite memory (AsyncSqliteSaver),
+                                    #   with checkpoint versions that fit together
 ```
 
 Core is provider-agnostic — it takes any LangChain `BaseChatModel` (core itself never needs an API key; the model you pass in carries its own — e.g. `GEMINI_API_KEY` via visvoai-ai). Pair it
