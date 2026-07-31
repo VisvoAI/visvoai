@@ -69,7 +69,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       id-token: write
-      contents: read
+      contents: write          # create a tag for each version this run publishes
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -165,3 +165,39 @@ jobs:
       - name: Wait for visvoai
         if: inputs.dry_run == false && steps.plan.outputs.visvoai_publish == 'true'
         run: python /tmp/wait-pypi.py visvoai "${{ steps.plan.outputs.visvoai_version }}"
+
+      # Tag whatever this run actually shipped.
+      #
+      # Mode 1 gets a tag for free — the release the maintainer publishes
+      # creates it. This mode had no such step, so three of the four packages
+      # reached PyPI with no tag at all, and there was no way to check out the
+      # source a published wheel was built from. Runs last so a version is only
+      # tagged once PyPI is serving it: a tag pointing at an upload that failed
+      # would be worse than no tag.
+      - name: Tag published versions
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag_one () {
+            pkg="$1"; need="$2"; ver="$3"
+            [ "$need" = "true" ] || return 0
+            tag="${pkg}-v${ver}"
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              echo "  ${tag}: already tagged"
+              return 0
+            fi
+            obj=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
+                    -f tag="${tag}" \
+                    -f message="${pkg} ${ver} — the commit this PyPI release was built from (run ${GITHUB_RUN_ID})" \
+                    -f object="${SHA}" -f type=commit -q .sha)
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+                    -f ref="refs/tags/${tag}" -f sha="${obj}" -q .ref
+            echo "  ${tag}: created"
+          }
+          tag_one visvoai-ai   "${{ steps.plan.outputs.visvoai_ai_publish }}"   "${{ steps.plan.outputs.visvoai_ai_version }}"
+          tag_one visvoai-core "${{ steps.plan.outputs.visvoai_core_publish }}" "${{ steps.plan.outputs.visvoai_core_version }}"
+          tag_one visvoai-cli  "${{ steps.plan.outputs.visvoai_cli_publish }}"  "${{ steps.plan.outputs.visvoai_cli_version }}"
+          tag_one visvoai      "${{ steps.plan.outputs.visvoai_publish }}"      "${{ steps.plan.outputs.visvoai_version }}"
