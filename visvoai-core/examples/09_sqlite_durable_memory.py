@@ -1,14 +1,14 @@
 """
 Durable memory with AsyncSqliteSaver.
 
-This example requires additional dependencies:
+Install the SQLite extra, which includes the optional dependencies needed
+for durable checkpointing:
 
-    pip install aiosqlite langgraph-checkpoint-sqlite
+    pip install "visvoai-core[sqlite]"
 
 Run:
 
-    pip install visvoai-core
-    python examples/09_sqlite_durable_memory.py                 # runs with NO api key (scripted models)
+    python examples/09_sqlite_durable_memory.py                 # runs with NO api key (scripted model)
 
 Run the script twice using the same database file and thread_id.
 
