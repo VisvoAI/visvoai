@@ -22,13 +22,16 @@ This example shows two ways to expose an agent over FastAPI:
 
 Production Caveats (What is NOT solved here):
   - Authentication & Rate Limiting: Omitted for clarity (not yet tracked in open
-    issues; add auth/rate-limiting middleware when deploying to production).
+    issues; see adjacent governance issues #7 for spend caps and #15 for token
+    budgets; add auth/rate-limiting middleware when deploying to production).
   - Persistence across restarts: MemorySaver is in-memory. Use AsyncSqliteSaver
     or Postgres for persistent thread memory.
 """
 import asyncio
 import json
 import os
+import threading
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
@@ -296,63 +299,100 @@ async def stream_v2(thread_id: str):
 # ── Client verification runner ────────────────────────────────────────────────
 def run_client_simulation():
     try:
-        from fastapi.testclient import TestClient
+        import httpx
+        import uvicorn
     except ImportError:
-        print("fastapi.testclient not available — install fastapi to run simulation")
+        print("uvicorn or httpx not available — install uvicorn and httpx to run simulation")
         return
 
-    client = TestClient(app)
     is_scripted = not os.environ.get("GEMINI_API_KEY")
 
-    if is_scripted:
-        ScriptedModel.reset_queue([
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "service_status", "id": "tc1", "args": {"name": "database"}}]
-            ),
-            AIMessage(content="Database status confirmed: healthy and operational (14ms latency)."),
-        ])
+    # Start live uvicorn server in background thread so asyncio tasks persist across requests
+    port = 8765
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
 
-    print("\n--- Part 1: Minimal Single-Endpoint POST SSE ---")
-    print("> POST /api/v1/chat/thread-101 (message='Check database status')")
-    with client.stream("POST", "/api/v1/chat/thread-101?message=Check+database+status") as response:
-        for line in response.iter_lines():
-            if line:
-                print("   [SSE]", line)
+    for _ in range(100):
+        if server.started:
+            break
+        time.sleep(0.05)
 
-    if is_scripted:
-        ScriptedModel.reset_queue([
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "service_status", "id": "tc2", "args": {"name": "cache"}}]
-            ),
-            AIMessage(content="Cache cluster status confirmed: operational (99.9% uptime)."),
-        ])
+    base_url = f"http://127.0.0.1:{port}"
 
-    print("\n--- Part 2: Production Submit POST + Stream GET Split ---")
-    print("> POST /api/v2/chat/thread-102 (message='Check database status')")
-    res = client.post("/api/v2/chat/thread-102?message=Check+database+status")
-    print("   Response:", res.json())
+    try:
+        with httpx.Client(base_url=base_url, timeout=10.0) as client:
+            # --- Part 1: Minimal Single-Endpoint POST SSE ---
+            if is_scripted:
+                ScriptedModel.reset_queue([
+                    AIMessage(
+                        content="",
+                        tool_calls=[{"name": "service_status", "id": "tc1", "args": {"name": "database"}}]
+                    ),
+                    AIMessage(content="Database status confirmed: healthy and operational (14ms latency)."),
+                ])
 
-    print("> GET /api/v2/chat/thread-102/stream")
-    with client.stream("GET", "/api/v2/chat/thread-102/stream") as response:
-        for line in response.iter_lines():
-            if line:
-                print("   [SSE]", line)
+            print("\n--- Part 1: Minimal Single-Endpoint POST SSE ---")
+            print("> POST /api/v1/chat/thread-101 (message='Check database status')")
+            seen_p1 = False
+            with client.stream("POST", "/api/v1/chat/thread-101?message=Check+database+status") as response:
+                for line in response.iter_lines():
+                    if line:
+                        print("   [SSE]", line)
+                        if '"type":' in line:
+                            seen_p1 = True
 
-    if is_scripted:
-        ScriptedModel.reset_queue([
-            AIMessage(content="Memory verified: previous thread context retained."),
-        ])
+            assert seen_p1, "Part 1 failed to stream content events over SSE"
 
-    print("\n--- Memory Verification (Part 1 second turn) ---")
-    print("> POST /api/v1/chat/thread-101 (message='Verify memory')")
-    with client.stream("POST", "/api/v1/chat/thread-101?message=Verify+memory") as response:
-        for line in response.iter_lines():
-            if line:
-                print("   [SSE]", line)
+            # --- Part 2: Production Submit POST + Stream GET Split ---
+            if is_scripted:
+                ScriptedModel.reset_queue([
+                    AIMessage(
+                        content="",
+                        tool_calls=[{"name": "service_status", "id": "tc2", "args": {"name": "cache"}}]
+                    ),
+                    AIMessage(content="Cache cluster status confirmed: operational (99.9% uptime)."),
+                ])
 
-    print("\nExample finished successfully!")
+            print("\n--- Part 2: Production Submit POST + Stream GET Split ---")
+            print("> POST /api/v2/chat/thread-102 (message='Check database status')")
+            res = client.post("/api/v2/chat/thread-102?message=Check+database+status")
+            print("   Response:", res.json())
+
+            print("> GET /api/v2/chat/thread-102/stream")
+            seen_p2 = False
+            with client.stream("GET", "/api/v2/chat/thread-102/stream") as response:
+                for line in response.iter_lines():
+                    if line:
+                        print("   [SSE]", line)
+                        if '"type":' in line:
+                            seen_p2 = True
+
+            assert seen_p2, "Part 2 failed to stream content events over SSE"
+
+            # --- Memory Verification (Part 1 second turn) ---
+            if is_scripted:
+                ScriptedModel.reset_queue([
+                    AIMessage(content="Memory verified: previous thread context retained."),
+                ])
+
+            print("\n--- Memory Verification (Part 1 second turn) ---")
+            print("> POST /api/v1/chat/thread-101 (message='Verify memory')")
+            seen_mem = False
+            with client.stream("POST", "/api/v1/chat/thread-101?message=Verify+memory") as response:
+                for line in response.iter_lines():
+                    if line:
+                        print("   [SSE]", line)
+                        if '"type":' in line:
+                            seen_mem = True
+
+            assert seen_mem, "Memory verification failed to stream content events"
+
+            print("\nExample finished successfully!")
+    finally:
+        server.should_exit = True
+        thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":
