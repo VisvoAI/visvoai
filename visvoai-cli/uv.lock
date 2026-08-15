@@ -1904,7 +1904,7 @@ provides-extras = ["gemini", "anthropic", "openai", "all", "dev"]
 
 [[package]]
 name = "visvoai-cli"
-version = "0.7.5"
+version = "0.14.4"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -1944,25 +1944,25 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "visvoai-core"
-version = "0.1.0"
+version = "0.4.0"
 source = { editable = "../visvoai-core" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "pydantic" },
-    { name = "visvoai-ai" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "aiosqlite", marker = "extra == 'sqlite'", specifier = ">=0.20" },
     { name = "langchain-core", specifier = ">=0.2" },
     { name = "langgraph", specifier = ">=0.2" },
+    { name = "langgraph-checkpoint-sqlite", marker = "extra == 'sqlite'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
-    { name = "visvoai-ai", specifier = ">=0.1.0" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["sqlite", "dev"]
 
 [[package]]
 name = "websockets"

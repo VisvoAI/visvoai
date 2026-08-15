@@ -1,20 +1,35 @@
 name: publish
 
 # PyPI publishing via Trusted Publishing (OIDC) — NO stored tokens anywhere.
-# Fires when a GitHub Release is published with a per-package tag:
-#   visvoai-cli-v0.14.4 · visvoai-core-v0.3.0 · visvoai-ai-v0.2.3 · visvoai-v0.1.0
-# The tag prefix names the package directory to build; PyPI trusts this
-# repo+workflow identity directly (configure once per project on pypi.org:
-# Settings → Publishing → add GitHub publisher: VisvoAI/visvoai, publish.yml).
+#
+# DO NOT RENAME OR SPLIT THIS FILE. Every project on pypi.org registers its
+# trusted publisher against this exact workflow filename (publish.yml); a
+# rename means reconfiguring the publisher on all four projects by hand.
+#
+# Two modes:
+#   1. release  — a GitHub Release is published with a per-package tag
+#      (visvoai-cli-v0.14.4 · visvoai-core-v0.4.0 · visvoai-ai-v0.2.3 ·
+#      visvoai-v0.1.0). The tag prefix names the package dir to build.
+#   2. workflow_dispatch — an ordered sweep: publishes every package whose
+#      pyproject version isn't on PyPI yet, in dependency order. Defaults to
+#      a dry run; untick it to actually upload.
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report the plan only — no uploads"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  # ── Mode 1: one package, named by the release tag ───────────────────────────
+  release:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -40,3 +55,149 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  # ── Mode 2: ordered sweep of everything that's behind ───────────────────────
+  # Step order in this job IS the dependency order. visvoai-ai and visvoai-core
+  # stand alone; visvoai-cli requires both; the visvoai meta package requires
+  # the CLI. Publishing out of order ships a release whose own dependencies
+  # aren't on PyPI yet — `pip install` then fails for everyone until the rest
+  # lands. Each publish waits for the index to actually serve it before the
+  # next one starts.
+  sweep:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      id-token: write
+      contents: write          # create a tag for each version this run publishes
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Plan — repo versions vs PyPI
+        id: plan
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, tomllib, urllib.request
+          PKGS = ["visvoai-ai", "visvoai-core", "visvoai-cli", "visvoai"]
+          rows = []
+          for p in PKGS:
+              with open(f"{p}/pyproject.toml", "rb") as fh:
+                  ver = tomllib.load(fh)["project"]["version"]
+              try:
+                  with urllib.request.urlopen(f"https://pypi.org/pypi/{p}/json", timeout=30) as r:
+                      published = set(json.load(r)["releases"])
+              except Exception:
+                  published = set()          # unknown project = nothing published
+              need = ver not in published
+              print(f"{p.replace('-', '_')}_version={ver}")
+              print(f"{p.replace('-', '_')}_publish={'true' if need else 'false'}")
+              rows.append(f"{'PUBLISH' if need else 'skip   '}  {p:<14} {ver}")
+          mode = "DRY RUN — nothing uploaded" if os.environ["DRY"] == "true" else "LIVE"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              fh.write(f"## Release plan ({mode})\n\n```\n" + "\n".join(rows) + "\n```\n")
+          PY
+        env:
+          DRY: ${{ inputs.dry_run }}
+
+      # Build all four unconditionally — building is cheap and side-effect free,
+      # and the per-package publish steps below decide what actually uploads.
+      - name: Build all packages
+        if: inputs.dry_run == false
+        run: |
+          python -m pip install --quiet build
+          for p in visvoai-ai visvoai-core visvoai-cli visvoai; do
+            python -m build "$p" --outdir "dist/$p/"
+          done
+          cat > /tmp/wait-pypi.py <<'PY'
+          import json, sys, time, urllib.request
+          pkg, ver = sys.argv[1], sys.argv[2]
+          for _ in range(60):                       # up to 5 minutes
+              try:
+                  with urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json", timeout=15) as r:
+                      if ver in json.load(r)["releases"]:
+                          print(f"{pkg} {ver} is live on PyPI")
+                          sys.exit(0)
+              except Exception:
+                  pass
+              time.sleep(5)
+          sys.exit(f"timed out waiting for {pkg} {ver} to appear on PyPI")
+          PY
+
+      # 1 ── visvoai-ai (no internal dependencies)
+      - name: Publish visvoai-ai
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_ai_publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/visvoai-ai/
+      - name: Wait for visvoai-ai
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_ai_publish == 'true'
+        run: python /tmp/wait-pypi.py visvoai-ai "${{ steps.plan.outputs.visvoai_ai_version }}"
+
+      # 2 ── visvoai-core (no internal dependencies)
+      - name: Publish visvoai-core
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_core_publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/visvoai-core/
+      - name: Wait for visvoai-core
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_core_publish == 'true'
+        run: python /tmp/wait-pypi.py visvoai-core "${{ steps.plan.outputs.visvoai_core_version }}"
+
+      # 3 ── visvoai-cli (requires visvoai-core AND visvoai-ai)
+      - name: Publish visvoai-cli
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_cli_publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/visvoai-cli/
+      - name: Wait for visvoai-cli
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_cli_publish == 'true'
+        run: python /tmp/wait-pypi.py visvoai-cli "${{ steps.plan.outputs.visvoai_cli_version }}"
+
+      # 4 ── visvoai (meta package — requires visvoai-cli)
+      - name: Publish visvoai
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_publish == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/visvoai/
+      - name: Wait for visvoai
+        if: inputs.dry_run == false && steps.plan.outputs.visvoai_publish == 'true'
+        run: python /tmp/wait-pypi.py visvoai "${{ steps.plan.outputs.visvoai_version }}"
+
+      # Tag whatever this run actually shipped.
+      #
+      # Mode 1 gets a tag for free — the release the maintainer publishes
+      # creates it. This mode had no such step, so three of the four packages
+      # reached PyPI with no tag at all, and there was no way to check out the
+      # source a published wheel was built from. Runs last so a version is only
+      # tagged once PyPI is serving it: a tag pointing at an upload that failed
+      # would be worse than no tag.
+      - name: Tag published versions
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag_one () {
+            pkg="$1"; need="$2"; ver="$3"
+            [ "$need" = "true" ] || return 0
+            tag="${pkg}-v${ver}"
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" >/dev/null 2>&1; then
+              echo "  ${tag}: already tagged"
+              return 0
+            fi
+            obj=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags" \
+                    -f tag="${tag}" \
+                    -f message="${pkg} ${ver} — the commit this PyPI release was built from (run ${GITHUB_RUN_ID})" \
+                    -f object="${SHA}" -f type=commit -q .sha)
+            gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+                    -f ref="refs/tags/${tag}" -f sha="${obj}" -q .ref
+            echo "  ${tag}: created"
+          }
+          tag_one visvoai-ai   "${{ steps.plan.outputs.visvoai_ai_publish }}"   "${{ steps.plan.outputs.visvoai_ai_version }}"
+          tag_one visvoai-core "${{ steps.plan.outputs.visvoai_core_publish }}" "${{ steps.plan.outputs.visvoai_core_version }}"
+          tag_one visvoai-cli  "${{ steps.plan.outputs.visvoai_cli_publish }}"  "${{ steps.plan.outputs.visvoai_cli_version }}"
+          tag_one visvoai      "${{ steps.plan.outputs.visvoai_publish }}"      "${{ steps.plan.outputs.visvoai_version }}"
