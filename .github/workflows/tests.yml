@@ -1,7 +1,5 @@
 name: tests
 
-# This directory lives at packages/.github/ in the source monorepo; the public
-# repo is a subtree split of packages/, so it lands at the repo root there.
 on:
   pull_request:
   push:
