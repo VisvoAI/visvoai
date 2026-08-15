@@ -185,7 +185,7 @@ filed down.
 is a whole product in 180 lines — retrieval choosing tools, memory resolving
 "restart *it*", an audit row appearing in SQLite — and it runs with **no API
 key**. The [examples ladder](./examples/) then takes each idea one file at a
-time, four of them keyless.
+time (including [`examples/10_fastapi_service.py`](./examples/10_fastapi_service.py) for FastAPI SSE integration), seven of them keyless.
 
 ## License
 

@@ -1,6 +1,6 @@
 # visvoai-core examples
 
-Eight small files, in order. Six run with **no API key** — you can watch the
+Nine small files, in order. Seven run with **no API key** — you can watch the
 machinery work before you spend anything:
 
 ```bash
@@ -51,3 +51,9 @@ call sites.
 graph, a tool is a function, so a subagent is a ~25-line helper that wraps a
 second graph as a callable tool. Includes the depth-cap trick that makes
 recursion impossible.
+
+**[`10_fastapi_service.py`](./10_fastapi_service.py) — how do I put this behind an HTTP API?**
+*(no key needed)* Wire `build_graph()` into a FastAPI Server-Sent Events (SSE)
+endpoint. Shows both a minimal single POST endpoint and a production Submit/Stream
+split with reconnect replay buffer and per-thread pub/sub.
+

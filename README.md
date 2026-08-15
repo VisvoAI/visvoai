@@ -131,7 +131,7 @@ Start with the capstone: **[a whole product in 180 lines](./visvoai-core/example
 with **no API key**. Then each package's examples go one idea at a time:
 [ai](./visvoai-ai/examples/) (models, registry, custom providers) ·
 [core](./visvoai-core/examples/) (20-line agent → tool styles → retrieval →
-persistence → capstone → subagents; six keyless) ·
+persistence → capstone → subagents → FastAPI SSE; seven keyless) ·
 [cli](./visvoai-cli/examples/) (agents, skills, plugin tools, MCP config —
 how the reference product is configured). Full docs: each package's README.
 
