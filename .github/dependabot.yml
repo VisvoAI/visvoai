@@ -1,3 +1,10 @@
+# Dependabot version updates.
+#
+# Tuned to propose changes that mean something for people installing these
+# packages. Everything here concerns routine *version* updates — security
+# updates are configured separately in repository settings, are not filtered
+# by `allow`, and will still open pull requests for vulnerable dependencies
+# including transitive ones. Quieting the routine stream does not quiet those.
 version: 2
 updates:
   - package-ecosystem: pip
@@ -7,10 +14,30 @@ updates:
       - /visvoai-cli
     schedule:
       interval: weekly
+    # Only what these packages actually declare. uv.lock is a development and
+    # CI artefact — it is not packaged, so a pip user resolves from
+    # pyproject.toml and never sees it. Transitive-only bumps therefore change
+    # nothing for anyone downstream, and three such pull requests (pyasn1,
+    # cryptography, langgraph-checkpoint-sqlite) were open at once before this.
+    allow:
+      - dependency-type: direct
     groups:
       all-deps:
         patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    # Workflows reference first-party actions by floating major tag (@v4).
+    # GitHub moves those tags forward as fixes ship, so a patch or minor
+    # "update" would pin us to an exact release and opt out of that — the
+    # opposite of what it looks like. Only a new major is worth a pull request.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+    groups:
+      actions:
+        patterns: ["*"]
