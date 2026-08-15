@@ -10,7 +10,11 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "VisvoAI", email = "akshant.jain2@gmail.com" }]
 requires-python = ">=3.11"
-dependencies = ["visvoai-cli"]
+# Floor, not a pin: this meta-package exists so `pip install visvoai` gets a
+# real CLI. Unfloored, it resolves against whatever is on the index — which
+# would have included the 0.0.1 placeholder. The floor tracks the CLI version
+# current at each meta release; it never needs an upper bound.
+dependencies = ["visvoai-cli>=0.14.4"]
 
 [project.urls]
 Homepage = "https://visvoai.com"

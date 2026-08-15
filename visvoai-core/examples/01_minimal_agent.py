@@ -5,9 +5,9 @@
     python 01_minimal_agent.py
 
 What core adds over wiring LangGraph yourself: a soft step cap that forces one
-clean final answer (never a GraphRecursionError in your user's face), and
-duplicate tool-call blocking. Tools are plain Python functions — the type
-hints become the schema, the docstring becomes the description. No imports.
+clean final answer (never a GraphRecursionError in your user's face). Tools
+are plain Python functions — the type hints become the schema, the docstring
+becomes the description. No imports.
 """
 import asyncio
 from pathlib import Path

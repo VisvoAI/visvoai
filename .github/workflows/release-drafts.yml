@@ -1,0 +1,154 @@
+name: release-drafts
+
+# Opens a DRAFT GitHub Release for any package whose version has not been
+# released yet, with notes taken from that version's CHANGELOG section.
+#
+# Draft, not published, and that is the whole design. Publishing is a one-way
+# door — a PyPI version can never be re-uploaded, and a release notifies every
+# watcher the moment it exists. So the last step stays manual: you read the
+# notes and press Publish, which is also what this repo's contribution rules
+# require for any release, tag or publish.
+#
+# Pressing Publish creates the tag and fires publish.yml's release mode, which
+# uploads exactly the package named by the tag. Nothing here uploads anything.
+#
+# It also means this workflow never needs to trigger publish.yml itself —
+# which it could not do anyway: GitHub suppresses workflow runs for events
+# caused by GITHUB_TOKEN, so a release created here would silently publish
+# nothing. A human pressing Publish is a human event, and works normally.
+
+on:
+  push:
+    branches: [main]
+    paths: ["*/pyproject.toml"]
+  workflow_dispatch: {}
+
+# Subtree-split syncs can land several pushes in quick succession. Without a
+# lock, two runs race to create the same draft and one fails.
+concurrency:
+  group: release-drafts
+  cancel-in-progress: false
+
+permissions:
+  contents: write        # create draft releases
+
+jobs:
+  drafts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Draft releases for unreleased versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess, sys, tomllib, urllib.request
+
+          # Dependency order. If several land at once the maintainer must
+          # publish in this order, or a package reaches PyPI before something
+          # it depends on and `pip install` breaks for everyone in between.
+          PKGS = ["visvoai-ai", "visvoai-core", "visvoai-cli", "visvoai"]
+
+          # The meta-package is a single dependency line — its "changelog"
+          # would restate the version bump it already is. Its notes are
+          # generated from that dependency instead.
+          NO_CHANGELOG = {"visvoai"}
+
+          REPO, SHA = os.environ["REPO"], os.environ["SHA"]
+
+          def gh(*args, check=True):
+              r = subprocess.run(["gh", *args], capture_output=True, text=True)
+              if check and r.returncode:
+                  sys.exit(f"gh {' '.join(args)} failed: {r.stderr.strip()}")
+              return r
+
+          def on_pypi(pkg, ver):
+              try:
+                  with urllib.request.urlopen(f"https://pypi.org/pypi/{pkg}/json", timeout=30) as r:
+                      return ver in json.load(r)["releases"]
+              except Exception:
+                  return False          # unknown project = nothing published
+
+          def notes_for(pkg, ver):
+              """The CHANGELOG section for this version, verbatim."""
+              path = f"{pkg}/CHANGELOG.md"
+              if not os.path.exists(path):
+                  return None
+              lines = open(path, encoding="utf-8").read().split("\n")
+              head = re.compile(r"^## \[" + re.escape(ver) + r"\]")
+              out, collecting = [], False
+              for line in lines:
+                  if head.match(line):
+                      collecting = True
+                      continue
+                  if collecting and line.startswith("## "):
+                      break
+                  if collecting:
+                      out.append(line)
+              body = "\n".join(out).strip()
+              return body or None
+
+          def meta_notes(pkg, ver):
+              deps = tomllib.load(open(f"{pkg}/pyproject.toml", "rb"))["project"].get("dependencies", [])
+              listed = "\n".join(f"- `{d}`" for d in deps)
+              return (f"Meta-package release — `pip install {pkg}` installs:\n\n{listed}\n\n"
+                      f"No changelog of its own: this package is the dependency set above.")
+
+          planned, skipped = [], []
+          for pkg in PKGS:
+              ver = tomllib.load(open(f"{pkg}/pyproject.toml", "rb"))["project"]["version"]
+              tag = f"{pkg}-v{ver}"
+
+              if gh("api", f"repos/{REPO}/git/ref/tags/{tag}", check=False).returncode == 0:
+                  skipped.append(f"skip   {pkg:<14} {ver:<9} already tagged"); continue
+              if on_pypi(pkg, ver):
+                  skipped.append(f"skip   {pkg:<14} {ver:<9} already on PyPI"); continue
+              if gh("release", "view", tag, "--repo", REPO, check=False).returncode == 0:
+                  skipped.append(f"skip   {pkg:<14} {ver:<9} draft exists"); continue
+
+              if pkg in NO_CHANGELOG:
+                  body = meta_notes(pkg, ver)
+              else:
+                  body = notes_for(pkg, ver)
+                  if not body:
+                      sys.exit(
+                          f"::error::{pkg} {ver} has no '## [{ver}]' section in "
+                          f"{pkg}/CHANGELOG.md. Add the entry, or the release goes "
+                          f"out with nothing describing it."
+                      )
+              planned.append((pkg, ver, tag, body))
+
+          # Warn inside the drafts themselves — by the time someone is reading
+          # a draft they are about to publish it, and that is when the ordering
+          # constraint actually matters.
+          if len(planned) > 1:
+              order = " → ".join(p for p, _, _, _ in planned)
+              warn = (f"\n\n---\n\n**Publish order matters.** {len(planned)} packages are "
+                      f"pending: publish them as {order}, waiting for each to appear on "
+                      f"PyPI before the next, or a package ships before something it "
+                      f"depends on.")
+              planned = [(p, v, t, b + warn) for p, v, t, b in planned]
+
+          for pkg, ver, tag, body in planned:
+              body += f"\n\n---\n\n`pip install {pkg}=={ver}` · built from {SHA[:9]}"
+              gh("release", "create", tag,
+                 "--repo", REPO, "--draft",
+                 "--target", SHA,
+                 "--title", f"{pkg} {ver}",
+                 "--notes", body)
+              print(f"drafted {tag}")
+
+          rows = [f"DRAFT  {p:<14} {v}" for p, v, _, _ in planned] + skipped
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+              fh.write("## Release drafts\n\n```\n" + "\n".join(rows) + "\n```\n")
+              if planned:
+                  fh.write("\nReview the notes, then press **Publish** on each draft "
+                           "to tag it and trigger PyPI upload.\n")
+          PY

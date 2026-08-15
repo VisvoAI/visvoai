@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-core"
-version = "0.3.0"
+version = "0.4.0"
 description = "VisvoAI — Extensible Python agent runtime with tool calling and semantic tool retrieval"
 readme = "README.md"
 license = { text = "MIT" }
@@ -30,6 +30,11 @@ Repository = "https://github.com/VisvoAI/visvoai"
 Changelog = "https://github.com/VisvoAI/visvoai/blob/main/visvoai-core/CHANGELOG.md"
 
 [project.optional-dependencies]
+# Durable SQLite conversation memory (AsyncSqliteSaver). The floor matters:
+# older langgraph-checkpoint-sqlite releases predate the current
+# langgraph-checkpoint interface, and installing newest-of-each can land on
+# an incompatible pair — the extra makes pip enforce a compatible one.
+sqlite = ["aiosqlite>=0.20", "langgraph-checkpoint-sqlite>=3.0.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
 
 [tool.setuptools.packages.find]

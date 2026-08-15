@@ -11,7 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  # Named `packages`, not `test`: a matrix job reports one check per leg —
+  # `packages (visvoai-ai)` and so on — so the bare name never appears as a
+  # status check. Branch protection requires a context called `test`, which
+  # meant it waited on a check nothing could ever produce and every pull
+  # request stayed blocked with all checks green.
+  packages:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -19,8 +24,8 @@ jobs:
       matrix:
         package: [visvoai-ai, visvoai-core, visvoai-cli]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
       - name: Install
         working-directory: ${{ matrix.package }}
         run: |
@@ -30,3 +35,21 @@ jobs:
       - name: Test
         working-directory: ${{ matrix.package }}
         run: uv run pytest -q
+
+  # The single stable check branch protection requires. It exists so the
+  # required context does not have to name each matrix leg, and so adding or
+  # removing a package cannot silently disable the gate.
+  test:
+    needs: [packages]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: All package test jobs passed
+        run: |
+          result="${{ needs.packages.result }}"
+          echo "packages matrix result: $result"
+          # A matrix aggregates to success only when every leg succeeded;
+          # `if: always()` keeps this job running so a failure is reported
+          # rather than skipped, which protection would read as pending.
+          [ "$result" = "success" ] || exit 1

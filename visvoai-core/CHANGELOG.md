@@ -3,6 +3,18 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new
 capability or breaking changes, PATCH for fixes.
 
+## [0.4.0] — 2026-07
+
+### Added
+- **`[sqlite]` extra** — `pip install "visvoai-core[sqlite]"` pulls
+  `aiosqlite` + `langgraph-checkpoint-sqlite>=3.0.0` for durable
+  conversation memory via `AsyncSqliteSaver`. The floor makes pip enforce a
+  checkpoint-package pair that actually works together; previously,
+  hand-installing newest-of-each could produce an incompatible combination
+  that only failed at import time (found by a contributor testing the
+  upcoming durable-memory example in a fresh environment — thanks
+  @DwitiThaker).
+
 ## [0.3.0] — 2026-07
 
 ### Added
