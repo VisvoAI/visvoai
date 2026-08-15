@@ -59,6 +59,12 @@ The `thread_id` is the entire memory story: same id → the agent remembers
 the conversation; new id → fresh start. Swap `MemorySaver` for a Postgres or
 SQLite checkpointer when you need memory to survive restarts.
 
+A common production pattern is to pair a persistent checkpointer (such as
+SQLite or Postgres) with a stable `thread_id`. This allows an agent to resume
+conversations after the application exits or restarts. See
+[`examples/09_sqlite_durable_memory.py`](./examples/09_sqlite_durable_memory.py)
+for a complete runnable example using SQLite.
+
 ## When the defaults aren't enough
 
 The loop itself is changeable — subclass `AgentRuntime` and override only
