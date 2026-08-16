@@ -24,6 +24,13 @@ pricing error that hand-maintenance had been hiding is fixed.
   Reporting only — `estimated_cost_usd` was inflated wherever cached tokens were
   recorded; it never changed what a provider billed.
 
+  This is a correction, not an update to new pricing. models.dev carried the
+  same wrong figures and fixed them on 2026-04-20 — commit
+  "[google] Fix cache_read cost in gemini-2.5-flash model" moved 0.075 → 0.03,
+  and a sibling commit moved gemini-2.5-pro 0.31 → 0.125. Those pre-fix values
+  are exactly what this registry still carried. Google did not change its
+  pricing; a shared error was fixed upstream four months ago and not here.
+
   **Correcting the 0.2.4 notes:** they called the 25% figure a deliberate
   convention and used it to justify overriding models.dev, which had the correct
   10%. That was wrong. The gap was uniform across every Gemini row and
