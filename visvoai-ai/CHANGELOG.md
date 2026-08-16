@@ -29,6 +29,13 @@ major (1.0) bump until the surface stabilizes.
   instead of under a wrong heading (3 of 453 on the live catalog, all Groq
   slugs carrying no namespace).
 
+- `DeploymentInfo.icon_url` — the provider logo, for a consumer's model picker.
+  `None` when the source supplied none; whoever renders it owns the fallback.
+
+  Carried on `Deployment` *and* on the public projection, with a test covering
+  the full `ModelDefinition → Deployment → DeploymentInfo` chain — this is the
+  same hop `status` silently failed to make in 0.4.0.
+
 ### Fixed
 - **Models were offered thinking levels their API rejects.** `thinking_levels`
   returned all four levels for anything with `supports_thinking`, treating the
@@ -62,14 +69,6 @@ major (1.0) bump until the surface stabilizes.
 
   Against the live catalog this yields 169 distinct logos across 5,483
   definitions, with none left on the Google default.
-
-### Added
-- `DeploymentInfo.icon_url` — the provider logo, for a consumer's model picker.
-  `None` when the source supplied none; whoever renders it owns the fallback.
-
-  Carried on `Deployment` *and* on the public projection, with a test covering
-  the full `ModelDefinition → Deployment → DeploymentInfo` chain — this is the
-  same hop `status` silently failed to make in 0.4.0.
 
 ## [0.4.1] — 2026-08
 
