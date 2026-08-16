@@ -60,8 +60,50 @@ _VENDOR_LABEL = {
     "nvidia": "NVIDIA",
     "ibm-granite": "IBM Granite",
     "ai21": "AI21",
-    "liquid": "Liquid AI",
+    "liquidai": "Liquid AI",
     "allenai": "Allen AI",
+    "pearl-ai": "Pearl AI",
+    "deepcogito": "DeepCogito",
+    "inclusionai": "InclusionAI",
+    "nousresearch": "Nous Research",
+    "bytedance": "ByteDance",
+    "thinking-machines": "Thinking Machines",
+}
+
+
+# vendor → the models.dev logo id CONFIRMED to return a real asset.
+#
+# A whitelist, not a blacklist, and that is the whole point. models.dev keys its
+# logos by PROVIDER id, which is often not how a vendor is branded — Qwen is
+# Alibaba's brand, so "Qwen" is the better heading while the logo lives under
+# "alibaba" — and the endpoint SOFT-404s, answering 200 with a placeholder for
+# anything it doesn't have. So a plausible-looking guess renders a blank square
+# and nothing reports an error.
+#
+# Absent vendors return None and the consumer falls back to the route's own logo,
+# which always exists because routes are real models.dev providers. That
+# degrades to a slightly-wrong-but-real icon rather than a confidently blank one.
+#
+# Every entry was checked by hand against the endpoint. Do not add one without
+# doing the same — a 200 is not evidence.
+_VENDOR_LOGO_ID = {
+    "google": "google",
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "meta": "meta",
+    "deepseek": "deepseek",
+    "mistral": "mistral",
+    "minimax": "minimax",
+    "xai": "xai",
+    "nvidia": "nvidia",
+    "cohere": "cohere",
+    "perplexity": "perplexity",
+    "poolside": "poolside",
+    # vendor id and logo id genuinely differ
+    "qwen": "alibaba",
+    "moonshot": "moonshotai",
+    "z-ai": "zai",
+    "thinking-machines": "thinkingmachines",
 }
 
 
@@ -82,6 +124,18 @@ def vendor_of(provider: str, slug: str) -> Optional[str]:
             return None
         return _VENDOR_ALIAS.get(prefix, prefix)
     return _FIRST_PARTY_VENDOR.get(provider)
+
+
+def vendor_icon_url(vendor: Optional[str]) -> Optional[str]:
+    """The vendor's logo, or None when we have not confirmed one exists.
+
+    None is a real answer, not a failure: the consumer falls back to the route's
+    own logo. See `_VENDOR_LOGO_ID` for why guessing is worse than falling back.
+    """
+    if not vendor:
+        return None
+    logo_id = _VENDOR_LOGO_ID.get(vendor)
+    return f"https://models.dev/logos/{logo_id}.svg" if logo_id else None
 
 
 def vendor_label(vendor: Optional[str]) -> Optional[str]:

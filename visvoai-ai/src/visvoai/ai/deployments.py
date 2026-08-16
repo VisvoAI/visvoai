@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from visvoai.ai.identity import DEFAULT_CODEC, IdentityCodec
-from visvoai.ai.vendors import vendor_of, vendor_label
+from visvoai.ai.vendors import vendor_of, vendor_label, vendor_icon_url
 from visvoai.ai.model_registry import (
     MODELS as _RAW,
     Capability,
@@ -132,6 +132,9 @@ class DeploymentInfo:
     # provider — so this is what a picker groups by. None when underivable.
     vendor: Optional[str] = None
     vendor_label: Optional[str] = None
+    # The vendor's logo, where one is confirmed to exist. None means fall back
+    # to `icon_url` (the route's logo) rather than render nothing.
+    vendor_icon_url: Optional[str] = None
 
 
 # ── derivation: raw ModelDefinition → Model + Deployment ─────────────────────
@@ -276,6 +279,7 @@ class DeploymentRegistry:
             # from drifting out of sync with them.
             vendor=_vendor,
             vendor_label=vendor_label(_vendor),
+            vendor_icon_url=vendor_icon_url(_vendor),
         )
 
     def list_deployments(self, capability: Optional[Capability] = None,
