@@ -126,3 +126,21 @@ def test_provider_filter_ignores_a_foreign_override():
         assert scoped is None or scoped.startswith(f"{other_provider}:")
     finally:
         _clear_overrides()
+
+
+def test_status_reaches_the_public_projection():
+    """`status` exists to be rendered as a tag, so it has to survive the hop to
+    DeploymentInfo — the only model-data type consumers touch.
+
+    Regression: 0.4.0 added `status` to ModelDefinition and to Deployment (the
+    internal record) but not to DeploymentInfo, so every consumer reading it hit
+    AttributeError. The field existed, the data flowed, and the one class anybody
+    could see it from didn't have it.
+    """
+    from dataclasses import fields
+
+    assert "status" in {f.name for f in fields(d.DeploymentInfo)}
+    # and it is actually populated, not merely declared
+    infos = d.list_deployments(Capability.CHAT)
+    assert infos
+    assert all(hasattr(i, "status") for i in infos)
