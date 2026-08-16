@@ -67,6 +67,9 @@ class Deployment:
     enabled: bool = True
     deprecated: bool = False
     default: bool = False
+    # Upstream lifecycle ("alpha" | "beta" | None). Selectable either way — this
+    # is for a consumer to render as a tag, so a user knows what they picked.
+    status: Optional[str] = None
     base_url: Optional[str] = None     # carried endpoint for catalog-sourced providers (None = static map)
     key_env: Optional[str] = None      # carried API-key env var name (None = static _ENV_KEY_MAP)
 
@@ -164,7 +167,7 @@ def _build(raw: List[ModelDefinition]) -> tuple[List[Model], List[Deployment]]:
             cache_read_cost_per_million=md.cache_read_cost_per_million,
             thinking=_mechanism(md), default_thinking=_default_level(md),
             capabilities=list(md.capabilities), enabled=md.enabled,
-            deprecated=md.deprecated, default=md.default,
+            deprecated=md.deprecated, default=md.default, status=md.status,
             base_url=md.base_url, key_env=md.key_env,
         ))
         if mid not in models:

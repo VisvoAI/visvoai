@@ -85,6 +85,11 @@ def _is_openai_compat(pid: str, rec: dict) -> bool:
     return bool(rec.get("api")) or pid in BRANDED_BASE_URL
 
 
+def _status(m: dict) -> str:
+    """models.dev lifecycle: "alpha" | "beta" | "deprecated"; absent = GA."""
+    return str(m.get("status") or "").lower()
+
+
 def _model_def(provider: str, base_url: Optional[str], key_env: Optional[str],
                m: dict) -> Optional[ModelDefinition]:
     """One models.dev model record → a ModelDefinition, or None if not text chat."""
@@ -116,7 +121,9 @@ def _model_def(provider: str, base_url: Optional[str], key_env: Optional[str],
         # prices. Dropping it would make historical spend unreadable.
         # `status: "beta"` is deliberately not special-cased — plenty of models
         # in active use are previews.
-        deprecated=(str(m.get("status") or "").lower() == "deprecated"),
+        deprecated=(_status(m) == "deprecated"),
+        # alpha/beta ride through as a tag; only "deprecated" withdraws a model.
+        status=(_status(m) if _status(m) in ("alpha", "beta") else None),
     )
 
 

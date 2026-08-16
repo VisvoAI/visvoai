@@ -4,11 +4,14 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
-## [0.3.1] — 2026-08
+## [0.4.0] — 2026-08
+
+Gemini facts now come from models.dev instead of being maintained by hand, and a
+pricing error that hand-maintenance had been hiding is fixed.
 
 ### Fixed
 - **Gemini `cache_read_cost_per_million` was 2.5x too high on all 14 models.**
-  Google prices context-cache reads at **10% of the input rate**
+  Google prices context-cache reads at **10% of input**
   (https://ai.google.dev/gemini-api/docs/pricing); this registry carried 25%.
 
   | model | was | now |
@@ -18,18 +21,58 @@ major (1.0) bump until the surface stabilizes.
   | `gemini-2.5-pro` | 0.3125 | **0.125** |
   | …11 others | | |
 
-  This inflated `estimated_cost_usd` wherever cached tokens were reported. It
-  never affected what the provider billed — only what we reported.
+  Reporting only — `estimated_cost_usd` was inflated wherever cached tokens were
+  recorded; it never changed what a provider billed.
 
-  **Correcting the 0.2.4 release notes:** they described the 25% figure as a
-  deliberate convention, and justified overriding models.dev — which had the
-  correct 10% — to match it. That reasoning was wrong. The gap was uniform
-  across every Gemini row, and uniformity was mistaken for intent. models.dev
-  was right; this registry was not.
+  **Correcting the 0.2.4 notes:** they called the 25% figure a deliberate
+  convention and used it to justify overriding models.dev, which had the correct
+  10%. That was wrong. The gap was uniform across every Gemini row and
+  uniformity was mistaken for intent. A regression test now asserts the 10%
+  relationship, and the module docstring says to verify against the pricing page
+  rather than against the rest of the file — internal consistency is what
+  disguised this.
 
-  A regression test now asserts the 10% relationship, and the module docstring
-  says to verify against the pricing page rather than against the rest of the
-  file.
+### Added
+- **`build_catalog(..., corrections=...)`** — per-field overlays,
+  `{(provider, api_id): {field: value}}`, applied after the merge. Deliberately
+  not a `CatalogSource`: a source yields whole models and merge is "later wins
+  wholesale", so curation shipped as a source would clobber the live facts it is
+  meant to sit on. An unknown field raises (a typo that silently did nothing
+  would look applied); an unknown model id is logged and ignored (upstream
+  dropping a model is stale, not fatal).
+- **`catalog.corrections.CURATED_CORRECTIONS`** — the handful of things
+  models.dev does not model. Verified against its schema, not guessed: `Cost` is
+  strictly per-token, so Google Search grounding (billed per query) has nowhere
+  to live; there is no capability concept beyond `tool_call`/`reasoning`; and no
+  thinking-default notion.
+- **`ModelDefinition.status` / `DeploymentInfo.status`** — upstream lifecycle,
+  `"alpha" | "beta" | None`. Presentation only: such models stay fully
+  selectable, for consumers to surface as a tag. Retirement is `deprecated`, a
+  separate axis.
+
+### Changed
+- **Gemini is sourced from models.dev.** `google` left the adapter's
+  `BESPOKE_OR_DENY` set, where it sat beside Bedrock and Azure for a different
+  reason — those are uncallable, Gemini was merely curated elsewhere. First-party
+  providers now take a path that leaves `base_url`/`key_env` unset and lets the
+  static provider config resolve them.
+
+  35 Gemini models instead of 18. `gemini-3.6-flash` and `gemini-3.7-flash`
+  would have arrived on their own; they were added by hand in 0.2.4, which is
+  what prompted this.
+
+  The baked source is not deleted — three models it carries are absent upstream
+  (`gemini-2.5-flash-preview`, `gemini-2.5-flash-lite-preview-09-2025`,
+  `imagen-4.0-fast-generate-001`) and survive untouched.
+
+- **`status: "deprecated"` from models.dev now sets `deprecated=True`** — 128
+  retired models across the catalog. They are excluded from `list_deployments()`
+  and `default_deployment()` so they can never be picked for new work, but stay
+  in `MODEL_PRICING_MAP` so an `llm_call_logs` row naming one still prices.
+  Dropping them would have made historical spend unreadable.
+
+  Previously the adapter ignored `status` entirely and every retired model
+  arrived selectable.
 
 ## [0.3.0] — 2026-08
 

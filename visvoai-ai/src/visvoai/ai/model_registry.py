@@ -83,7 +83,16 @@ class ModelDefinition:
     icon_url: str = "https://www.google.com/favicon.ico"
     supports_thinking: bool = False
     enabled: bool = True                     # controls UI visibility
-    deprecated: bool = False                 # excluded from UI and cost lookups
+    # Excluded from list_deployments() and default_deployment() — never offered
+    # for a new message. Deliberately NOT excluded from MODEL_PRICING_MAP: an
+    # llm_call_logs row naming a retired model must still price, or historical
+    # spend becomes unreadable.
+    deprecated: bool = False
+    # Upstream lifecycle, when the catalog reports one: "alpha" | "beta" | None
+    # (None = generally available). Presentation only — an alpha or beta model is
+    # fully selectable; consumers surface it as a tag so a user knows what they
+    # are picking. Retirement is `deprecated`, not a status value.
+    status: Optional[str] = None
     default: bool = False                    # exactly one model should be True
     default_thinking_label: Optional[str] = None  # which thinking variant is the default (None = base)
     capabilities: List[Capability] = field(default_factory=lambda: [Capability.CHAT])
