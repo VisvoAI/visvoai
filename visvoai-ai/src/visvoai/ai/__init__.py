@@ -15,7 +15,8 @@ from visvoai.ai.thinking import ThinkingLevel, ThinkingMechanism, thinking_kwarg
 from visvoai.ai.deployments import (
     Model, Deployment, DeploymentInfo, DeploymentRegistry,
     get_deployment, get_deployment_info, deployments_for, list_deployments,
-    default_deployment, install_catalog, set_default_registry, get_default_registry,
+    default_deployment, set_default_deployment, get_default_overrides,
+    install_catalog, set_default_registry, get_default_registry,
 )
 from visvoai.ai.catalog import CatalogSource, BakedSource, build_catalog
 from visvoai.ai.resolve import build_chat_model, cost_of
@@ -33,6 +34,7 @@ __all__ = [
     "build_chat_model", "cost_of", "usage_from", "run_search", "fetch_url",
     "SearchResult", "SearchSource", "FetchError",
     "list_deployments", "get_deployment_info", "default_deployment", "deployments_for",
+    "set_default_deployment", "get_default_overrides",
     # catalog engine + dynamic-catalog seam
     "CatalogSource", "BakedSource", "build_catalog",
     "DeploymentRegistry", "install_catalog", "set_default_registry", "get_default_registry",
