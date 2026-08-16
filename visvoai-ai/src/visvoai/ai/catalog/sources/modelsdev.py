@@ -90,8 +90,20 @@ def _status(m: dict) -> str:
     return str(m.get("status") or "").lower()
 
 
+def _logo_url(upstream_pid: str) -> str:
+    """models.dev's logo for a provider, keyed by its UPSTREAM id.
+
+    It must be the upstream id, not our aliased `provider`: PROVIDER_ALIAS
+    renames "google" → "gemini" and "togetherai" → "together", and those names
+    do not exist upstream. The endpoint soft-404s — an unknown id answers 200
+    with a placeholder — so an aliased name yields a plausible URL that quietly
+    renders the wrong image rather than failing.
+    """
+    return f"https://models.dev/logos/{upstream_pid}.svg"
+
+
 def _model_def(provider: str, base_url: Optional[str], key_env: Optional[str],
-               m: dict) -> Optional[ModelDefinition]:
+               m: dict, icon_url: str) -> Optional[ModelDefinition]:
     """One models.dev model record → a ModelDefinition, or None if not text chat."""
     mods = m.get("modalities") or {}
     inputs = mods.get("input") or ["text"]
@@ -104,6 +116,7 @@ def _model_def(provider: str, base_url: Optional[str], key_env: Optional[str],
         api_id=m["id"],
         display_name=m.get("name") or m["id"],
         provider=provider,
+        icon_url=icon_url,
         input_cost_per_million=float(cost.get("input", 0.0) or 0.0),
         output_cost_per_million=float(cost.get("output", 0.0) or 0.0),
         cache_read_cost_per_million=float(cost.get("cache_read", 0.0) or 0.0),
@@ -137,7 +150,7 @@ def to_definitions(catalog: Dict[str, Any]) -> List[ModelDefinition]:
             # No base_url / key_env: providers/config.py resolves both statically.
             provider = PROVIDER_ALIAS.get(pid, pid)
             for m in (rec.get("models") or {}).values():
-                md = _model_def(provider, None, None, m)
+                md = _model_def(provider, None, None, m, _logo_url(pid))
                 if md is not None:
                     out.append(md)
             continue
@@ -155,7 +168,7 @@ def to_definitions(catalog: Dict[str, Any]) -> List[ModelDefinition]:
             continue
         provider = PROVIDER_ALIAS.get(pid, pid)
         for m in (rec.get("models") or {}).values():
-            md = _model_def(provider, base_url, env[0], m)
+            md = _model_def(provider, base_url, env[0], m, _logo_url(pid))
             if md is not None:
                 out.append(md)
     logger.info("modelsdev: %d definitions from %d providers (%d providers skipped)",

@@ -2,7 +2,7 @@
 from visvoai.ai import deployments as d
 from visvoai.ai.deployments import DeploymentInfo
 from visvoai.ai.thinking import ThinkingLevel, ThinkingMechanism
-from visvoai.ai.model_registry import MODELS, Capability
+from visvoai.ai.model_registry import MODELS, Capability, ModelDefinition
 
 
 def test_same_model_multiple_providers_merges():
@@ -144,3 +144,28 @@ def test_status_reaches_the_public_projection():
     infos = d.list_deployments(Capability.CHAT)
     assert infos
     assert all(hasattr(i, "status") for i in infos)
+
+
+def test_icon_url_reaches_the_public_projection():
+    """Same hop as `status` above, for the same reason: a picker renders the
+    provider logo, and DeploymentInfo is the only type it can read.
+
+    Asserted on a definition we construct rather than on the baked list, so this
+    tests the ModelDefinition → Deployment → DeploymentInfo chain end to end
+    instead of a default that happens to be non-None.
+    """
+    from dataclasses import fields
+
+    assert "icon_url" in {f.name for f in fields(d.DeploymentInfo)}
+
+    md = ModelDefinition(
+        api_id="test-model",
+        display_name="Test Model",
+        provider="gemini",
+        input_cost_per_million=1.0,
+        output_cost_per_million=2.0,
+        icon_url="https://models.dev/logos/google.svg",
+    )
+    reg = d.DeploymentRegistry([md])
+    info = reg.list_deployments(Capability.CHAT)[0]
+    assert info.icon_url == "https://models.dev/logos/google.svg"

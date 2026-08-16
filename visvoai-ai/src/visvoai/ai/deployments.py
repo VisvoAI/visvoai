@@ -70,6 +70,7 @@ class Deployment:
     # Upstream lifecycle ("alpha" | "beta" | None). Selectable either way — this
     # is for a consumer to render as a tag, so a user knows what they picked.
     status: Optional[str] = None
+    icon_url: Optional[str] = None     # provider logo, for a consumer's model picker
     base_url: Optional[str] = None     # carried endpoint for catalog-sourced providers (None = static map)
     key_env: Optional[str] = None      # carried API-key env var name (None = static _ENV_KEY_MAP)
 
@@ -110,6 +111,9 @@ class DeploymentInfo:
     # A label, not a gate — such deployments are fully selectable, and retired
     # ones never reach here at all (list_deployments excludes `deprecated`).
     status: Optional[str] = None
+    # Provider logo for a picker. Whoever renders it owns the fallback: this is
+    # None whenever the source did not supply one.
+    icon_url: Optional[str] = None
 
 
 # ── derivation: raw ModelDefinition → Model + Deployment ─────────────────────
@@ -172,6 +176,7 @@ def _build(raw: List[ModelDefinition]) -> tuple[List[Model], List[Deployment]]:
             thinking=_mechanism(md), default_thinking=_default_level(md),
             capabilities=list(md.capabilities), enabled=md.enabled,
             deprecated=md.deprecated, default=md.default, status=md.status,
+            icon_url=md.icon_url,
             base_url=md.base_url, key_env=md.key_env,
         ))
         if mid not in models:
@@ -232,6 +237,7 @@ class DeploymentRegistry:
             thinking_levels=d.thinking_levels(),
             default_thinking=d.default_thinking,
             status=d.status,
+            icon_url=d.icon_url,
         )
 
     def list_deployments(self, capability: Optional[Capability] = None,

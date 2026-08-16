@@ -4,6 +4,32 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.4.2] — 2026-08
+
+### Fixed
+- **Every models.dev model carried the Google favicon as its logo.** The
+  adapter never set `icon_url`, so all ~5,400 catalog-sourced definitions
+  inherited `ModelDefinition`'s default — which is Google's. A picker built on
+  the catalog showed one provider's icon against every model in it.
+
+  Definitions now carry `https://models.dev/logos/<provider>.svg`, keyed by the
+  provider's **upstream** id. That distinction is the fix: `PROVIDER_ALIAS`
+  renames `google` → `gemini` and `togetherai` → `together`, neither of which
+  exists upstream, and the logo endpoint *soft-404s* — an unknown id answers
+  `200` with a placeholder rather than an error. Using the aliased name would
+  have produced a plausible URL that silently rendered the wrong image.
+
+  Against the live catalog this yields 169 distinct logos across 5,483
+  definitions, with none left on the Google default.
+
+### Added
+- `DeploymentInfo.icon_url` — the provider logo, for a consumer's model picker.
+  `None` when the source supplied none; whoever renders it owns the fallback.
+
+  Carried on `Deployment` *and* on the public projection, with a test covering
+  the full `ModelDefinition → Deployment → DeploymentInfo` chain — this is the
+  same hop `status` silently failed to make in 0.4.0.
+
 ## [0.4.1] — 2026-08
 
 ### Fixed
