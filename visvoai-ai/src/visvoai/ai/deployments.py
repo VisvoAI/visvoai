@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from visvoai.ai.identity import DEFAULT_CODEC, IdentityCodec
+from visvoai.ai.vendors import vendor_of, vendor_label
 from visvoai.ai.model_registry import (
     MODELS as _RAW,
     Capability,
@@ -126,6 +127,11 @@ class DeploymentInfo:
     # Provider logo for a picker. Whoever renders it owns the fallback: this is
     # None whenever the source did not supply one.
     icon_url: Optional[str] = None
+    # Who MADE the model, as opposed to `provider`, who serves it. The same
+    # model reached directly and through a router shares a vendor but not a
+    # provider — so this is what a picker groups by. None when underivable.
+    vendor: Optional[str] = None
+    vendor_label: Optional[str] = None
 
 
 # ── derivation: raw ModelDefinition → Model + Deployment ─────────────────────
@@ -253,6 +259,7 @@ class DeploymentRegistry:
 
     def _to_info(self, d: Deployment, codec: IdentityCodec) -> DeploymentInfo:
         m = self._model_by_id[d.model]
+        _vendor = vendor_of(d.provider, d.slug)
         return DeploymentInfo(
             id=d.id(codec), model=d.model, display_name=m.display_name, provider=d.provider,
             family=m.family, capabilities=list(d.capabilities), reasoning=m.reasoning,
@@ -264,6 +271,11 @@ class DeploymentRegistry:
             default_thinking=d.default_thinking,
             status=d.status,
             icon_url=d.icon_url,
+            # Derived here rather than stored: it is a function of (provider,
+            # slug), both of which live on the Deployment, so deriving keeps it
+            # from drifting out of sync with them.
+            vendor=_vendor,
+            vendor_label=vendor_label(_vendor),
         )
 
     def list_deployments(self, capability: Optional[Capability] = None,

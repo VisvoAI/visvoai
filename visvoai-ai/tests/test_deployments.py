@@ -227,3 +227,43 @@ def test_no_deployment_defaults_to_a_level_it_rejects():
     info = d.DeploymentRegistry([md]).list_deployments(Capability.CHAT)[0]
     assert info.default_thinking is ThinkingLevel.LOW
     assert info.default_thinking in info.thinking_levels
+
+
+def test_vendor_separates_who_made_a_model_from_who_serves_it():
+    """A model reached directly and through a router shares a vendor, not a
+    provider. Grouping a picker by provider would file the same model under two
+    headings — and would file 340 unrelated models under "OpenRouter".
+    """
+    from visvoai.ai.vendors import vendor_of, vendor_label
+
+    # first-party: no namespace in the slug, so it maps from the provider —
+    # and `gemini` the route is `google` the vendor.
+    assert vendor_of("gemini", "gemini-3.7-flash") == "google"
+    # the same model through a router: namespaced, same vendor, other provider
+    assert vendor_of("openrouter", "google/gemini-3.7-flash") == "google"
+
+    # spelling variants of one vendor collapse
+    assert vendor_of("together", "Qwen/Qwen3.5-9B") == vendor_of("openrouter", "qwen/qwen3.5-9b")
+    assert vendor_of("together", "meta-llama/Llama-3.3-70B") == "meta"
+    # OpenRouter's "~" prefix is routing metadata, not part of the name
+    assert vendor_of("openrouter", "~anthropic/claude-opus-4.8") == "anthropic"
+
+    # underivable rather than guessed — an unknown vendor renders ungrouped
+    assert vendor_of("groq", "some-unnamespaced-model") is None
+    assert vendor_label(None) is None
+
+    assert vendor_label("openai") == "OpenAI"
+    assert vendor_label("xai") == "xAI"
+    assert vendor_label("aion-labs") == "Aion Labs"
+
+
+def test_vendor_reaches_the_public_projection():
+    """Third field in three releases to need this hop asserted — see status
+    (0.4.0) and icon_url. A field that stops at Deployment does not exist."""
+    from dataclasses import fields
+
+    assert "vendor" in {f.name for f in fields(d.DeploymentInfo)}
+    infos = d.list_deployments(Capability.CHAT)
+    gemini = [i for i in infos if i.provider == "gemini"]
+    assert gemini and all(i.vendor == "google" for i in gemini)
+    assert all(i.vendor_label == "Google" for i in gemini)

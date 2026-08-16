@@ -6,6 +6,29 @@ major (1.0) bump until the surface stabilizes.
 
 ## [0.4.2] — 2026-08
 
+### Added
+- **`DeploymentInfo.vendor` / `.vendor_label`** — who *made* a model, as
+  distinct from `provider`, who serves it. Three things get called "provider"
+  and are not the same:
+
+  | | | |
+  |---|---|---|
+  | vendor | who made it | `google` |
+  | provider | who serves it (the route) | `gemini` direct, or `openrouter` |
+  | slug | what that route expects | `gemini-3.7-flash` / `google/gemini-3.7-flash` |
+
+  A picker groups by vendor: "the Google models" is a meaningful heading, while
+  "the OpenRouter models" is 340 models from thirty vendors. Grouping by
+  `provider` would also file the same model under two headings.
+
+  Derived, not stored, from `(provider, slug)`: aggregators namespace their
+  slugs `vendor/model`, first-party routes map from the provider name. The
+  normalisation is real — the same vendor appears as `qwen` and `Qwen`, as
+  `meta-llama` and `meta`, and OpenRouter prefixes some routes with `~`.
+  Returns `None` rather than guessing, so an unknown vendor renders ungrouped
+  instead of under a wrong heading (3 of 453 on the live catalog, all Groq
+  slugs carrying no namespace).
+
 ### Fixed
 - **Models were offered thinking levels their API rejects.** `thinking_levels`
   returned all four levels for anything with `supports_thinking`, treating the
