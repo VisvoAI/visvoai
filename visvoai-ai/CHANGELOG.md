@@ -4,6 +4,33 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.3.1] — 2026-08
+
+### Fixed
+- **Gemini `cache_read_cost_per_million` was 2.5x too high on all 14 models.**
+  Google prices context-cache reads at **10% of the input rate**
+  (https://ai.google.dev/gemini-api/docs/pricing); this registry carried 25%.
+
+  | model | was | now |
+  |---|---|---|
+  | `gemini-3.7-flash` | 0.1875 | **0.075** |
+  | `gemini-3.5-flash` | 0.375 | **0.15** |
+  | `gemini-2.5-pro` | 0.3125 | **0.125** |
+  | …11 others | | |
+
+  This inflated `estimated_cost_usd` wherever cached tokens were reported. It
+  never affected what the provider billed — only what we reported.
+
+  **Correcting the 0.2.4 release notes:** they described the 25% figure as a
+  deliberate convention, and justified overriding models.dev — which had the
+  correct 10% — to match it. That reasoning was wrong. The gap was uniform
+  across every Gemini row, and uniformity was mistaken for intent. models.dev
+  was right; this registry was not.
+
+  A regression test now asserts the 10% relationship, and the module docstring
+  says to verify against the pricing page rather than against the rest of the
+  file.
+
 ## [0.3.0] — 2026-08
 
 One theme: this package holds **facts about models**. Which model is default,
