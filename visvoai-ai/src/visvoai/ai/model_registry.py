@@ -95,6 +95,40 @@ class ModelDefinition:
 MODELS: List[ModelDefinition] = [
 
     # -------------------------------------------------------------------------
+    # Gemini 3.7
+    # -------------------------------------------------------------------------
+    ModelDefinition(
+        api_id="gemini-3.7-flash",
+        context_window=1_048_576,
+        display_name="Gemini 3.7 Flash",
+        capabilities=[Capability.CHAT, Capability.SEARCH],
+        input_cost_per_million=0.75,
+        output_cost_per_million=3.75,
+        cache_read_cost_per_million=0.1875,
+        search_query_cost=0.014,
+        search_billed_per_request=False,
+        supports_thinking=True,
+        enabled=True,
+    ),
+
+    # -------------------------------------------------------------------------
+    # Gemini 3.6
+    # -------------------------------------------------------------------------
+    ModelDefinition(
+        api_id="gemini-3.6-flash",
+        context_window=1_048_576,
+        display_name="Gemini 3.6 Flash",
+        capabilities=[Capability.CHAT, Capability.SEARCH],
+        input_cost_per_million=1.50,
+        output_cost_per_million=7.50,
+        cache_read_cost_per_million=0.375,
+        search_query_cost=0.014,
+        search_billed_per_request=False,
+        supports_thinking=True,
+        enabled=True,
+    ),
+
+    # -------------------------------------------------------------------------
     # Gemini 3.5
     # -------------------------------------------------------------------------
     ModelDefinition(

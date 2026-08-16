@@ -4,6 +4,36 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.2.4] — 2026-08
+
+### Added
+- `gemini-3.7-flash` and `gemini-3.6-flash` to the model registry. Both carry a
+  1,048,576-token context, tool calling and thinking, and are registered for
+  `CHAT` and `SEARCH`.
+
+  Context window, input and output rates come from models.dev rather than being
+  typed by hand, since a wrong `input_cost_per_million` silently corrupts every
+  cost figure derived from it:
+
+  | model | input | output | cache read |
+  |---|---|---|---|
+  | `gemini-3.7-flash` | $0.75 | $3.75 | $0.1875 |
+  | `gemini-3.6-flash` | $1.50 | $7.50 | $0.375 |
+
+  `cache_read_cost_per_million` deliberately does **not** follow models.dev.
+  This registry prices cache reads at 25% of input, per the Gemini Developer API
+  pricing page named in the module docstring; models.dev reports 10%. That gap
+  is uniform — exactly 2.5x across all seven existing Gemini entries — so it is
+  a difference of convention, not a per-model error, and a new model following
+  the other convention would have been the only inconsistent row in the table.
+
+  `search_query_cost` is mirrored from `gemini-3.5-flash` — models.dev does not
+  carry grounding pricing, and it is a provider-level rate rather than a
+  per-model one.
+
+  No default changed: `DEFAULT_MODEL_FOR` still points `SEARCH` and
+  `DEEP_RESEARCH` at `gemini-3-flash-preview`.
+
 ## [0.2.3] — 2026-06
 
 ### Fixed
