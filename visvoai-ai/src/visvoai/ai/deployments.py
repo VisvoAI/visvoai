@@ -106,6 +106,10 @@ class DeploymentInfo:
     supports_thinking: bool
     thinking_levels: List[ThinkingLevel]   # options to render (empty when unsupported)
     default_thinking: ThinkingLevel        # preselected option
+    # Upstream lifecycle when the catalog reports one: "alpha" | "beta" | None.
+    # A label, not a gate — such deployments are fully selectable, and retired
+    # ones never reach here at all (list_deployments excludes `deprecated`).
+    status: Optional[str] = None
 
 
 # ── derivation: raw ModelDefinition → Model + Deployment ─────────────────────
@@ -227,6 +231,7 @@ class DeploymentRegistry:
             supports_thinking=d.supports_thinking,
             thinking_levels=d.thinking_levels(),
             default_thinking=d.default_thinking,
+            status=d.status,
         )
 
     def list_deployments(self, capability: Optional[Capability] = None,

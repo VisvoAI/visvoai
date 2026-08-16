@@ -4,6 +4,18 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.4.1] — 2026-08
+
+### Fixed
+- **`status` never reached `DeploymentInfo`.** 0.4.0 added it to
+  `ModelDefinition` and to `Deployment` — the internal record — but not to the
+  public read-only projection, which is *"the ONLY model-data type consumers
+  touch"*. So the tag existed, the data flowed, and every consumer reading
+  `info.status` got `AttributeError`. The feature was unusable as shipped.
+
+  A regression test now asserts the field survives the hop to `DeploymentInfo`
+  and is populated, not merely declared.
+
 ## [0.4.0] — 2026-08
 
 Gemini facts now come from models.dev instead of being maintained by hand, and a
