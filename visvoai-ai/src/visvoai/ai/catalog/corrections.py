@@ -29,10 +29,15 @@ from visvoai.ai.model_registry import Capability
 
 # {(provider, api_id): {field: value}}
 CURATED_CORRECTIONS: Dict[Tuple[str, str], Dict[str, Any]] = {
-    ("gemini", "gemini-3.7-flash"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH], "default_thinking_label": 'Think', "default": True},
+    # thinking_levels: this model rejects "minimal" (what OFF maps to) with a 400
+    # while gemini-3.6-flash and 3.5-flash accept it. Verified against the live
+    # API — models.dev carries `reasoning: true` and has no field for which
+    # levels a model takes, so it cannot know this.
+    ("gemini", "gemini-3.7-flash"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH], "default_thinking_label": 'Think', "default": True, "thinking_levels": ["low", "medium", "high"]},
     ("gemini", "gemini-3.6-flash"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH]},
     ("gemini", "gemini-3.5-flash"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH]},
-    ("gemini", "gemini-3.1-pro-preview"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH]},
+    # Rejects "minimal" too — see gemini-3.7-flash above.
+    ("gemini", "gemini-3.1-pro-preview"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH], "thinking_levels": ["low", "medium", "high"]},
     ("gemini", "gemini-3.1-pro-preview-customtools"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH]},
     ("gemini", "gemini-3.1-flash-lite"): {"search_query_cost": 0.014, "capabilities": [Capability.CHAT, Capability.SEARCH]},
     ("gemini", "gemini-3.1-flash-live-preview"): {"search_query_cost": 0.014},

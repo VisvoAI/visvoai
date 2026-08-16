@@ -82,6 +82,12 @@ class ModelDefinition:
     provider: str = "gemini"                 # "gemini" | "anthropic" | "openai" | "together" — must equal the api_keys key name
     icon_url: str = "https://www.google.com/favicon.ico"
     supports_thinking: bool = False
+    # Which levels this model actually accepts. None = all four, which is the
+    # right default but NOT universally true: the level set is a per-model fact,
+    # not a per-mechanism one. Gemini 3.7 Flash and 3.1 Pro reject "minimal"
+    # (what OFF maps to) with a 400 while their siblings accept it — verified
+    # against the live API, not inferred. Set this when a model is narrower.
+    thinking_levels: Optional[List[str]] = None
     enabled: bool = True                     # controls UI visibility
     # Excluded from list_deployments() and default_deployment() — never offered
     # for a new message. Deliberately NOT excluded from MODEL_PRICING_MAP: an

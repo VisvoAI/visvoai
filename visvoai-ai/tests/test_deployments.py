@@ -169,3 +169,61 @@ def test_icon_url_reaches_the_public_projection():
     reg = d.DeploymentRegistry([md])
     info = reg.list_deployments(Capability.CHAT)[0]
     assert info.icon_url == "https://models.dev/logos/google.svg"
+
+
+def test_thinking_levels_can_be_narrowed_per_model():
+    """The level set is a per-MODEL fact, not a per-mechanism one.
+
+    Gemini 3.7 Flash and 3.1 Pro reject "minimal" — what OFF maps to — with a
+    400, while 3.6 Flash and 3.5 Flash accept it. Offering a level the API
+    refuses turns a picker control into an error, so a model can declare a
+    narrower set.
+    """
+    base = dict(
+        display_name="T", provider="gemini",
+        input_cost_per_million=1.0, output_cost_per_million=2.0,
+        supports_thinking=True,
+    )
+    wide = d.DeploymentRegistry([ModelDefinition(api_id="wide", **base)])
+    assert wide.list_deployments(Capability.CHAT)[0].thinking_levels == [
+        ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH
+    ]
+
+    narrow = d.DeploymentRegistry([
+        ModelDefinition(api_id="narrow", thinking_levels=["low", "medium", "high"], **base)
+    ])
+    levels = narrow.list_deployments(Capability.CHAT)[0].thinking_levels
+    assert ThinkingLevel.OFF not in levels
+    assert levels == [ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH]
+    # order follows the canonical sequence, not the declaration order
+    assert levels == sorted(levels, key=lambda l: [
+        ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH
+    ].index(l))
+
+
+def test_no_deployment_defaults_to_a_level_it_rejects():
+    """A narrowed level set and a default are two facts that can contradict.
+
+    If they ever do, every turn on that model 400s by default — the worst
+    version of this bug, since it needs no user action to trigger.
+    """
+    for info in d.list_deployments(Capability.CHAT):
+        if info.thinking_levels:
+            assert info.default_thinking in info.thinking_levels, (
+                f"{info.id} defaults to {info.default_thinking.value} "
+                f"but only offers {[l.value for l in info.thinking_levels]}"
+            )
+
+    # The real case that produced this guard came through the corrections path,
+    # not the baked list: gemini-3.1-pro-preview's label resolves to OFF while
+    # the correction removes "minimal" from what it accepts.
+    md = ModelDefinition(
+        api_id="contradictory", display_name="C", provider="gemini",
+        input_cost_per_million=1.0, output_cost_per_million=2.0,
+        supports_thinking=True,
+        default_thinking_label=None,                 # → OFF
+        thinking_levels=["low", "medium", "high"],   # …which is not offered
+    )
+    info = d.DeploymentRegistry([md]).list_deployments(Capability.CHAT)[0]
+    assert info.default_thinking is ThinkingLevel.LOW
+    assert info.default_thinking in info.thinking_levels

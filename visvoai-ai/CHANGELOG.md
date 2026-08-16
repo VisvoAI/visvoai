@@ -7,6 +7,24 @@ major (1.0) bump until the surface stabilizes.
 ## [0.4.2] — 2026-08
 
 ### Fixed
+- **Models were offered thinking levels their API rejects.** `thinking_levels`
+  returned all four levels for anything with `supports_thinking`, treating the
+  level set as a property of the *mechanism*. It is a property of the *model*:
+  `gemini-3.7-flash` and `gemini-3.1-pro-preview` reject `"minimal"` — what
+  `OFF` maps to — with a 400, while `gemini-3.6-flash` and `gemini-3.5-flash`
+  accept it. Verified against the live API, model by model, not inferred.
+
+  `ModelDefinition.thinking_levels` (and a correction for the two Gemini models)
+  narrows the set. `None` still means all four.
+
+- **A model could default to a level it rejects.** The default and the allowed
+  set are independent facts, and `gemini-3.1-pro-preview` had them contradict:
+  its label resolved to `OFF` while the correction removed `minimal`. That is
+  the worse form of the bug — it needs no user action, so *every* turn on that
+  model would 400. `_default_level()` now reconciles toward the narrowest level
+  the model does accept, and a test asserts no deployment can default outside
+  its own set.
+
 - **Every models.dev model carried the Google favicon as its logo.** The
   adapter never set `icon_url`, so all ~5,400 catalog-sourced definitions
   inherited `ModelDefinition`'s default — which is Google's. A picker built on
