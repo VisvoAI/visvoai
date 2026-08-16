@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "visvoai-cli"
-version = "0.14.4"
+version = "0.15.0"
 description = "VisvoAI — Developer tool CLI powered by the visvoai-core agent runtime"
 readme = "README.md"
 license = { text = "MIT" }
@@ -19,13 +19,17 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "visvoai-core>=0.1.0",
+    # Floors name versions that exist and have been tested together. The previous
+    # values (core>=0.1.0, ai>=0.2.2) named releases that were never published —
+    # they resolved only because pip picks the newest, so the contract was never
+    # true or testable.
+    "visvoai-core>=0.4.0",
     # Provider resolution (get_provider/get_model) is used directly in main.py.
     # [all] — the CLI bundles EVERY provider integration on purpose: its model
     # picker exposes the full models.dev catalog, so any provider must be runnable
     # out of the box (a Gemini-only install would crash on selecting a Claude/OpenAI
     # model). Leanness lives in visvoai-ai's per-provider extras, not in the app.
-    "visvoai-ai[all]>=0.2.2",
+    "visvoai-ai[all]>=0.3.0",
     "click>=8.1",
     "rich>=13.0",
     # The terminal UI (REPL) is built on Textual; .env auto-load via python-dotenv.
