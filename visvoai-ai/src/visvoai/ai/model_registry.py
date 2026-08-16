@@ -109,6 +109,8 @@ MODELS: List[ModelDefinition] = [
         search_billed_per_request=False,
         supports_thinking=True,
         enabled=True,
+        default=True,
+        default_thinking_label="Think",
     ),
 
     # -------------------------------------------------------------------------
@@ -217,7 +219,6 @@ MODELS: List[ModelDefinition] = [
         search_billed_per_request=False,
         supports_thinking=True,
         enabled=True,
-        default=True,
         default_thinking_label="Think",
     ),
     ModelDefinition(

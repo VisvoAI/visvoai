@@ -4,6 +4,26 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.2.5] — 2026-08
+
+### Changed
+- `gemini-3.7-flash` is now the default model, taking `default=True` from
+  `gemini-3-flash-preview`. Google documents it as "our latest and most capable
+  Flash model, built for complex coding, agentic workflows, and reliable
+  multi-step execution".
+
+  It also takes `default_thinking_label="Think"`. Without that the switch would
+  have been a silent regression: `gemini-3-flash-preview` defaults to MEDIUM
+  thinking and `gemini-3.7-flash` had no label, so every new chat would have
+  dropped to thinking OFF — invisible in any diff of "which model is default".
+
+  It is **not** cheaper than the model it replaces: $0.75/$3.75 against
+  $0.50/$3.00, so +50% input and +25% output per token.
+
+  `SEARCH` and `DEEP_RESEARCH` are unaffected — `DEFAULT_MODEL_FOR` names
+  `gemini-3-flash-preview` for both, and a curated pick outranks `default=True`.
+  This matters for `DEEP_RESEARCH`, which `gemini-3.7-flash` does not declare.
+
 ## [0.2.4] — 2026-08
 
 ### Added

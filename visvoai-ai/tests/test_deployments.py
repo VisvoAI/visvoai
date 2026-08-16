@@ -2,7 +2,7 @@
 from visvoai.ai import deployments as d
 from visvoai.ai.deployments import DeploymentInfo
 from visvoai.ai.thinking import ThinkingLevel, ThinkingMechanism
-from visvoai.ai.model_registry import Capability
+from visvoai.ai.model_registry import MODELS, Capability
 
 
 def test_same_model_multiple_providers_merges():
@@ -55,8 +55,12 @@ def test_list_deployments_filters_and_default():
     chat = d.list_deployments(Capability.CHAT)
     assert chat and all(Capability.CHAT in c.capabilities for c in chat)
     assert all(isinstance(c, DeploymentInfo) for c in chat)
-    # default chat deployment is the registry default model's deployment
-    assert d.default_deployment(Capability.CHAT) == "gemini:gemini-3-flash-preview"
+    # The default chat deployment is the registry's default=True model — asserted
+    # against the registry rather than a literal id, so changing which model is
+    # default does not break this test. What is under test is the resolution
+    # rule, not today's pick.
+    default_model = next(m for m in MODELS if m.default)
+    assert d.default_deployment(Capability.CHAT) == f"{default_model.provider}:{default_model.api_id}"
 
 
 def test_unknown_id_returns_none():
