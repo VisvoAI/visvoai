@@ -1,0 +1,30 @@
+name: boundary
+
+# Everything in this repository is published. This guard fails the build if a
+# change carries something across that line: an undeclared import, a symlink, a
+# secret-bearing file, or a private platform name in shipped text.
+#
+# It is aimed at a specific failure mode rather than at carelessness. The
+# maintainers know which names are internal; contributors cannot. A pull request
+# can name a private module in a docstring in complete good faith, and review
+# catches it only if a reviewer recognises the name. This does not rely on that.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # tomllib is stdlib from 3.11
+
+      - name: Check the public boundary
+        run: python scripts/check_public_boundary.py
