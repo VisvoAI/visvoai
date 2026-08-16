@@ -96,3 +96,40 @@ def test_install_catalog_swaps_default_then_restores():
         d.set_default_registry(original)
     # restored: the baked default is back
     assert d.get_deployment("gemini:gemini-3-flash-preview") is not None
+
+
+# ── corrections ───────────────────────────────────────────────────────────────
+
+def test_corrections_overlay_individual_fields():
+    """A correction patches named fields and leaves the rest of the record alone —
+    which is the whole point. Merge is 'later wins wholesale', so curation shipped
+    as a source would clobber the live facts it is meant to sit on top of."""
+    from visvoai.ai import BakedSource, build_catalog
+
+    target = ("gemini", "gemini-3.5-flash")
+    before = {(d.provider, d.api_id): d for d in build_catalog([BakedSource()])}[target]
+    after = {(d.provider, d.api_id): d for d in build_catalog(
+        [BakedSource()], corrections={target: {"search_query_cost": 0.99}})}[target]
+
+    assert after.search_query_cost == 0.99
+    assert after.input_cost_per_million == before.input_cost_per_million  # untouched
+
+
+def test_correction_naming_an_unknown_field_raises():
+    """A typo that silently did nothing would leave a correction that looks
+    applied and is not."""
+    from visvoai.ai import BakedSource, build_catalog
+    import pytest
+
+    with pytest.raises(ValueError, match="unknown field"):
+        build_catalog([BakedSource()],
+                      corrections={("gemini", "gemini-3.5-flash"): {"nope": 1}})
+
+
+def test_correction_for_an_unknown_model_is_ignored():
+    """Upstream dropping a model is stale, not fatal."""
+    from visvoai.ai import BakedSource, build_catalog
+
+    defs = build_catalog([BakedSource()],
+                         corrections={("gemini", "ghost"): {"enabled": False}})
+    assert defs  # no raise, catalog intact

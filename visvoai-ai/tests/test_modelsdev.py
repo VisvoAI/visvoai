@@ -89,3 +89,51 @@ def test_costs_and_context_mapped():
     assert ds.output_cost_per_million == 2.0
     assert ds.cache_read_cost_per_million == 0.01
     assert ds.context_window == 1000
+
+
+# ── first-party providers, lifecycle status ───────────────────────────────────
+
+_FIRST_PARTY_CATALOG = {
+    "google": {
+        "models": {
+            "gemini-x": {"id": "gemini-x", "name": "Gemini X",
+                         "cost": {"input": 1.0, "output": 4.0, "cache_read": 0.1},
+                         "limit": {"context": 1000}},
+            "gemini-old": {"id": "gemini-old", "name": "Gemini Old", "status": "deprecated",
+                           "cost": {"input": 1.0, "output": 4.0}},
+            "gemini-new": {"id": "gemini-new", "name": "Gemini New", "status": "beta",
+                           "cost": {"input": 1.0, "output": 4.0}},
+        },
+    },
+}
+
+
+def test_google_is_ingested_as_gemini_without_base_url():
+    """google is first-party: no derivable base_url and no env var to carry —
+    providers/config.py resolves both statically. It is admitted anyway, because
+    its facts are worth taking from models.dev rather than hand-maintaining."""
+    defs = {d.api_id: d for d in to_definitions(_FIRST_PARTY_CATALOG)}
+    m = defs["gemini-x"]
+    assert m.provider == "gemini"        # models.dev says "google"
+    assert m.base_url is None
+    assert m.key_env is None
+    assert m.input_cost_per_million == 1.0
+    assert m.context_window == 1000
+
+
+def test_deprecated_status_withdraws_but_keeps_the_model():
+    """A retired model must stay priceable: it is excluded from the pickers via
+    `deprecated`, but dropping it outright would make an llm_call_logs row that
+    names it unpriceable, and historical spend unreadable."""
+    defs = {d.api_id: d for d in to_definitions(_FIRST_PARTY_CATALOG)}
+    assert "gemini-old" in defs           # imported, not dropped
+    assert defs["gemini-old"].deprecated is True
+    assert defs["gemini-old"].status is None   # retirement is not a status tag
+
+
+def test_beta_is_a_tag_not_a_withdrawal():
+    defs = {d.api_id: d for d in to_definitions(_FIRST_PARTY_CATALOG)}
+    m = defs["gemini-new"]
+    assert m.status == "beta"
+    assert m.deprecated is False          # still fully selectable
+    assert defs["gemini-x"].status is None  # GA carries no tag

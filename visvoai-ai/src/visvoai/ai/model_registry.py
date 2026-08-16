@@ -8,13 +8,20 @@ UI-facing presentation layer — model pickers, display labels — belongs in th
 consumer that builds on this, not here.
 
 Pricing source: https://ai.google.dev/gemini-api/docs/pricing (Gemini Developer API)
-Last verified: May 2026
+Last verified: 2026-08-16
+
+Verify against the page, not against the rest of this file. Every Gemini entry
+carried cache_read at 25% of input for months — uniformly, which is exactly what
+made it look deliberate rather than wrong. Google prices it at 10%. Internal
+consistency is not evidence.
 
 KEY BILLING RULES FOR GEMINI API (not Vertex AI — prices differ):
 ─────────────────────────────────────────────────────────────────
 1. CACHED TOKENS are a SUBSET of prompt_token_count.
    Bill non-cached input:  (prompt_token_count - cached_content_token_count) * input_rate
    Bill cached input:      cached_content_token_count * cache_read_cost_per_million
+   cache_read is 10% of the input rate. Storage is billed separately, per hour,
+   and is NOT modelled here.
 
 2. THINKING TOKENS (thoughts_token_count) are billed at the SAME rate as
    regular output tokens (candidates_token_count). No separate thinking rate.
@@ -76,7 +83,16 @@ class ModelDefinition:
     icon_url: str = "https://www.google.com/favicon.ico"
     supports_thinking: bool = False
     enabled: bool = True                     # controls UI visibility
-    deprecated: bool = False                 # excluded from UI and cost lookups
+    # Excluded from list_deployments() and default_deployment() — never offered
+    # for a new message. Deliberately NOT excluded from MODEL_PRICING_MAP: an
+    # llm_call_logs row naming a retired model must still price, or historical
+    # spend becomes unreadable.
+    deprecated: bool = False
+    # Upstream lifecycle, when the catalog reports one: "alpha" | "beta" | None
+    # (None = generally available). Presentation only — an alpha or beta model is
+    # fully selectable; consumers surface it as a tag so a user knows what they
+    # are picking. Retirement is `deprecated`, not a status value.
+    status: Optional[str] = None
     default: bool = False                    # exactly one model should be True
     default_thinking_label: Optional[str] = None  # which thinking variant is the default (None = base)
     capabilities: List[Capability] = field(default_factory=lambda: [Capability.CHAT])
@@ -108,7 +124,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.75,
         output_cost_per_million=3.75,
-        cache_read_cost_per_million=0.1875,
+        cache_read_cost_per_million=0.075,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -127,7 +143,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=1.50,
         output_cost_per_million=7.50,
-        cache_read_cost_per_million=0.375,
+        cache_read_cost_per_million=0.15,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -144,7 +160,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=1.50,
         output_cost_per_million=9.00,
-        cache_read_cost_per_million=0.375,
+        cache_read_cost_per_million=0.15,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -161,7 +177,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=2.00,
         output_cost_per_million=12.00,
-        cache_read_cost_per_million=0.50,
+        cache_read_cost_per_million=0.2,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -175,7 +191,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=2.00,
         output_cost_per_million=12.00,
-        cache_read_cost_per_million=0.50,
+        cache_read_cost_per_million=0.2,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -188,7 +204,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.25,
         output_cost_per_million=1.50,
-        cache_read_cost_per_million=0.0625,
+        cache_read_cost_per_million=0.025,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=False,
@@ -218,7 +234,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.50,
         output_cost_per_million=3.00,
-        cache_read_cost_per_million=0.125,
+        cache_read_cost_per_million=0.05,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=True,
@@ -231,7 +247,7 @@ MODELS: List[ModelDefinition] = [
         display_name="Gemini 3 Pro Image",
         input_cost_per_million=2.00,
         output_cost_per_million=120.00,
-        cache_read_cost_per_million=0.50,
+        cache_read_cost_per_million=0.2,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=False,
@@ -244,7 +260,7 @@ MODELS: List[ModelDefinition] = [
         display_name="Gemini 3 Pro Image (Preview)",
         input_cost_per_million=2.00,
         output_cost_per_million=12.00,
-        cache_read_cost_per_million=0.50,
+        cache_read_cost_per_million=0.2,
         search_query_cost=0.014,
         search_billed_per_request=False,
         supports_thinking=False,
@@ -262,7 +278,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=1.25,
         output_cost_per_million=10.00,
-        cache_read_cost_per_million=0.3125,
+        cache_read_cost_per_million=0.125,
         search_query_cost=0.035,
         search_billed_per_request=True,
         supports_thinking=True,
@@ -275,7 +291,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.30,
         output_cost_per_million=2.50,
-        cache_read_cost_per_million=0.075,
+        cache_read_cost_per_million=0.03,
         search_query_cost=0.035,
         search_billed_per_request=True,
         supports_thinking=True,
@@ -288,7 +304,7 @@ MODELS: List[ModelDefinition] = [
         display_name="Gemini 2.5 Flash (Preview)",
         input_cost_per_million=0.30,
         output_cost_per_million=2.50,
-        cache_read_cost_per_million=0.075,
+        cache_read_cost_per_million=0.03,
         search_query_cost=0.035,
         search_billed_per_request=True,
         supports_thinking=True,
@@ -302,7 +318,7 @@ MODELS: List[ModelDefinition] = [
         capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.10,
         output_cost_per_million=0.40,
-        cache_read_cost_per_million=0.025,
+        cache_read_cost_per_million=0.01,
         search_query_cost=0.035,
         search_billed_per_request=True,
         supports_thinking=False,
@@ -315,7 +331,7 @@ MODELS: List[ModelDefinition] = [
         display_name="Gemini 2.5 Flash Lite (Preview)",
         input_cost_per_million=0.10,
         output_cost_per_million=0.40,
-        cache_read_cost_per_million=0.025,
+        cache_read_cost_per_million=0.01,
         search_query_cost=0.035,
         search_billed_per_request=True,
         supports_thinking=False,
