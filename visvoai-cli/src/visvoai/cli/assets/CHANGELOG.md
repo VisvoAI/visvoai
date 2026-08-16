@@ -3,6 +3,22 @@
 Versions follow `v0.MINOR.PATCH` while unstable (pre-1.0): MINOR for new capability or
 breaking changes, PATCH for fixes. No major bump until the surface stabilizes.
 
+## [0.15.0] — 2026-08
+
+### Changed
+- **Dependency floors now name versions that exist.** `visvoai-core>=0.1.0` and
+  `visvoai-ai[all]>=0.2.2` both named releases that were **never published** —
+  PyPI has core `0.0.1`/`0.4.0` and ai `0.0.1`/`0.2.3`/`0.2.4`/`0.3.0`. They
+  resolved only because pip picks the newest available, so neither contract was
+  ever true or testable.
+
+  Now `visvoai-core>=0.4.0` and `visvoai-ai[all]>=0.3.0` — real versions this
+  CLI is tested against. Raising a floor can change resolution for anyone pinned
+  low, hence the minor bump rather than a patch.
+
+  `visvoai-ai` 0.3.0 removes `Capability.DEEP_RESEARCH`; the CLI never used it,
+  and has no research feature at all, so nothing here changes behaviourally.
+
 ## [0.14.4] — 2026-07
 
 ### Fixed
