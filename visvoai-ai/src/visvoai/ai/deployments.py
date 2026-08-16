@@ -314,7 +314,66 @@ def get_deployment_info(deployment_id: str,
     return _default.get_deployment_info(deployment_id, codec)
 
 
+# ── consumer-set defaults ─────────────────────────────────────────────────────
+#
+# Which model is "the default" is a policy choice belonging to whoever consumes
+# this package, not a fact about a model. This package ships a fallback so that
+# `pip install visvoai-ai` works standalone; a consumer overrides it here.
+#
+# Deliberately module-level rather than registry state: install_catalog() builds
+# a fresh registry, so an override stored on the instance would be silently
+# wiped by a consumer that sets its default before installing a catalog.
+_DEFAULT_OVERRIDES: Dict[Capability, str] = {}
+
+
+def set_default_deployment(capability: Capability, deployment_id: Optional[str],
+                           codec: IdentityCodec = DEFAULT_CODEC) -> None:
+    """Set (or clear, with None) the default deployment for a capability.
+
+    Validated immediately rather than at first use: an unknown id, or one that
+    does not declare the capability, raises here — where the caller's stack
+    still says which line set it — instead of surfacing much later as a
+    surprising model choice.
+    """
+    if deployment_id is None:
+        _DEFAULT_OVERRIDES.pop(capability, None)
+        return
+
+    dep = _default.get_deployment(deployment_id, codec)
+    if dep is None:
+        raise ValueError(
+            f"set_default_deployment: unknown deployment id {deployment_id!r}. "
+            f"Install the catalog it belongs to first."
+        )
+    if capability not in dep.capabilities:
+        raise ValueError(
+            f"set_default_deployment: {deployment_id!r} does not declare "
+            f"{capability.value!r} (has {[c.value for c in dep.capabilities]})."
+        )
+    _DEFAULT_OVERRIDES[capability] = deployment_id
+
+
+def get_default_overrides() -> Dict[Capability, str]:
+    """The consumer-set defaults, for introspection. A copy — mutating it does
+    nothing; use set_default_deployment."""
+    return dict(_DEFAULT_OVERRIDES)
+
+
 def default_deployment(capability: Capability = Capability.CHAT,
                        codec: IdentityCodec = DEFAULT_CODEC,
                        provider: Optional[str] = None) -> Optional[str]:
+    """Default deployment id for a capability.
+
+    Precedence: consumer override → the package's curated pick → the
+    `default=True` model → the first enabled one.
+
+    A `provider` filter narrows the search, and the override only counts if it
+    belongs to that provider — asking for "the default Anthropic chat model"
+    must not return a Gemini one just because a consumer set it globally.
+    """
+    override = _DEFAULT_OVERRIDES.get(capability)
+    if override:
+        dep = _default.get_deployment(override, codec)
+        if dep is not None and (provider is None or dep.provider == provider):
+            return override
     return _default.default_deployment(capability, codec, provider)

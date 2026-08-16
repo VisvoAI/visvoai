@@ -49,10 +49,14 @@ class Capability(str, Enum):
     NOT a pricing axis (pricing lives in the flat rate-card fields below)."""
     CHAT = "chat"                  # agent loop + utility text generate()
     SEARCH = "search"              # grounded web search() (Google Search grounding — Gemini)
-    DEEP_RESEARCH = "deep_research"  # background/async research interactions (Gemini)
     IMAGE_GEN = "image_gen"        # image generation (Imagen)
     AUDIO_GEN = "audio_gen"        # text-to-speech audio generation
     EMBEDDING = "embedding"        # text/multimodal embeddings
+    # There is deliberately no DEEP_RESEARCH. Deep research is not something a
+    # model does — it is a separate *agent* (deep-research-preview-04-2026 and
+    # -max-), invoked with `agent=` rather than `model=` and only through the
+    # Interactions API. It was listed here, declared by a chat model, and read
+    # by nothing.
     # NOTE: IMAGE_GEN/AUDIO_GEN/EMBEDDING models are DEFINED here (registry = full inventory) but
     # their tools still call the SDK directly — routing them through facade capability methods +
     # cost-tracking is the deferred modality pass.
@@ -109,6 +113,8 @@ MODELS: List[ModelDefinition] = [
         search_billed_per_request=False,
         supports_thinking=True,
         enabled=True,
+        default=True,
+        default_thinking_label="Think",
     ),
 
     # -------------------------------------------------------------------------
@@ -209,7 +215,7 @@ MODELS: List[ModelDefinition] = [
         api_id="gemini-3-flash-preview",
         context_window=1_048_576,
         display_name="Gemini 3 Flash",
-        capabilities=[Capability.CHAT, Capability.SEARCH, Capability.DEEP_RESEARCH],
+        capabilities=[Capability.CHAT, Capability.SEARCH],
         input_cost_per_million=0.50,
         output_cost_per_million=3.00,
         cache_read_cost_per_million=0.125,
@@ -217,7 +223,6 @@ MODELS: List[ModelDefinition] = [
         search_billed_per_request=False,
         supports_thinking=True,
         enabled=True,
-        default=True,
         default_thinking_label="Think",
     ),
     ModelDefinition(
@@ -693,7 +698,6 @@ def get_model(api_id: str) -> Optional[ModelDefinition]:
 # layer can override this per user — keeping it OFF ModelDefinition is what makes that swap clean.
 DEFAULT_MODEL_FOR: Dict[Capability, str] = {
     Capability.SEARCH: "gemini-3-flash-preview",
-    Capability.DEEP_RESEARCH: "gemini-3-flash-preview",
 }
 
 

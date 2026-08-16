@@ -4,6 +4,65 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.3.0] — 2026-08
+
+One theme: this package holds **facts about models**. Which model is default,
+and whether "deep research" exists, are not facts — they belong to the consumer
+or to nothing at all. Its own docstring already said so; the code did not.
+
+### Added
+- `set_default_deployment(capability, deployment_id)` and
+  `get_default_overrides()`. A consumer now chooses its own default; the package
+  keeps a fallback so `pip install visvoai-ai` still works standalone.
+
+  Resolution is now: **consumer override → curated `DEFAULT_MODEL_FOR` → the
+  `default=True` model → first enabled.**
+
+  Deliberately module-level, not registry state: `install_catalog()` builds a
+  fresh registry, so an override stored on the instance would be silently wiped
+  by a consumer that set its default before installing a catalog.
+
+  Validated when set, not at first use — an unknown id, or one that does not
+  declare the capability, raises where the caller's stack still points at the
+  line that set it. A `provider` filter also ignores a foreign override: asking
+  for the default Anthropic chat model must not return a Gemini one.
+
+  Before this, changing a default required a package release. It just did,
+  twice.
+
+### Removed
+- **BREAKING: `Capability.DEEP_RESEARCH`.** Deep research is not something a
+  model does. It is a separate *agent* — `deep-research-preview-04-2026` and
+  `deep-research-max-preview-04-2026` — invoked with `agent=` rather than
+  `model=`, and only through the Interactions API; Google's docs state it
+  "cannot be accessed through `generate_content`".
+
+  The capability was declared by `gemini-3-flash-preview`, named in
+  `DEFAULT_MODEL_FOR`, and **read by nothing**. It asserted something untrue of
+  every Gemini chat model.
+
+  Consumers that implement deep research should name the agent directly, which
+  is what the one known consumer already does.
+
+### Changed
+- `gemini-3.7-flash` is the default model, taking `default=True` from
+  `gemini-3-flash-preview`. Google documents it as "our latest and most capable
+  Flash model, built for complex coding, agentic workflows, and reliable
+  multi-step execution".
+
+  It also takes `default_thinking_label="Think"`. Without that the switch would
+  have been a silent regression: the old default resolves to MEDIUM thinking and
+  `gemini-3.7-flash` had no label, so every new chat would have dropped to
+  thinking OFF — invisible in any diff of "which model is default".
+
+  It is **not** cheaper than the model it replaces: $0.75/$3.75 against
+  $0.50/$3.00, so +50% input and +25% output per token.
+
+- `test_list_deployments_filters_and_default` asserted a literal model id while
+  its own comment said it checked "the registry default model's deployment". It
+  now derives the expectation from the registry, testing the rule rather than
+  today's pick.
+
 ## [0.2.4] — 2026-08
 
 ### Added
