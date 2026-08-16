@@ -34,7 +34,18 @@ logger = logging.getLogger(__name__)
 
 # models.dev provider id → our provider name, where they differ. Keeps catalog-sourced
 # deployments under the same provider name as baked ones (avoids a duplicate "togetherai").
-PROVIDER_ALIAS: Dict[str, str] = {"togetherai": "together"}
+PROVIDER_ALIAS: Dict[str, str] = {"togetherai": "together", "google": "gemini"}
+
+# Providers we call through a FIRST-PARTY SDK rather than an OpenAI-compatible
+# endpoint. They have no derivable base_url and no env var to carry — the static
+# maps in providers/config.py already know how to reach them — but their facts
+# (context, pricing, reasoning) are still worth taking from models.dev instead of
+# hand-maintaining. Curation that models.dev cannot express (grounding pricing,
+# Capability.SEARCH, thinking defaults) is layered on via build_catalog(corrections=).
+#
+# Anthropic is the same shape and deliberately not included yet: one provider at a
+# time, and its baked entries have not been audited against models.dev.
+FIRST_PARTY = {"google"}
 
 # Branded-but-compatible: OpenAI Chat Completions shaped, but models.dev omits `api`
 # because their SDK hardcodes it. We supply the base_url. (Mirrors providers/config.py.)
@@ -51,7 +62,7 @@ BRANDED_BASE_URL: Dict[str, str] = {
 # Providers we do NOT source from models.dev: bespoke message-format families (served by
 # our own facade + the curated baked entries) and endpoints we can't call as Chat Completions.
 BESPOKE_OR_DENY = {
-    "anthropic", "google", "google-vertex", "google-vertex-anthropic",
+    "anthropic", "google-vertex", "google-vertex-anthropic",
     "amazon-bedrock", "azure", "azure-cognitive-services", "cohere", "sap-ai-core",
 }
 
@@ -97,6 +108,15 @@ def _model_def(provider: str, base_url: Optional[str], key_env: Optional[str],
         base_url=base_url,
         key_env=key_env,
         enabled=True,
+        # models.dev marks retired models `status: "deprecated"` (194 of them at
+        # time of writing). Carry that through rather than dropping them: a
+        # deprecated model is excluded from list_deployments and
+        # default_deployment, so it can never be picked for a new message, but it
+        # stays in MODEL_PRICING_MAP so an llm_call_logs row naming it still
+        # prices. Dropping it would make historical spend unreadable.
+        # `status: "beta"` is deliberately not special-cased — plenty of models
+        # in active use are previews.
+        deprecated=(str(m.get("status") or "").lower() == "deprecated"),
     )
 
 
@@ -106,6 +126,14 @@ def to_definitions(catalog: Dict[str, Any]) -> List[ModelDefinition]:
     out: List[ModelDefinition] = []
     dropped_providers = 0
     for pid, rec in catalog.items():
+        if pid in FIRST_PARTY:
+            # No base_url / key_env: providers/config.py resolves both statically.
+            provider = PROVIDER_ALIAS.get(pid, pid)
+            for m in (rec.get("models") or {}).values():
+                md = _model_def(provider, None, None, m)
+                if md is not None:
+                    out.append(md)
+            continue
         if not _is_openai_compat(pid, rec):
             dropped_providers += 1
             logger.debug("modelsdev: skip provider %s (not OpenAI-compat / bespoke)", pid)

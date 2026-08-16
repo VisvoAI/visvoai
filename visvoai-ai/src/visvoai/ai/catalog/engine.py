@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Callable, Dict, List, Optional, Tuple
+from dataclasses import fields, replace
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from visvoai.ai.identity import DEFAULT_CODEC
 from visvoai.ai.model_registry import MODELS as _BAKED, ModelDefinition
@@ -30,6 +31,40 @@ _Key = Tuple[str, str]  # (provider, api_id) — the merge/identity key
 
 def _key(md: ModelDefinition) -> _Key:
     return (md.provider, md.api_id)
+
+
+# A correction is a partial override: {(provider, api_id): {field: value}}.
+# Deliberately NOT a CatalogSource — a source yields whole ModelDefinitions and
+# merge is "later wins wholesale", so a source carrying curation would clobber
+# the live facts it is meant to sit on top of. Corrections are the other shape:
+# a handful of fields a catalog cannot know, laid over facts it can.
+#
+# What belongs here is what upstream genuinely does not model — Google Search
+# grounding pricing, our capability routing, which model is default. What does
+# NOT belong here is facts upstream has and we disagree with; fix those upstream.
+Corrections = Dict[_Key, Dict[str, Any]]
+
+
+def _apply_corrections(defs: List[ModelDefinition], corrections: Corrections) -> List[ModelDefinition]:
+    """Overlay per-field corrections. Unknown model ids are logged and ignored —
+    a correction for a model that upstream dropped is stale, not fatal. Unknown
+    field names raise: that is a typo, and silently doing nothing would leave a
+    correction that looks applied and is not."""
+    valid = {f.name for f in fields(ModelDefinition)}
+    by_key = {_key(md): md for md in defs}
+    for key, patch in corrections.items():
+        target = by_key.get(key)
+        if target is None:
+            logger.info("catalog: correction for unknown model %s:%s — ignored", *key)
+            continue
+        bad = set(patch) - valid
+        if bad:
+            raise ValueError(
+                f"catalog: correction for {key[0]}:{key[1]} names unknown "
+                f"field(s) {sorted(bad)} on ModelDefinition"
+            )
+        by_key[key] = replace(target, **patch)
+    return list(by_key.values())
 
 
 def _id_encodable(md: ModelDefinition) -> bool:
@@ -97,13 +132,20 @@ def validate(defs: List[ModelDefinition]) -> None:
 def build_catalog(
     sources: List[CatalogSource],
     gate: Optional[Gate] = None,
+    corrections: Optional[Corrections] = None,
 ) -> List[ModelDefinition]:
     """Stack sources (later wins) → gate → validate → final `list[ModelDefinition]`.
 
     `gate` drops models whose provider we can't call; dropped models are logged, not
     raised. With no gate, every merged model is kept (baked is callable by construction).
+
+    `corrections` overlays individual fields after the merge — for the handful a
+    catalog cannot know (grounding pricing, capability routing, which model is
+    default). Applied before the gate so a correction can affect gating.
     """
     merged = _merge(sources)
+    if corrections:
+        merged = _apply_corrections(merged, corrections)
     if gate is not None:
         kept, dropped = [], 0
         for md in merged:
