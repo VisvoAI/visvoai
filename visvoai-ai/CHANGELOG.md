@@ -4,6 +4,72 @@ All notable changes to this package. Versions follow `v0.MINOR.PATCH` while the 
 unstable (pre-1.0): MINOR for new capability or breaking changes, PATCH for fixes. No
 major (1.0) bump until the surface stabilizes.
 
+## [0.4.2] — 2026-08
+
+### Added
+- **`DeploymentInfo.vendor` / `.vendor_label`** — who *made* a model, as
+  distinct from `provider`, who serves it. Three things get called "provider"
+  and are not the same:
+
+  | | | |
+  |---|---|---|
+  | vendor | who made it | `google` |
+  | provider | who serves it (the route) | `gemini` direct, or `openrouter` |
+  | slug | what that route expects | `gemini-3.7-flash` / `google/gemini-3.7-flash` |
+
+  A picker groups by vendor: "the Google models" is a meaningful heading, while
+  "the OpenRouter models" is 340 models from thirty vendors. Grouping by
+  `provider` would also file the same model under two headings.
+
+  Derived, not stored, from `(provider, slug)`: aggregators namespace their
+  slugs `vendor/model`, first-party routes map from the provider name. The
+  normalisation is real — the same vendor appears as `qwen` and `Qwen`, as
+  `meta-llama` and `meta`, and OpenRouter prefixes some routes with `~`.
+  Returns `None` rather than guessing, so an unknown vendor renders ungrouped
+  instead of under a wrong heading (3 of 453 on the live catalog, all Groq
+  slugs carrying no namespace).
+
+- `DeploymentInfo.icon_url` — the provider logo, for a consumer's model picker.
+  `None` when the source supplied none; whoever renders it owns the fallback.
+
+  Carried on `Deployment` *and* on the public projection, with a test covering
+  the full `ModelDefinition → Deployment → DeploymentInfo` chain — this is the
+  same hop `status` silently failed to make in 0.4.0.
+
+### Fixed
+- **Models were offered thinking levels their API rejects.** `thinking_levels`
+  returned all four levels for anything with `supports_thinking`, treating the
+  level set as a property of the *mechanism*. It is a property of the *model*:
+  `gemini-3.7-flash` and `gemini-3.1-pro-preview` reject `"minimal"` — what
+  `OFF` maps to — with a 400, while `gemini-3.6-flash` and `gemini-3.5-flash`
+  accept it. Verified against the live API, model by model, not inferred.
+
+  `ModelDefinition.thinking_levels` (and a correction for the two Gemini models)
+  narrows the set. `None` still means all four.
+
+- **A model could default to a level it rejects.** The default and the allowed
+  set are independent facts, and `gemini-3.1-pro-preview` had them contradict:
+  its label resolved to `OFF` while the correction removed `minimal`. That is
+  the worse form of the bug — it needs no user action, so *every* turn on that
+  model would 400. `_default_level()` now reconciles toward the narrowest level
+  the model does accept, and a test asserts no deployment can default outside
+  its own set.
+
+- **Every models.dev model carried the Google favicon as its logo.** The
+  adapter never set `icon_url`, so all ~5,400 catalog-sourced definitions
+  inherited `ModelDefinition`'s default — which is Google's. A picker built on
+  the catalog showed one provider's icon against every model in it.
+
+  Definitions now carry `https://models.dev/logos/<provider>.svg`, keyed by the
+  provider's **upstream** id. That distinction is the fix: `PROVIDER_ALIAS`
+  renames `google` → `gemini` and `togetherai` → `together`, neither of which
+  exists upstream, and the logo endpoint *soft-404s* — an unknown id answers
+  `200` with a placeholder rather than an error. Using the aliased name would
+  have produced a plausible URL that silently rendered the wrong image.
+
+  Against the live catalog this yields 169 distinct logos across 5,483
+  definitions, with none left on the Google default.
+
 ## [0.4.1] — 2026-08
 
 ### Fixed

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from visvoai.ai.identity import DEFAULT_CODEC, IdentityCodec
+from visvoai.ai.vendors import vendor_of, vendor_label, vendor_icon_url
 from visvoai.ai.model_registry import (
     MODELS as _RAW,
     Capability,
@@ -70,6 +71,9 @@ class Deployment:
     # Upstream lifecycle ("alpha" | "beta" | None). Selectable either way — this
     # is for a consumer to render as a tag, so a user knows what they picked.
     status: Optional[str] = None
+    icon_url: Optional[str] = None     # provider logo, for a consumer's model picker
+    # None = all four levels; a narrower list when the model rejects some.
+    thinking_levels_override: Optional[List[str]] = None
     base_url: Optional[str] = None     # carried endpoint for catalog-sourced providers (None = static map)
     key_env: Optional[str] = None      # carried API-key env var name (None = static _ENV_KEY_MAP)
 
@@ -81,8 +85,18 @@ class Deployment:
         return self.thinking is not ThinkingMechanism.NONE
 
     def thinking_levels(self) -> List[ThinkingLevel]:
-        """The levels a UI should offer for this deployment ([] when unsupported)."""
-        return list(_ALL_LEVELS) if self.supports_thinking else []
+        """The levels a UI should offer for this deployment ([] when unsupported).
+
+        Defaults to all four, but a model may accept fewer — the level set is a
+        per-model fact, not a per-mechanism one, and offering a level the API
+        rejects turns a picker control into a 400.
+        """
+        if not self.supports_thinking:
+            return []
+        if self.thinking_levels_override is None:
+            return list(_ALL_LEVELS)
+        allowed = set(self.thinking_levels_override)
+        return [lvl for lvl in _ALL_LEVELS if lvl.value in allowed]
 
     def thinking_kwargs(self, level: ThinkingLevel) -> dict:
         """Translate a chosen level into this deployment's provider API kwargs."""
@@ -110,6 +124,17 @@ class DeploymentInfo:
     # A label, not a gate — such deployments are fully selectable, and retired
     # ones never reach here at all (list_deployments excludes `deprecated`).
     status: Optional[str] = None
+    # Provider logo for a picker. Whoever renders it owns the fallback: this is
+    # None whenever the source did not supply one.
+    icon_url: Optional[str] = None
+    # Who MADE the model, as opposed to `provider`, who serves it. The same
+    # model reached directly and through a router shares a vendor but not a
+    # provider — so this is what a picker groups by. None when underivable.
+    vendor: Optional[str] = None
+    vendor_label: Optional[str] = None
+    # The vendor's logo, where one is confirmed to exist. None means fall back
+    # to `icon_url` (the route's logo) rather than render nothing.
+    vendor_icon_url: Optional[str] = None
 
 
 # ── derivation: raw ModelDefinition → Model + Deployment ─────────────────────
@@ -152,8 +177,20 @@ def _mechanism(md: ModelDefinition) -> ThinkingMechanism:
 
 def _default_level(md: ModelDefinition) -> ThinkingLevel:
     if md.supports_thinking and md.default_thinking_label:
-        return _LABEL_TO_LEVEL.get(md.default_thinking_label, ThinkingLevel.OFF)
-    return ThinkingLevel.OFF
+        level = _LABEL_TO_LEVEL.get(md.default_thinking_label, ThinkingLevel.OFF)
+    else:
+        level = ThinkingLevel.OFF
+
+    # The default and the allowed set are two independent facts and can
+    # contradict — a model whose label resolves to OFF while it rejects
+    # "minimal" would 400 on EVERY turn, needing no user action to trigger.
+    # Reconcile toward the narrowest level the model does accept.
+    allowed = md.thinking_levels
+    if md.supports_thinking and allowed is not None and level.value not in allowed:
+        for candidate in _ALL_LEVELS:
+            if candidate.value in allowed:
+                return candidate
+    return level
 
 
 
@@ -172,6 +209,9 @@ def _build(raw: List[ModelDefinition]) -> tuple[List[Model], List[Deployment]]:
             thinking=_mechanism(md), default_thinking=_default_level(md),
             capabilities=list(md.capabilities), enabled=md.enabled,
             deprecated=md.deprecated, default=md.default, status=md.status,
+            icon_url=md.icon_url,
+            thinking_levels_override=(list(md.thinking_levels)
+                                      if md.thinking_levels is not None else None),
             base_url=md.base_url, key_env=md.key_env,
         ))
         if mid not in models:
@@ -222,6 +262,7 @@ class DeploymentRegistry:
 
     def _to_info(self, d: Deployment, codec: IdentityCodec) -> DeploymentInfo:
         m = self._model_by_id[d.model]
+        _vendor = vendor_of(d.provider, d.slug)
         return DeploymentInfo(
             id=d.id(codec), model=d.model, display_name=m.display_name, provider=d.provider,
             family=m.family, capabilities=list(d.capabilities), reasoning=m.reasoning,
@@ -232,6 +273,13 @@ class DeploymentRegistry:
             thinking_levels=d.thinking_levels(),
             default_thinking=d.default_thinking,
             status=d.status,
+            icon_url=d.icon_url,
+            # Derived here rather than stored: it is a function of (provider,
+            # slug), both of which live on the Deployment, so deriving keeps it
+            # from drifting out of sync with them.
+            vendor=_vendor,
+            vendor_label=vendor_label(_vendor),
+            vendor_icon_url=vendor_icon_url(_vendor),
         )
 
     def list_deployments(self, capability: Optional[Capability] = None,

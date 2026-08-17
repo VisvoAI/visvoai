@@ -2,7 +2,7 @@
 from visvoai.ai import deployments as d
 from visvoai.ai.deployments import DeploymentInfo
 from visvoai.ai.thinking import ThinkingLevel, ThinkingMechanism
-from visvoai.ai.model_registry import MODELS, Capability
+from visvoai.ai.model_registry import MODELS, Capability, ModelDefinition
 
 
 def test_same_model_multiple_providers_merges():
@@ -144,3 +144,126 @@ def test_status_reaches_the_public_projection():
     infos = d.list_deployments(Capability.CHAT)
     assert infos
     assert all(hasattr(i, "status") for i in infos)
+
+
+def test_icon_url_reaches_the_public_projection():
+    """Same hop as `status` above, for the same reason: a picker renders the
+    provider logo, and DeploymentInfo is the only type it can read.
+
+    Asserted on a definition we construct rather than on the baked list, so this
+    tests the ModelDefinition → Deployment → DeploymentInfo chain end to end
+    instead of a default that happens to be non-None.
+    """
+    from dataclasses import fields
+
+    assert "icon_url" in {f.name for f in fields(d.DeploymentInfo)}
+
+    md = ModelDefinition(
+        api_id="test-model",
+        display_name="Test Model",
+        provider="gemini",
+        input_cost_per_million=1.0,
+        output_cost_per_million=2.0,
+        icon_url="https://models.dev/logos/google.svg",
+    )
+    reg = d.DeploymentRegistry([md])
+    info = reg.list_deployments(Capability.CHAT)[0]
+    assert info.icon_url == "https://models.dev/logos/google.svg"
+
+
+def test_thinking_levels_can_be_narrowed_per_model():
+    """The level set is a per-MODEL fact, not a per-mechanism one.
+
+    Gemini 3.7 Flash and 3.1 Pro reject "minimal" — what OFF maps to — with a
+    400, while 3.6 Flash and 3.5 Flash accept it. Offering a level the API
+    refuses turns a picker control into an error, so a model can declare a
+    narrower set.
+    """
+    base = dict(
+        display_name="T", provider="gemini",
+        input_cost_per_million=1.0, output_cost_per_million=2.0,
+        supports_thinking=True,
+    )
+    wide = d.DeploymentRegistry([ModelDefinition(api_id="wide", **base)])
+    assert wide.list_deployments(Capability.CHAT)[0].thinking_levels == [
+        ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH
+    ]
+
+    narrow = d.DeploymentRegistry([
+        ModelDefinition(api_id="narrow", thinking_levels=["low", "medium", "high"], **base)
+    ])
+    levels = narrow.list_deployments(Capability.CHAT)[0].thinking_levels
+    assert ThinkingLevel.OFF not in levels
+    assert levels == [ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH]
+    # order follows the canonical sequence, not the declaration order
+    assert levels == sorted(levels, key=lambda l: [
+        ThinkingLevel.OFF, ThinkingLevel.LOW, ThinkingLevel.MEDIUM, ThinkingLevel.HIGH
+    ].index(l))
+
+
+def test_no_deployment_defaults_to_a_level_it_rejects():
+    """A narrowed level set and a default are two facts that can contradict.
+
+    If they ever do, every turn on that model 400s by default — the worst
+    version of this bug, since it needs no user action to trigger.
+    """
+    for info in d.list_deployments(Capability.CHAT):
+        if info.thinking_levels:
+            assert info.default_thinking in info.thinking_levels, (
+                f"{info.id} defaults to {info.default_thinking.value} "
+                f"but only offers {[l.value for l in info.thinking_levels]}"
+            )
+
+    # The real case that produced this guard came through the corrections path,
+    # not the baked list: gemini-3.1-pro-preview's label resolves to OFF while
+    # the correction removes "minimal" from what it accepts.
+    md = ModelDefinition(
+        api_id="contradictory", display_name="C", provider="gemini",
+        input_cost_per_million=1.0, output_cost_per_million=2.0,
+        supports_thinking=True,
+        default_thinking_label=None,                 # → OFF
+        thinking_levels=["low", "medium", "high"],   # …which is not offered
+    )
+    info = d.DeploymentRegistry([md]).list_deployments(Capability.CHAT)[0]
+    assert info.default_thinking is ThinkingLevel.LOW
+    assert info.default_thinking in info.thinking_levels
+
+
+def test_vendor_separates_who_made_a_model_from_who_serves_it():
+    """A model reached directly and through a router shares a vendor, not a
+    provider. Grouping a picker by provider would file the same model under two
+    headings — and would file 340 unrelated models under "OpenRouter".
+    """
+    from visvoai.ai.vendors import vendor_of, vendor_label
+
+    # first-party: no namespace in the slug, so it maps from the provider —
+    # and `gemini` the route is `google` the vendor.
+    assert vendor_of("gemini", "gemini-3.7-flash") == "google"
+    # the same model through a router: namespaced, same vendor, other provider
+    assert vendor_of("openrouter", "google/gemini-3.7-flash") == "google"
+
+    # spelling variants of one vendor collapse
+    assert vendor_of("together", "Qwen/Qwen3.5-9B") == vendor_of("openrouter", "qwen/qwen3.5-9b")
+    assert vendor_of("together", "meta-llama/Llama-3.3-70B") == "meta"
+    # OpenRouter's "~" prefix is routing metadata, not part of the name
+    assert vendor_of("openrouter", "~anthropic/claude-opus-4.8") == "anthropic"
+
+    # underivable rather than guessed — an unknown vendor renders ungrouped
+    assert vendor_of("groq", "some-unnamespaced-model") is None
+    assert vendor_label(None) is None
+
+    assert vendor_label("openai") == "OpenAI"
+    assert vendor_label("xai") == "xAI"
+    assert vendor_label("aion-labs") == "Aion Labs"
+
+
+def test_vendor_reaches_the_public_projection():
+    """Third field in three releases to need this hop asserted — see status
+    (0.4.0) and icon_url. A field that stops at Deployment does not exist."""
+    from dataclasses import fields
+
+    assert "vendor" in {f.name for f in fields(d.DeploymentInfo)}
+    infos = d.list_deployments(Capability.CHAT)
+    gemini = [i for i in infos if i.provider == "gemini"]
+    assert gemini and all(i.vendor == "google" for i in gemini)
+    assert all(i.vendor_label == "Google" for i in gemini)
