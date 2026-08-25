@@ -26,7 +26,22 @@ def captured(monkeypatch):
 def test_resolves_provider_slug_and_thinking(captured):
     build_chat_model("gemini:gemini-3-flash-preview", level="high")
     assert captured["provider"] == "gemini"
-    assert captured["slug"] == "gemini-3-flash-preview"
+    assert result == "gemini-3-flash-preview"
+
+
+def test_ollama_resolve_api_key_keyless() -> None:
+    """Ollama resolves to empty string when no key is set"""
+    from visvoai.ai.providers.config import resolve_api_key
+    key = resolve_api_key("ollama")
+    assert key == ""
+
+
+def test_ollama_default_base_url() -> None:
+    """Ollama resolves to localhost base_url by default"""
+    from visvoai.ai.providers.config import resolve_base_url
+    url = resolve_base_url("ollama")
+    assert url == "http://localhost:11434/v1"
+
     assert captured["extra"] == {"thinking_level": "high", "include_thoughts": True}
 
 
