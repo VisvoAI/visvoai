@@ -64,3 +64,35 @@ def cost_of(deployment_id: str, input_tokens: int, output_tokens: int,
         raise ValueError(f"unknown deployment id: {deployment_id!r}")
     return (input_tokens / 1_000_000) * dep.input_cost_per_million + \
            (output_tokens / 1_000_000) * dep.output_cost_per_million
+
+
+async def chat(
+    model: BaseChatModel,
+    text: str,
+) -> str:
+    """One-turn text-in/text-out convenience wrapper.
+
+    Hides LangChain message conventions: pass text, get text back.
+    For streaming or multi-turn graphs use the underlying model or
+    visvoai-core's ask() instead.
+
+    Example:
+        model = build_chat_model("gemini:gemini-3-flash-preview")
+        answer = await chat(model, "explain this in one sentence")
+    """
+    result = await model.ainvoke([("user", text)])
+    return result.content
+
+
+async def ask(
+    deployment_id: str,
+    text: str,
+    **kwargs,
+) -> str:
+    """Shortcut: build_chat_model(deployment_id) + chat(model, text).
+
+    Accepts the same keyword arguments as build_chat_model()
+    (level, api_key, base_url, etc.).
+    """
+    model = build_chat_model(deployment_id, **kwargs)
+    return await chat(model, text)
