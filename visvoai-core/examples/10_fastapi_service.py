@@ -41,6 +41,12 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 
 from visvoai.core import as_tools
+from visvoai.core.events import (
+    agent_events,
+    TextChunk,
+    ToolStart,
+    TurnDone,
+)
 from visvoai.core.runtime import AgentRuntime
 
 
@@ -108,58 +114,41 @@ graph = AgentRuntime().build_graph(
 app = FastAPI(title="VisvoAI Agent SSE Service")
 
 
-def _extract_text_and_tools(output):
-    """Extract text content and tool calls from on_chat_model_end output payload."""
-    if not output:
-        return "", []
-    if hasattr(output, "generations") and output.generations:
-        msg = output.generations[0].message
-        return getattr(msg, "content", ""), getattr(msg, "tool_calls", [])
-    return getattr(output, "content", ""), getattr(output, "tool_calls", [])
-
-
 # ── PART 1: Minimal Single-Endpoint SSE ───────────────────────────────────────
 @app.post("/api/v1/chat/{thread_id}")
 async def chat_v1(thread_id: str, message: str):
     """Simple single-endpoint SSE stream.
 
-    Streams token chunks (`on_chat_model_stream`), tool-start events (`on_tool_start`),
+    Streams text chunks (`TextChunk`), tool-start events (`ToolStart`),
     and finishes with `event: done`.
     """
     async def event_generator():
-        config = {"configurable": {"thread_id": thread_id}}
-        inputs = {"messages": [("user", message)]}
-        streamed_text = False
-
-        async for ev in graph.astream_events(inputs, config=config, version="v2"):
-            kind = ev["event"]
-
-            if kind == "on_chat_model_start":
-                streamed_text = False
-
-            elif kind == "on_chat_model_stream":
-                content = ev["data"]["chunk"].content
-                if content:
-                    streamed_text = True
-                    payload = json.dumps({"type": "text", "content": content})
-                    yield f"data: {payload}\n\n"
-
-            elif kind == "on_chat_model_end":
-                output = ev["data"].get("output")
-                content, tool_calls = _extract_text_and_tools(output)
-                if not streamed_text and content and not tool_calls:
-                    payload = json.dumps({"type": "text", "content": content})
-                    yield f"data: {payload}\n\n"
-
-            elif kind == "on_tool_start":
-                payload = json.dumps({
-                    "type": "tool_start",
-                    "tool": ev["name"],
-                    "input": ev["data"].get("input"),
-                })
+        async for ev in agent_events(
+            graph,
+            message,
+            thread_id=thread_id,
+        ):
+            if isinstance(ev, TextChunk):
+                payload = json.dumps(
+                    {
+                        "type": "text",
+                        "content": ev.text,
+                    }
+                )
                 yield f"data: {payload}\n\n"
 
-        yield "event: done\ndata: [DONE]\n\n"
+            elif isinstance(ev, ToolStart):
+                payload = json.dumps(
+                    {
+                        "type": "tool_start",
+                        "tool": ev.name,
+                        "input": ev.args,
+                    }
+                )
+                yield f"data: {payload}\n\n"
+
+            elif isinstance(ev, TurnDone):
+                yield "event: done\ndata: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -219,38 +208,36 @@ hub = ThreadStreamHub()
 
 
 async def _run_agent_task(thread_id: str, message: str):
-    config = {"configurable": {"thread_id": thread_id}}
-    inputs = {"messages": [("user", message)]}
-    streamed_text = False
-
     try:
-        async for ev in graph.astream_events(inputs, config=config, version="v2"):
-            kind = ev["event"]
-
-            if kind == "on_chat_model_start":
-                streamed_text = False
-
-            elif kind == "on_chat_model_stream":
-                content = ev["data"]["chunk"].content
-                if content:
-                    streamed_text = True
-                    payload = json.dumps({"type": "text", "content": content})
-                    hub.add_event(thread_id, f"data: {payload}\n\n")
-
-            elif kind == "on_chat_model_end":
-                output = ev["data"].get("output")
-                content, tool_calls = _extract_text_and_tools(output)
-                if not streamed_text and content and not tool_calls:
-                    payload = json.dumps({"type": "text", "content": content})
-                    hub.add_event(thread_id, f"data: {payload}\n\n")
-
-            elif kind == "on_tool_start":
-                payload = json.dumps({
-                    "type": "tool_start",
-                    "tool": ev["name"],
-                    "input": ev["data"].get("input"),
-                })
+        async for ev in agent_events(
+            graph,
+            message,
+            thread_id=thread_id,
+        ):
+            if isinstance(ev, TextChunk):
+                payload = json.dumps(
+                    {
+                        "type": "text",
+                        "content": ev.text,
+                    }
+                )
                 hub.add_event(thread_id, f"data: {payload}\n\n")
+
+            elif isinstance(ev, ToolStart):
+                payload = json.dumps(
+                    {
+                        "type": "tool_start",
+                        "tool": ev.name,
+                        "input": ev.args,
+                    }
+                )
+                hub.add_event(thread_id, f"data: {payload}\n\n")
+
+            elif isinstance(ev, TurnDone):
+                hub.add_event(
+                    thread_id,
+                    "event: done\ndata: [DONE]\n\n",
+                )
 
     except Exception as exc:
         print(f"   [Task Error] thread {thread_id}: {exc}")
@@ -258,7 +245,6 @@ async def _run_agent_task(thread_id: str, message: str):
         hub.add_event(thread_id, f"data: {err_payload}\n\n")
 
     finally:
-        hub.add_event(thread_id, "event: done\ndata: [DONE]\n\n")
         hub.finish_task(thread_id)
 
 
